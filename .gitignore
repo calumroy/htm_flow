@@ -30,3 +30,10 @@
 *.exe
 *.out
 *.app
+
+# Task Flow and all other files in the External folder.
+# These are dependancies required for this project.
+./src/External/*
+
+# ignore all build artifacts
+./build/*
