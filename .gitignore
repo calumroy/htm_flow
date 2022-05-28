@@ -36,4 +36,4 @@
 ./src/External/*
 
 # ignore all build artifacts
-*/build/*
+./build/*
