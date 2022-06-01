@@ -33,7 +33,9 @@
 
 # Task Flow and all other files in the External folder.
 # These are dependancies required for this project.
-./src/External/*
+./taskflow*
+./include/taskflow*
+./src/taskflow*
 
 # ignore all build artifacts
 build/*
