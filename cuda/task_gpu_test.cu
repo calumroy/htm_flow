@@ -7,6 +7,10 @@
 #include <taskflow/taskflow.hpp>
 #include <taskflow/cuda/cudaflow.hpp>
 
+#include <task_flow_gpu.hpp>
+
+namespace task_gpu_test{
+
 // Kernel: matmul
 __global__ void matmul(int *a, int *b, int *c, int m, int n, int k) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -20,8 +24,16 @@ __global__ void matmul(int *a, int *b, int *c, int m, int n, int k) {
   }
 }
 
+
+TaskGPUTest::TaskGPUTest(): 
+  test1(True) {
+};
+
+TaskGPUTest::~TaskGPUTest() {
+};
+
 // Matrix multiplication using GPU
-auto gpu(int M, int N, int K) {
+std::vector<int> TaskGPUTest::gpu(int M, int N, int K) {
   
   std::vector<int> ha, hb, hc;
   int *da, *db, *dc;
@@ -84,7 +96,7 @@ auto gpu(int M, int N, int K) {
 }
 
 // Matrix multiplication using CPU
-auto cpu(int M, int N, int K) {  
+auto TaskGPUTest::cpu(int M, int N, int K) {  
 
   std::vector<int> a, b, c;
 
@@ -120,47 +132,49 @@ auto cpu(int M, int N, int K) {
   return c;
 }
 
-// Function: main
-int main(int argc, char *argv[]) {
+// // Function: main
+// int main(int argc, char *argv[]) {
   
-  if(argc != 4) {
-    std::cerr << "usage: matrix-multiplication M N K\n";
-    std::exit(EXIT_FAILURE);
-  }
+//   if(argc != 4) {
+//     std::cerr << "usage: matrix-multiplication M N K\n";
+//     std::exit(EXIT_FAILURE);
+//   }
 
-  int M = std::atoi(argv[1]); 
-  int N = std::atoi(argv[2]); 
-  int K = std::atoi(argv[3]); 
+//   int M = std::atoi(argv[1]); 
+//   int N = std::atoi(argv[2]); 
+//   int K = std::atoi(argv[3]); 
 
-  std::cout << "matrix A: " << M << 'x' << N << '\n'
-            << "matrix B: " << N << 'x' << K << '\n'
-            << "matrix C: " << M << 'x' << K << '\n';
+//   std::cout << "matrix A: " << M << 'x' << N << '\n'
+//             << "matrix B: " << N << 'x' << K << '\n'
+//             << "matrix C: " << M << 'x' << K << '\n';
   
-  // matrix multiplication using gpu
-  std::cout << "running gpu matrix multiplication ... ";
-  auto gbeg = std::chrono::steady_clock::now();
-  auto gres = gpu(M, N, K);
-  auto gend = std::chrono::steady_clock::now();
-  std::cout << "completed with " 
-            << std::chrono::duration_cast<std::chrono::milliseconds>(gend-gbeg).count()
-            << " ms\n";
+//   // matrix multiplication using gpu
+//   std::cout << "running gpu matrix multiplication ... ";
+//   auto gbeg = std::chrono::steady_clock::now();
+//   auto gres = gpu(M, N, K);
+//   auto gend = std::chrono::steady_clock::now();
+//   std::cout << "completed with " 
+//             << std::chrono::duration_cast<std::chrono::milliseconds>(gend-gbeg).count()
+//             << " ms\n";
   
-  // matrix multiplication using cpu
-  std::cout << "running cpu matrix multiplication ... ";
-  auto cbeg = std::chrono::steady_clock::now();
-  auto cres = cpu(M, N, K);
-  auto cend = std::chrono::steady_clock::now();
-  std::cout << "completed with " 
-            << std::chrono::duration_cast<std::chrono::milliseconds>(cend-cbeg).count()
-            << " ms\n";
+//   // matrix multiplication using cpu
+//   std::cout << "running cpu matrix multiplication ... ";
+//   auto cbeg = std::chrono::steady_clock::now();
+//   auto cres = cpu(M, N, K);
+//   auto cend = std::chrono::steady_clock::now();
+//   std::cout << "completed with " 
+//             << std::chrono::duration_cast<std::chrono::milliseconds>(cend-cbeg).count()
+//             << " ms\n";
   
-  // verify the result
-  int64_t error = 0;
-  std::cout << "verifying results ... ";
-  for(int i=0; i<M*K; ++i) {
-    error += abs(gres[i] - cres[i]);
-  }
-  std::cout << "abs-error=" << error << '\n';
+//   // verify the result
+//   int64_t error = 0;
+//   std::cout << "verifying results ... ";
+//   for(int i=0; i<M*K; ++i) {
+//     error += abs(gres[i] - cres[i]);
+//   }
+//   std::cout << "abs-error=" << error << '\n';
 
-  return 0;
-}
+//   return 0;
+// }
+
+} // end of namespace 

@@ -44,6 +44,8 @@ target_link_libraries(
 )
 
 include_directories("include")
+                    # "cuda/include")
+
 include_directories(${PROJECT_SOURCE_DIR})
 
 add_subdirectory(cuda)
@@ -54,6 +56,6 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-target_link_libraries(${PROJECT_NAME} task_gpu_test)
+target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

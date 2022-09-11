@@ -3,7 +3,7 @@
 #include <taskflow/taskflow.hpp>
 
 // import task_gpu_test local library
-// #include <task_gpu_test.hpp>
+#include <task_gpu_test.hpp>
 
 // Procedure: for_each
 void for_each(int N) {
@@ -64,6 +64,9 @@ int main(int argc, char* argv[]) {
   for_each(std::atoi(argv[1]));
   for_each_index(std::atoi(argv[1]));
 
+  // Make a task_gpu_test object and run a gpu test
+  task_gpu_test::TaskGPUTest taskgputest1;
+  //std::vector<int> ret = taskgputest1.gpu(100, 100, 100);
 
   return 0;
 }
