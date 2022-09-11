@@ -46,10 +46,14 @@ target_link_libraries(
 include_directories("include")
 include_directories(${PROJECT_SOURCE_DIR})
 
+add_subdirectory(cuda)
+
 add_executable(${PROJECT_NAME} ./src/task_flow_test.cpp)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-add_subdirectory(cuda)
+target_link_libraries(${PROJECT_NAME} task_gpu_test)
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
