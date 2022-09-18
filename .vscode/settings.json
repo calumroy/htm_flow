@@ -74,6 +74,7 @@
         "cfenv": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "alignedvector3": "cpp"
     }
 }

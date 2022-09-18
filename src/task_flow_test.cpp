@@ -66,7 +66,10 @@ int main(int argc, char* argv[]) {
 
   // Make a task_gpu_test object and run a gpu test
   task_gpu_test::TaskGPUTest taskgputest1;
-  //std::vector<int> ret = taskgputest1.gpu(100, 100, 100);
-
+  std::vector<int> ret = taskgputest1.gpu(4, 4, 2);
+  // Print out the std::vector
+  for (int i = 0; i < ret.size(); i++) {
+    std::cout << ret[i] << std::endl;
+  }
   return 0;
 }

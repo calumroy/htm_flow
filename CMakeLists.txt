@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 
-project("htm_flow" VERSION 0.9 DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+project("htm_flow" VERSION 0.9 LANGUAGES CXX CUDA DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+
 
 set(CUDA_DIR ${PROJECT_SOURCE_DIR}/cuda)
 

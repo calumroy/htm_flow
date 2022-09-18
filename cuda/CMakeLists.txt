@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.8)
 
-project(cuda)
+project(task_gpu_test)
 
 if (NOT CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     message(STATUS "This project has a top-level one called [${CMAKE_PROJECT_NAME}]")
@@ -11,11 +11,11 @@ else()
     message(STATUS "This project is a top-level one")
 endif()
 
-add_library(task_gpu_test STATIC task_gpu_test.cu)
+add_library(${PROJECT_NAME} STATIC task_gpu_test.cu)
 
 #add_library(${PROJECT_NAME} SHARED)
 
-target_sources(task_gpu_test
+target_sources(${PROJECT_NAME}
     PRIVATE
       task_gpu_test.cu
 )
@@ -27,11 +27,12 @@ find_package(Threads REQUIRED)
 
 
 if(NOT CUDA_ARCHITECTURES)
-  set_property(TARGET task_gpu_test PROPERTY CUDA_ARCHITECTURES OFF)
+  set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
 endif()
 
-set_target_properties(task_gpu_test PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 # without it public headers won't get installed
 set(public_headers
     include/task_gpu_test.hpp
@@ -39,6 +40,16 @@ set(public_headers
 # note that ${public_headers} has to be in quotes
 set_target_properties(task_gpu_test PROPERTIES PUBLIC_HEADER "${public_headers}")
 
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        # where the library itself will look for its internal headers
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PUBLIC
+        # where top-level project will look for the library's public headers
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        # where external projects will look for the library's public headers
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 
 # #Not related to public headers, but it might be a good idea to add d suffix to debug binaries - that way you’ll get libSomeLibraryd.d with Debug configuration and libSomeLibrary.a with Release. 

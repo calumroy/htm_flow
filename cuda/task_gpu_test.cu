@@ -7,7 +7,7 @@
 #include <taskflow/taskflow.hpp>
 #include <taskflow/cuda/cudaflow.hpp>
 
-#include <include/task_flow_gpu.hpp>
+#include <task_gpu_test.hpp>
 
 namespace task_gpu_test{
 
@@ -26,11 +26,9 @@ __global__ void matmul(int *a, int *b, int *c, int m, int n, int k) {
 
 
 TaskGPUTest::TaskGPUTest(): 
-  test1(True) {
+  test1(true) {
 };
 
-TaskGPUTest::~TaskGPUTest() {
-};
 
 // Matrix multiplication using GPU
 std::vector<int> TaskGPUTest::gpu(int M, int N, int K) {
