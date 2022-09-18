@@ -7,7 +7,7 @@
 #include <taskflow/taskflow.hpp>
 #include <taskflow/cuda/cudaflow.hpp>
 
-#include <task_flow_gpu.hpp>
+#include <include/task_flow_gpu.hpp>
 
 namespace task_gpu_test{
 

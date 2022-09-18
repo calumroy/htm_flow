@@ -20,18 +20,19 @@ target_compile_options(
 # find nvcc
 # https://cliutils.gitlab.io/modern-cmake/chapters/packages/CUDA.html
 # -----------------------------------------------------------------------------
-if(TF_BUILD_CUDA)
-  message(STATUS "Configuring CUDA ...")
-  check_language(CUDA)
-  if(NOT CMAKE_CUDA_COMPILER)
-    message(FATAL_ERROR "\nNo CUDA compiler found")
-  endif()
-  enable_language(CUDA)
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11")
-    message(STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-    message(FATAL_ERROR "\nTaskflow requires CUDA at least v11")
-  endif()
+
+include(CheckLanguage)
+message(STATUS "Configuring CUDA ...")
+check_language(CUDA)
+if(NOT CMAKE_CUDA_COMPILER)
+  message(FATAL_ERROR "\nNo CUDA compiler found")
 endif()
+enable_language(CUDA)
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11")
+  message(STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+  message(FATAL_ERROR "\nTaskflow requires CUDA at least v11")
+endif()
+
 
 add_library(default_settings INTERFACE)
 add_library(tf::default_settings ALIAS default_settings)

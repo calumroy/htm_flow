@@ -25,3 +25,5 @@ sudo apt-get -y install cuda
 To build a gpu example use nvcc e.g
 `/usr/local/cuda-11.7/bin/nvcc -std=c++17 -I ./include/ --extended-lambda ./cuda/task_gpu_test.cu -o gpu_test`
 
+Info on CUDA cmake building
+https://developer.nvidia.com/blog/building-cuda-applications-cmake/
