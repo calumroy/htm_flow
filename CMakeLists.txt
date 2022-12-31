@@ -46,13 +46,27 @@ target_link_libraries(
 )
 
 include_directories("include")
-                    # "cuda/include")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
 add_subdirectory(cuda)
 
-add_executable(${PROJECT_NAME} ./src/task_flow_test.cpp)
+# Add test task flow executable (use this to confirm that task flow is working)
+# test_script name
+set(TEST_SCRIPT_NAME task_flow_test)
+add_executable(${TEST_SCRIPT_NAME} ./src/task_flow_test.cpp)
+
+target_compile_features(${TEST_SCRIPT_NAME} PRIVATE cxx_std_17)
+
+target_link_libraries(${TEST_SCRIPT_NAME} PRIVATE task_gpu_test)
+
+install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
+
+
+# Add all the cpp files in the src directory
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap*.cpp)
+# Build the Project executable
+add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
