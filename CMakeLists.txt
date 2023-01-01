@@ -65,6 +65,7 @@ install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
 
 # Add all the cpp files in the src directory
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap*.cpp)
+
 # Build the Project executable
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 

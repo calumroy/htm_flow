@@ -15,7 +15,6 @@ int main(int argc, char *argv[])
     tf::Executor executor;
     tf::Taskflow taskflow;
 
-    // Create an instance of the OverlapCalculator class
     using overlap::OverlapCalculator;
 
     int pot_width = 3;
@@ -31,7 +30,7 @@ int main(int argc, char *argv[])
     int num_columns = num_column_rows * num_column_cols;
     bool wrap_input = true;
 
-    // Create random colSynPerm array and newInputMat array
+    // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     std::vector<std::vector<float>> col_syn_perm(num_columns, std::vector<float>(num_pot_syn));
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -43,6 +42,7 @@ int main(int argc, char *argv[])
             col_syn_perm[i][j] = dis(gen);
         }
     }
+    // Create a random input matrix. This is a matrix representing the input to the HTM layer.
     std::vector<std::vector<int>> new_input_mat(num_input_rows, std::vector<int>(num_input_cols));
     std::uniform_int_distribution<> dis2(0, 1);
     for (int i = 0; i < num_input_rows; ++i)

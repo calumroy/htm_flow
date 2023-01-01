@@ -7,6 +7,7 @@
 #include <tuple>
 #include <taskflow/taskflow.hpp>
 
+#include <utilities/logger.hpp>
 #include <htm_flow/overlap.hpp>
 
 namespace overlap
@@ -56,6 +57,8 @@ namespace overlap
         rng_ = std::mt19937(rd());
         // Make the potential synapse tie breaker matrix
         make_pot_syn_tie_breaker(pot_syn_tie_breaker_);
+
+        LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
 
     void OverlapCalculator::make_pot_syn_tie_breaker(std::vector<std::vector<float>> &pot_syn_tie_breaker)

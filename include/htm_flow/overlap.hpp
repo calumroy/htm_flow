@@ -35,8 +35,8 @@ namespace overlap
         inline std::vector<float> calculate_pot_overlap(const std::vector<std::tuple<int, int>> &pot_syn,
                                                         const std::vector<std::vector<float>> &input_tensor);
         // Calculate the actual overlap score for a given column based on its potential overlap scores
-        inline int calculate_overlap(const std::vector<float> &pot_overlap,
-                                     const std::vector<std::tuple<int, int>> &pot_syn);
+        int calculate_overlap(const std::vector<float> &pot_overlap,
+                              const std::vector<std::tuple<int, int>> &pot_syn);
         // Get the step sizes for the potential synapses
         std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
                                            int columns_height, int potential_width, int potential_height);
