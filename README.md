@@ -27,3 +27,14 @@ To build a gpu example use nvcc e.g
 
 Info on CUDA cmake building
 https://developer.nvidia.com/blog/building-cuda-applications-cmake/
+
+
+## Unit tests
+Uses the google test framework.
+To run the unit tests, you need to have the google test framework installed.
+Install it to the lib folder in this project
+```
+cd ./lib
+git clone https://github.com/google/googletest/
+```
+This is done automatically by the setup.sh script. 

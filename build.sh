@@ -9,5 +9,5 @@
 mkdir -p build
 # Move into the build dir.
 cd build
-cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.7/bin/nvcc ..
+cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.7/bin/nvcc ..
 cmake --build .

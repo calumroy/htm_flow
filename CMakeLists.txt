@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 
+set(CMAKE_CXX_STANDARD 17)
+
 project("htm_flow" VERSION 0.9 LANGUAGES CXX CUDA DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
 
 
@@ -67,6 +69,7 @@ install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap*.cpp)
 
 # Build the Project executable
+# Link your executable to the Google Test library
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
@@ -76,3 +79,27 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+
+####################################################################
+# Build tests if (BUILD_TESTS) is ON 
+option(BUILD_TESTS "Build the tests" ON)
+
+if(BUILD_TESTS)
+  include_directories(src)
+    
+  # Add the Google Test subdirectory  
+  add_subdirectory(lib/googletest)
+  
+  # Enable testing for your project
+  enable_testing()
+
+  # Add all the cpp files in the test directory
+  file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
+
+  # Add your test files
+  add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
+
+  # Link your test executable to the Google Test library
+  target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
+
+endif()

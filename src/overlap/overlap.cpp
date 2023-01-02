@@ -31,6 +31,143 @@ namespace overlap
         return std::make_tuple(x, y);
     }
 
+    // Creates a new matrix by applying a sliding window operation to `input`.
+    // The sliding window operation loops over points in `input` and stores
+    // a rectangular neighbourhood of each point.
+    template <typename T>
+    std::vector<std::vector<std::vector<std::vector<T>>>> Images2Neibs(
+        const std::vector<std::vector<T>> &input,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool mode)
+    {
+        // Determine the dimensions of the input matrix.
+        const int rows = input.size();
+        const int cols = input[0].size();
+
+        // Check that the neighbourhood shape is valid.
+        if (neib_shape.first > rows || neib_shape.second > cols)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
+        }
+
+        // Create the output matrix.
+        std::vector<std::vector<std::vector<std::vector<T>>>> output;
+
+        // Apply the sliding window operation.
+        for (int i = 0; i < rows; i += step.first)
+        {
+            std::vector<std::vector<std::vector<T>>> row_output;
+            for (int j = 0; j < cols; j += step.second)
+            {
+                std::vector<std::vector<T>> patch;
+                for (int ii = 0; ii < neib_shape.first; ++ii)
+                {
+                    std::vector<T> row;
+                    for (int jj = 0; jj < neib_shape.second; ++jj)
+                    {
+                        int x = i + ii;
+                        int y = j + jj;
+                        if (mode)
+                        {
+                            x = x % rows;
+                            y = y % cols;
+                        }
+                        if (x >= 0 && x < rows && y >= 0 && y < cols)
+                        {
+                            row.push_back(input[x][y]);
+                        }
+                        else
+                        {
+                            row.push_back(0);
+                        }
+                    }
+                    patch.push_back(row);
+                }
+                row_output.push_back(patch);
+            }
+            output.push_back(row_output);
+        }
+        return output;
+    }
+
+    // The same function as above but parallelized using Taskflow.
+    template <typename T>
+    std::vector<std::vector<std::vector<std::vector<T>>>> parallel_Images2Neibs(
+        const std::vector<std::vector<T>> &input,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool mode)
+    {
+        // Determine the dimensions of the input matrix.
+        const int rows = input.size();
+        const int cols = input[0].size();
+
+        // Check that the neighbourhood shape is valid.
+        if (neib_shape.first > rows || neib_shape.second > cols)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
+        }
+
+        // Create the output matrix.
+        std::vector<std::vector<std::vector<std::vector<T>>>> output;
+
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        taskflow.for_each(rows, [&](int i)
+                          {
+    std::vector<std::vector<std::vector<T>>> row_output;
+    for (int j = 0; j < cols; j += step.second)
+    {
+        std::vector<std::vector<T>> patch;
+        for (int ii = 0; ii < neib_shape.first; ++ii)
+        {
+            std::vector<T> row;
+            for (int jj = 0; jj < neib_shape.second; ++jj)
+            {
+                int x = i + ii;
+                int y = j + jj;
+                if (mode)
+                {
+                    x = x % rows;
+                    y = y % cols;
+                }
+                if (x >= 0 && x < rows && y >= 0 && y < cols)
+                {
+                    row.push_back(input[x][y]);
+                }
+                else
+                {
+                    row.push_back(0);
+                }
+            }
+            patch.push_back(row);
+        }
+        row_output.push_back(patch);
+    }
+    output.push_back(row_output); });
+
+        // Run the taskflow.
+        executor.run(taskflow).get();
+
+        return output;
+    }
+
     // Define a class to calculate the overlap values for columns in a single HTM layer
     OverlapCalculator::OverlapCalculator(int potential_width, int potential_height, int columns_width, int columns_height,
                                          int input_width, int input_height, bool center_pot_synapses, float connected_perm,
@@ -117,6 +254,30 @@ namespace overlap
         }
 
         return std::make_pair(step_x, step_y);
+    }
+
+    void OverlapCalculator::check_new_input_params(
+        const std::vector<std::vector<int>> &newColSynPerm,
+        const std::vector<std::vector<int>> &newInput)
+    {
+        assert(input_width_ == newInput[0].size());
+        assert(input_height_ == newInput.size());
+        assert(potential_width_ * potential_height_ == newColSynPerm[0].size());
+        assert(num_columns_ == newColSynPerm.size());
+    }
+
+    void OverlapCalculator::calculate_overlap(const std::vector<std::vector<int>> &colSynPerm,
+                                              const std::vector<std::vector<int>> &inputGrid)
+    {
+        check_new_input_params(colSynPerm, inputGrid);
+        // colInputPotSyn = getColInputs(inputGrid);
+        // colInputPotSynTie = maskTieBreaker(colInputPotSyn, potSynTieBreaker);
+        // colPotOverlaps = calcOverlap(colInputPotSynTie);
+        // std::vector<std::vector<int>> connectedSynInputs =
+        //     getConnectedSynInput(colSynPerm, colInputPotSyn);
+        // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
+        // colOverlapVals = addVectTieBreaker(colOverlapVals, colTieBreaker);
+        // return std::make_pair(colOverlapVals, colInputPotSyn);
     }
 
 } // namespace overlap

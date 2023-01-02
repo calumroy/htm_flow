@@ -6,7 +6,10 @@
 #include <cstdio>
 #include <cstring>
 
-#define LOG_LEVEL 1 // Only show messages from log level 3 and higher
+///////////////////////////////////////////////////////////////////////////////
+// Set the log level here for all files that include this header file.
+#define LOG_LEVEL 1 // Only show messages from this log level and higher.
+///////////////////////////////////////////////////////////////////////////////
 
 enum LogLevel
 {
