@@ -129,8 +129,8 @@ namespace overlap
         tf::Taskflow taskflow;
         tf::Executor executor;
 
-        taskflow.for_each(rows, [&](int i)
-                          {
+        taskflow.for_each_index(0, rows, step.first, [&](int i)
+                                {
     std::vector<std::vector<std::vector<T>>> row_output;
     for (int j = 0; j < cols; j += step.second)
     {
