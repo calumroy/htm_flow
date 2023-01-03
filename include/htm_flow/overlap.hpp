@@ -41,13 +41,15 @@ namespace overlap
     ///                       The second dimension represents the column index of the input matrix.
     ///                       The third dimension represents the row index of the neighbourhood patch within the sliding window.
     ///                       The fourth dimension represents the column index of the neighbourhood patch within the sliding window.
-    ///                       For each element (i, j) in the input matrix, the output vector contains a 3D patch of size neib_shape starting at element (i, j). If the sliding window operation is being performed in "wrap around" mode (i.e. mode is true), then the patch will wrap around the edges of the input matrix. If the sliding window operation is not being performed in "wrap around" mode (i.e. mode is false), then the patch will be padded with zeros at the edges of the input matrix if necessary.
+    ///
+    ///                       For each element (i, j) in the input matrix, the output vector contains a 3D patch of size neib_shape starting at element (i, j).
+    ///                       If the sliding window operation is being performed in "wrap around" mode (i.e. mode is true), then the patch will wrap around the edges of the input matrix. If the sliding window operation is not being performed in "wrap around" mode (i.e. mode is false), then the patch will be padded with zeros at the edges of the input matrix if necessary.
     ///
     /// @param[in] input      The input matrix (2D vector of ints).
     /// @param[in] neib_shape The shape of the neighbourhood.
     /// @param[in] neib_step  The step size of the sliding window.
-    /// @param[in] mode       Whether to center the patches around each location or not.
-    ///                       If not (false), the top-left corner of the neighbourhood is used.
+    /// @param[in] wrap_mode  Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
+    ///
     /// @return               A 4D vector of ints. Each element stores the output patch for each element of the input matrix.
     ///-----------------------------------------------------------------------------
     template <typename T>
@@ -55,7 +57,7 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool mode);
+        bool wrap_mode);
 
     /// The same function as above but parallelized using Taskflow.
     template <typename T>
@@ -63,7 +65,7 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool mode);
+        bool wrap_mode);
 
     // Define a class to calculate the overlap values for columns in a single HTM layer
     class OverlapCalculator

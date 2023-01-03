@@ -39,7 +39,7 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool mode)
+        bool wrap_mode)
     {
         // Determine the dimensions of the input matrix.
         const int rows = input.size();
@@ -75,7 +75,7 @@ namespace overlap
                     {
                         int x = i + ii;
                         int y = j + jj;
-                        if (mode)
+                        if (wrap_mode)
                         {
                             x = x % rows;
                             y = y % cols;
@@ -104,7 +104,7 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool mode)
+        bool wrap_mode)
     {
         // Determine the dimensions of the input matrix.
         const int rows = input.size();
@@ -125,42 +125,57 @@ namespace overlap
 
         // Create the output matrix.
         std::vector<std::vector<std::vector<std::vector<T>>>> output;
+        // Initialize the taskflow output matrix.
+        output.resize(rows / step.first);
 
         tf::Taskflow taskflow;
         tf::Executor executor;
 
         taskflow.for_each_index(0, rows, step.first, [&](int i)
                                 {
-    std::vector<std::vector<std::vector<T>>> row_output;
-    for (int j = 0; j < cols; j += step.second)
-    {
-        std::vector<std::vector<T>> patch;
-        for (int ii = 0; ii < neib_shape.first; ++ii)
-        {
-            std::vector<T> row;
-            for (int jj = 0; jj < neib_shape.second; ++jj)
-            {
-                int x = i + ii;
-                int y = j + jj;
-                if (mode)
-                {
-                    x = x % rows;
-                    y = y % cols;
-                }
-                if (x >= 0 && x < rows && y >= 0 && y < cols)
-                {
-                    row.push_back(input[x][y]);
-                }
-                else
-                {
-                    row.push_back(0);
-                }
-            }
-            patch.push_back(row);
-        }
-        row_output.push_back(patch);
-    }
-    output.push_back(row_output); });
+                                    // Add debug logging
+                                    // LOG(DEBUG, "Thread i = " + std::to_string(i));
+                                    std::vector<std::vector<std::vector<T>>> row_output;
+                                    for (int j = 0; j < cols; j += step.second)
+                                    {
+                                        // Add debug logging
+                                        // LOG(DEBUG, "j = " + std::to_string(j));
+                                        std::vector<std::vector<T>> patch;
+                                        for (int ii = 0; ii < neib_shape.first; ++ii)
+                                        {
+                                            // Add debug logging
+                                            // LOG(DEBUG, "ii = " + std::to_string(ii));
+                                            std::vector<T> row;
+                                            for (int jj = 0; jj < neib_shape.second; ++jj)
+                                            {
+                                                // Add debug logging
+                                                // LOG(DEBUG, "jj = " + std::to_string(jj));
+                                                int x = i + ii;
+                                                int y = j + jj;
+                                                if (wrap_mode)
+                                                {
+                                                    x = x % rows;
+                                                    y = y % cols;
+                                                }
+                                                // Add debug logging
+                                                // LOG(DEBUG, "x = " + std::to_string(x));
+                                                // LOG(DEBUG, "y = " + std::to_string(y));
+                                                if (x >= 0 && x < rows && y >= 0 && y < cols)
+                                                {
+                                                    row.push_back(input[x][y]);
+                                                }
+                                                else
+                                                {
+                                                    row.push_back(0);
+                                                }
+                                            }
+                                            patch.push_back(row);
+                                        }
+                                        row_output.push_back(patch);
+                                    }
+                                    // Set the output matrix for this row. 
+                                    // Divide i the row index by the step size to get the correct row index to update.
+                                    output[i / step.first] = row_output; });
 
         // Run the taskflow.
         executor.run(taskflow).get();
