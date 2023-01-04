@@ -39,7 +39,8 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool wrap_mode)
+        bool wrap_mode,
+        bool center_neigh)
     {
         // Determine the dimensions of the input matrix.
         const int rows = input.size();
@@ -75,10 +76,19 @@ namespace overlap
                     {
                         int x = i + ii;
                         int y = j + jj;
+
+                        // If the "center_neigh" flag is set, center the neighbourhood
+                        // over the current element in the input matrix.
+                        if (center_neigh)
+                        {
+                            x = i + ii - neib_shape.first / 2;
+                            y = j + jj - neib_shape.second / 2;
+                        }
+
                         if (wrap_mode)
                         {
-                            x = x % rows;
-                            y = y % cols;
+                            x = (x + rows) % rows;
+                            y = (y + cols) % cols;
                         }
                         if (x >= 0 && x < rows && y >= 0 && y < cols)
                         {
@@ -104,7 +114,8 @@ namespace overlap
         const std::vector<std::vector<T>> &input,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool wrap_mode)
+        bool wrap_mode,
+        bool center_neigh)
     {
         // Determine the dimensions of the input matrix.
         const int rows = input.size();
@@ -148,18 +159,22 @@ namespace overlap
                                             std::vector<T> row;
                                             for (int jj = 0; jj < neib_shape.second; ++jj)
                                             {
-                                                // Add debug logging
-                                                // LOG(DEBUG, "jj = " + std::to_string(jj));
                                                 int x = i + ii;
                                                 int y = j + jj;
+
+                                                // If the "center_neigh" flag is set, center the neighbourhood
+                                                // over the current element in the input matrix.
+                                                if (center_neigh)
+                                                {
+                                                    x = i + ii - neib_shape.first / 2;
+                                                    y = j + jj - neib_shape.second / 2;
+                                                }
+
                                                 if (wrap_mode)
                                                 {
-                                                    x = x % rows;
-                                                    y = y % cols;
+                                                    x = (x + rows) % rows;
+                                                    y = (y + cols) % cols;
                                                 }
-                                                // Add debug logging
-                                                // LOG(DEBUG, "x = " + std::to_string(x));
-                                                // LOG(DEBUG, "y = " + std::to_string(y));
                                                 if (x >= 0 && x < rows && y >= 0 && y < cols)
                                                 {
                                                     row.push_back(input[x][y]);
