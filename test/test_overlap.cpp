@@ -171,6 +171,36 @@ TEST(Images2NeibsTest, test4_wrap_center)
     ASSERT_EQ(output, expected_output);
 }
 
+TEST(Images2Neibs, test5_wrap_step1_2)
+{
+    // Check that a 2x2 patch is extracted from a 3x3 matrix.
+    // Use a step size of 1 in the column direction and 2 in the row direction.
+    // Create an input matrix for testing
+    std::vector<std::vector<int>> input = {{1, 2, 3},
+                                           {4, 5, 6},
+                                           {7, 8, 9}};
+
+    // Set the neighbourhood shape and step size
+    std::pair<int, int> neib_shape = {2, 2};
+    std::pair<int, int> neib_step = {2, 1};
+    bool wrap_mode = true;
+    bool center_neigh = false;
+
+    // Run the function and save the output
+    std::vector<std::vector<std::vector<std::vector<int>>>> output = Images2Neibs(input, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // Create the expected output
+    std::vector<std::vector<std::vector<std::vector<int>>>> expected_output = {{{{1, 2}, {4, 5}},
+                                                                                {{2, 3}, {5, 6}},
+                                                                                {{3, 1}, {6, 4}}},
+                                                                               {{{7, 8}, {1, 2}},
+                                                                                {{8, 9}, {2, 3}},
+                                                                                {{9, 7}, {3, 1}}}};
+
+    // Check that the function produced the expected output
+    EXPECT_EQ(output, expected_output);
+}
+
 TEST(parallel_Images2Neibs, test1_wrap)
 {
     // Test 1: Check that a 2x2 patch is extracted from a 3x3 matrix
@@ -300,7 +330,8 @@ TEST(parallel_Images2Neibs, test3_wrap_center)
 
 TEST(parallel_Images2Neibs, test4_wrap_step1_2)
 {
-    // Test 1: Check that a 2x2 patch is extracted from a 3x3 matrix
+    // Check that a 2x2 patch is extracted from a 3x3 matrix
+    // Use a step size of 1 in the column direction and 2 in the row direction.
     // Create an input matrix for testing
     std::vector<std::vector<int>> input = {{1, 2, 3},
                                            {4, 5, 6},
@@ -308,7 +339,7 @@ TEST(parallel_Images2Neibs, test4_wrap_step1_2)
 
     // Set the neighbourhood shape and step size
     std::pair<int, int> neib_shape = {2, 2};
-    std::pair<int, int> neib_step = {1, 2};
+    std::pair<int, int> neib_step = {2, 1};
     bool wrap_mode = true;
     bool center_neigh = false;
 
@@ -319,9 +350,6 @@ TEST(parallel_Images2Neibs, test4_wrap_step1_2)
     std::vector<std::vector<std::vector<std::vector<int>>>> expected_output = {{{{1, 2}, {4, 5}},
                                                                                 {{2, 3}, {5, 6}},
                                                                                 {{3, 1}, {6, 4}}},
-                                                                               {{{4, 5}, {7, 8}},
-                                                                                {{5, 6}, {8, 9}},
-                                                                                {{6, 4}, {9, 7}}},
                                                                                {{{7, 8}, {1, 2}},
                                                                                 {{8, 9}, {2, 3}},
                                                                                 {{9, 7}, {3, 1}}}};

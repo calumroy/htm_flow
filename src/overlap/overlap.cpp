@@ -136,8 +136,28 @@ namespace overlap
 
         // Create the output matrix.
         std::vector<std::vector<std::vector<std::vector<T>>>> output;
-        // Initialize the taskflow output matrix.
-        output.resize(rows / step.first);
+        // Initialize the taskflow output matrix size.
+        // It should contain the number of rows of the ceiling of ((float)input.rows / (float)step.first))
+        // each row runs in it's own thread.
+
+        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+        int O = neib_shape.first;                                               // Number of rows in each patch
+        int P = neib_shape.second;                                              // Number of columns in each patch
+
+        output.resize(N);
+        for (int i = 0; i < N; ++i)
+        {
+            output[i].resize(M);
+            for (int j = 0; j < M; ++j)
+            {
+                output[i][j].resize(O);
+                for (int k = 0; k < O; ++k)
+                {
+                    output[i][j][k].resize(P);
+                }
+            }
+        }
 
         tf::Taskflow taskflow;
         tf::Executor executor;
