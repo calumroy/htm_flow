@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
   for_each_index(std::atoi(argv[1]));
 
   // Make a task_gpu_test object and run a gpu test
+  std::cout << "Running GPU test" << std::endl;
   task_gpu_test::TaskGPUTest taskgputest1;
   std::vector<int> ret = taskgputest1.gpu(4, 4, 2);
   // Print out the std::vector

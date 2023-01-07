@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <src/overlap/overlap.cpp>
+// Include the gpu_overlap.hpp header file form the gpu_overlap library
+#include <overlap/gpu_overlap.hpp>
 
 // Using the overlap namespace
 using namespace overlap;
@@ -201,6 +203,25 @@ TEST(Images2Neibs, test5_wrap_step1_2)
     EXPECT_EQ(output, expected_output);
 }
 
+TEST(Images2Neibs, test6_large)
+{
+    // Check that a 40x40 patch is extracted from a 400x400 matrix
+    // Use a step size of 1 in the column direction and 2 in the row direction.
+    // Create an input matrix for testing (400x400) every element is 1
+    int n_rows = 400;
+    int n_cols = 400;
+    std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
+
+    // Set the neighbourhood shape and step size
+    std::pair<int, int> neib_shape = {40, 40};
+    std::pair<int, int> neib_step = {1, 1};
+    bool wrap_mode = true;
+    bool center_neigh = true;
+
+    // Run the function and save the output
+    std::vector<std::vector<std::vector<std::vector<int>>>> output = Images2Neibs(input, neib_shape, neib_step, wrap_mode, center_neigh);
+}
+
 TEST(parallel_Images2Neibs, test1_wrap)
 {
     // Test 1: Check that a 2x2 patch is extracted from a 3x3 matrix
@@ -356,4 +377,23 @@ TEST(parallel_Images2Neibs, test4_wrap_step1_2)
 
     // Check that the function produced the expected output
     EXPECT_EQ(output, expected_output);
+}
+
+TEST(parallel_Images2Neibs, test5_large)
+{
+    // Check that a 40x40 patch is extracted from a 400x400 matrix
+    // Use a step size of 1 in the column direction and 2 in the row direction.
+    // Create an input matrix for testing (400x400) every element is 1
+    int n_rows = 400;
+    int n_cols = 400;
+    std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
+
+    // Set the neighbourhood shape and step size
+    std::pair<int, int> neib_shape = {40, 40};
+    std::pair<int, int> neib_step = {1, 1};
+    bool wrap_mode = true;
+    bool center_neigh = true;
+
+    // Run the function and save the output
+    std::vector<std::vector<std::vector<std::vector<int>>>> output = parallel_Images2Neibs(input, neib_shape, neib_step, wrap_mode, center_neigh);
 }

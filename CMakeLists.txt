@@ -66,7 +66,7 @@ install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
 
 
 # Add all the cpp files in the src directory
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap*.cpp)
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp)
 
 # Build the Project executable
 # Link your executable to the Google Test library
@@ -99,7 +99,7 @@ if(BUILD_TESTS)
   # Add your test files
   add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
 
-  # Link your test executable to the Google Test library
-  target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
+  # Link your test executable to the Google Test library and other libraries
+  target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
 
 endif()

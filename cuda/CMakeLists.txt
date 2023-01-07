@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.8)
 
-project(task_gpu_test)
+project(gpu_htm_flow_cuda_lib)
 
 if (NOT CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     message(STATUS "This project has a top-level one called [${CMAKE_PROJECT_NAME}]")
@@ -11,14 +11,36 @@ else()
     message(STATUS "This project is a top-level one")
 endif()
 
-add_library(${PROJECT_NAME} STATIC task_gpu_test.cu)
+############## LIBRARY 1 ####################
+# Set the name of library 2
+set(LIBRARY1_NAME task_gpu_test)
+# Print the value of the variable ${PROJECT_SOURCE_DIR}
+message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
+# Add all the cpp files in the src directory
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/task_gpu_test.cu)
 
-#add_library(${PROJECT_NAME} SHARED)
+add_library(${LIBRARY1_NAME} STATIC ${SRC_FILES})
 
-target_sources(${PROJECT_NAME}
+target_sources(${LIBRARY1_NAME}
     PRIVATE
-      task_gpu_test.cu
+      ${SRC_FILES}
 )
+
+############## LIBRARY 2 ####################
+# Set the name of library 2
+set(LIBRARY2_NAME gpu_overlap)
+# Add another library to the project.
+# Add all the cpp files in the src directory
+file(GLOB_RECURSE SRC_FILES_2 ${CMAKE_CURRENT_SOURCE_DIR}/src/overlap/gpu_overlap.cu)
+# Print the value of the variable ${SRC_FILES_2}
+message(STATUS "SRC_FILES_2: ${SRC_FILES_2}")
+add_library(${LIBRARY2_NAME} STATIC ${SRC_FILES_2})
+
+target_sources(${LIBRARY2_NAME}
+    PRIVATE
+      ${SRC_FILES_2}
+)
+#############################################
 
 find_package(Threads REQUIRED)
 
@@ -27,20 +49,51 @@ find_package(Threads REQUIRED)
 
 
 if(NOT CUDA_ARCHITECTURES)
-  set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
+#   set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
+  set_property(TARGET ${LIBRARY1_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
+  set_property(TARGET ${LIBRARY2_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
 endif()
 
-set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+# set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(${LIBRARY1_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(${LIBRARY2_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+# target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+target_compile_features(${LIBRARY1_NAME} PRIVATE cxx_std_17)
+target_compile_features(${LIBRARY2_NAME} PRIVATE cxx_std_17)
 # without it public headers won't get installed
-set(public_headers
+set(public_headers1
     include/task_gpu_test.hpp
 )
+set(public_headers2
+    include/overlap/gpu_overlap.hpp
+)
 # note that ${public_headers} has to be in quotes
-set_target_properties(task_gpu_test PROPERTIES PUBLIC_HEADER "${public_headers}")
+# set_target_properties(${PROJECT_NAME} PROPERTIES PUBLIC_HEADER "${public_headers}")
+set_target_properties(${LIBRARY1_NAME} PROPERTIES PUBLIC_HEADER "${public_headers1}")
+set_target_properties(${LIBRARY2_NAME} PROPERTIES PUBLIC_HEADER "${public_headers2}")
 
-target_include_directories(${PROJECT_NAME}
+# target_include_directories(${PROJECT_NAME}
+#     PRIVATE
+#         # where the library itself will look for its internal headers
+#         ${CMAKE_CURRENT_SOURCE_DIR}/include
+#     PUBLIC
+#         # where top-level project will look for the library's public headers
+#         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#         # where external projects will look for the library's public headers
+#         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+# )
+target_include_directories(${LIBRARY1_NAME}
+    PRIVATE
+        # where the library itself will look for its internal headers
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PUBLIC
+        # where top-level project will look for the library's public headers
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        # where external projects will look for the library's public headers
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_include_directories(${LIBRARY2_NAME}
     PRIVATE
         # where the library itself will look for its internal headers
         ${CMAKE_CURRENT_SOURCE_DIR}/include

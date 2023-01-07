@@ -38,3 +38,13 @@ cd ./lib
 git clone https://github.com/google/googletest/
 ```
 This is done automatically by the setup.sh script. 
+
+To run the unit tests, use the executable `./build/htm_flow_tests`  
+To list all unit tests use googletest flags `./build/htm_flow_tests --gtest_list_tests`  
+To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags `./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+
+## Task Flow Profiler
+To run the tests and output a task flow graph showing the thread profile use the flag
+`TF_ENABLE_PROFILER=simple.json`  e.g `TF_ENABLE_PROFILER=simple.json ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+This will output a json file with the task flow profile.
+Paste this into https://taskflow.github.io/tfprof/ to get a nice view of the profile.

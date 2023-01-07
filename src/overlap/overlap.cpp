@@ -165,17 +165,13 @@ namespace overlap
         taskflow.for_each_index(0, rows, step.first, [&](int i)
                                 {
                                     // Add debug logging
-                                    // LOG(DEBUG, "Thread i = " + std::to_string(i));
+                                    //LOG(DEBUG, "Thread i = " + std::to_string(i));
                                     std::vector<std::vector<std::vector<T>>> row_output;
                                     for (int j = 0; j < cols; j += step.second)
                                     {
-                                        // Add debug logging
-                                        // LOG(DEBUG, "j = " + std::to_string(j));
                                         std::vector<std::vector<T>> patch;
                                         for (int ii = 0; ii < neib_shape.first; ++ii)
                                         {
-                                            // Add debug logging
-                                            // LOG(DEBUG, "ii = " + std::to_string(ii));
                                             std::vector<T> row;
                                             for (int jj = 0; jj < neib_shape.second; ++jj)
                                             {
