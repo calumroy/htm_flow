@@ -1,3 +1,4 @@
+#include <vector>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/cuda/cudaflow.hpp>
 
@@ -6,38 +7,129 @@
 namespace gpu_overlap
 {
 
-    // Define the kernel function.
+    std::vector<int> flattenVector(const std::vector<std::vector<int>> &vec2D)
+    {
+        std::vector<int> vec1D;
+        for (const auto &vec : vec2D)
+        {
+            vec1D.insert(vec1D.end(), vec.begin(), vec.end());
+        }
+        return vec1D;
+    }
+
+    std::vector<int> flattenVector(const std::vector<std::vector<std::vector<std::vector<int>>>> &vec4D)
+    {
+        std::vector<int> vec1D;
+        for (const auto &vec3D : vec4D)
+        {
+            for (const auto &vec2D : vec3D)
+            {
+                for (const auto &vec : vec2D)
+                {
+                    vec1D.insert(vec1D.end(), vec.begin(), vec.end());
+                }
+            }
+        }
+        return vec1D;
+    }
+
+    std::vector<std::vector<int>> unflattenVector(const std::vector<int> &vec1D, size_t numRows, size_t numCols)
+    {
+        std::vector<std::vector<int>> vec2D(numRows, std::vector<int>(numCols));
+        size_t index = 0;
+        for (size_t i = 0; i < numRows; i++)
+        {
+            for (size_t j = 0; j < numCols; j++)
+            {
+                vec2D[i][j] = vec1D[index];
+                index++;
+            }
+        }
+        return vec2D;
+    }
+
+    std::vector<std::vector<std::vector<std::vector<int>>>> unflattenVector(const std::vector<int> &vec1D, size_t numLayers, size_t numChannels, size_t numRows, size_t numCols)
+    {
+        std::vector<std::vector<std::vector<std::vector<int>>>> vec4D(numLayers, std::vector<std::vector<std::vector<int>>>(numChannels, std::vector<std::vector<int>>(numRows, std::vector<int>(numCols))));
+        size_t index = 0;
+        for (size_t l = 0; l < numLayers; l++)
+        {
+            for (size_t c = 0; c < numChannels; c++)
+            {
+                for (size_t i = 0; i < numRows; i++)
+                {
+                    for (size_t j = 0; j < numCols; j++)
+                    {
+                        vec4D[l][c][i][j] = vec1D[index];
+                        index++;
+                    }
+                }
+            }
+        }
+        return vec4D;
+    }
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// sliding_window_kernel      A kernel function that performs a sliding window operation on a matrix.
+    ///                            This kernel function oerates on a simualted 2D matrix, but the matrix is
+    ///                            actually stored as a 1D array. The kernel function is designed to be
+    ///                            launched with a 2D grid of 2D blocks. Each thread in the block will
+    ///                            perform the sliding window operation on a single element in the input
+    ///                            matrix. The output matrix will also be a 1D vector simulating a 4D vector with dimensions
+    ///                            rows x cols x neigh_rows x neigh_cols.
+    ///                            Each element at the output[i * cols + j] will be a 2D matrix (simulated by a flattened 1D vector)
+    ///                            containing the neighbourhood of the input matrix element input[i * cols + j].
+    ///
+    /// @param[in] input           A pointer to the input matrix on the GPU.
+    /// @param[out] output         A pointer to the output matrix on the GPU.
+    /// @param[in] rows            The number of rows in the input matrix.
+    /// @param[in] cols            The number of columns in the input matrix.
+    /// @param[in] neib_rows       The number of rows in the neighbourhood.
+    /// @param[in] neib_cols       The number of columns in the neighbourhood.
+    /// @param[in] step_rows       The number of rows to step the neighbourhood for each iteration.
+    /// @param[in] step_cols       The number of columns to step the neighbourhood for each iteration.
+    /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
+    /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
+    ///-----------------------------------------------------------------------------
     __global__ void sliding_window_kernel(int *input, int *output, int rows, int cols, int neib_rows, int neib_cols, int step_rows, int step_cols, bool wrap_mode, bool center_neigh)
     {
-        int i = blockIdx.y * blockDim.y + threadIdx.y;
-        int j = blockIdx.x * blockDim.x + threadIdx.x;
+        int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index of the thread index
+        int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index of the thread index
+
+        // The threads in the block that are outside the bounds of the input matrix do nothing.
         if (i < rows && j < cols)
         {
             for (int ii = 0; ii < neib_rows; ++ii)
             {
                 for (int jj = 0; jj < neib_cols; ++jj)
                 {
-                    int x = i + ii;
-                    int y = j + jj;
+                    int x = i + ii * step_rows;
+                    int y = j + jj * step_cols;
 
                     // If the "center_neigh" flag is set, center the neighbourhood over the current element in the input matrix.
                     if (center_neigh)
                     {
-                        x = i + ii - neib_rows / 2;
-                        y = j + jj - neib_cols / 2;
+                        x = i + (ii - neib_rows / 2) * step_rows;
+                        y = j + (jj - neib_cols / 2) * step_cols;
                     }
 
+                    // Wrap the indices around the bounds of the input matrix if "wrap_mode" is set.
                     if (wrap_mode)
                     {
                         x = (x + rows) % rows;
                         y = (y + cols) % cols;
                     }
+
+                    // Set the element in the output matrix
                     if (x >= 0 && x < rows && y >= 0 && y < cols)
                     {
+                        // Set output matrix element i,j,ii,jj to the input matrix element x,y.
                         output[i * cols + j * neib_rows * neib_cols + ii * neib_cols + jj] = input[x * cols + y];
                     }
                     else
                     {
+                        // Set the element in the output matrix to 0 if the indices are outside the bounds of the input matrix.
                         output[i * cols + j * neib_rows * neib_cols + ii * neib_cols + jj] = 0;
                     }
                 }
@@ -45,16 +137,31 @@ namespace gpu_overlap
         }
     }
 
-    std::vector<std::vector<std::vector<std::vector<int>>>> gpu_Images2Neibs(
-        const std::vector<std::vector<int>> &input,
+    ///-----------------------------------------------------------------------------
+    ///
+    /// gpu_Images2Neibs           A function that performs a sliding window operation on a matrix.
+    ///                            This function is designed to be called from the host. It allocates
+    ///                            memory on the GPU, copies the input matrix to the GPU, launches the
+    ///                            sliding_window_kernel kernel function, copies the output matrix from the GPU
+    ///                            and frees the memory on the GPU.
+    ///
+    /// @param[in] input           A reference to the input matrix on the host. This is a 1D vector simulating a 2D matrix.
+    /// @param[in] input_shape     A pair containing the number of rows and columns in the input matrix.
+    /// @param[in] neib_shape      A pair containing the number of rows and columns in the neighbourhood.
+    /// @param[in] neib_step       A pair containing the number of rows and columns to step the neighbourhood for each iteration.
+    /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
+
+    std::vector<int> gpu_Images2Neibs(
+        const std::vector<int> &input,
+        const std::pair<int, int> &input_shape,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
         bool center_neigh)
     {
         // Determine the dimensions of the input matrix.
-        const int rows = input.size();
-        const int cols = input[0].size();
+        const int rows = input_shape.first;
+        const int cols = input_shape.second;
 
         // Check that the neighbourhood shape is valid.
         if (neib_shape.first > rows || neib_shape.second > cols)
@@ -69,65 +176,70 @@ namespace gpu_overlap
             step = neib_shape;
         }
 
-        // Create the output matrix.
-        std::vector<std::vector<std::vector<std::vector<int>>>> output;
+        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+        int O = neib_shape.first;                                               // Number of rows in each patch
+        int P = neib_shape.second;                                              // Number of columns in each patch
 
-        // Set up the GPU.
-        int deviceCount;
-        cudaGetDeviceCount(&deviceCount);
-        if (deviceCount == 0)
-        {
-            throw std::runtime_error("No CUDA devices found");
-        }
-        int device;
-        cudaGetDevice(&device);
-        cudaSetDevice(device);
+        // Create the output matrix. A 1D vector simulating a 4D vector with dimensions N x M x O x P.
+        std::vector<int> output;
 
         // Allocate memory on the GPU for the input matrix.
-        int *d_input;
-        cudaMalloc(&d_input, rows * cols * sizeof(int));
+        int *d_input, *d_output;
 
-        // Copy the input matrix to the GPU.
-        cudaMemcpy(d_input, input.data(), rows * cols * sizeof(int), cudaMemcpyHostToDevice);
-
-        // Create a taskflow to parallelize the computation.
-        tf::Taskflow taskflow;
-
-        // Add tasks for each patch in the output matrix.
-        for (int i = 0; i < rows; i += step.first)
-        {
-            std::vector<std::vector<std::vector<int>>> row_output;
-            for (int j = 0; j < cols; j += step.second)
-            {
-                taskflow.emplace([&, i, j]()
-                                 {
-                std::vector<std::vector<int>> patch(neib_shape.first, std::vector<int>(neib_shape.second));
-                int *d_output;
-            // Allocate memory on the GPU for the output matrix.
-                cudaMalloc(&d_output, neib_shape.first * neib_shape.second * sizeof(int));
-
-                // Launch the kernel function on the GPU.
-                dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
-                dim3 block(16, 16);
-                sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh);
-
-                // Copy the output matrix back to the host.
-                cudaMemcpy(patch.data(), d_output, neib_shape.first * neib_shape.second * sizeof(int), cudaMemcpyDeviceToHost);
-
-                // Free the memory on the GPU.
-                cudaFree(d_output);
-
-                row_output.push_back(patch); });
-            }
-            output.push_back(row_output);
-        }
-
-        // Run the taskflow and wait for it to complete.
+        tf::Taskflow taskflow("gpu_Images2Neibs");
         tf::Executor executor;
-        executor.run(taskflow).wait();
 
-        // Free the memory on the GPU.
-        cudaFree(d_input);
+        // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
+        auto allocate_in = taskflow.emplace([&]()
+                                            { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
+                               .name("allocate_in");
+
+        // // allocate the host and device storage for the ouput matrix.
+        auto allocate_out = taskflow.emplace([&]()
+                                             {
+                                                // Host storage
+                                                output.resize(N * M * O * P);
+                                                TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output"); })
+                                .name("allocate_out");
+
+        // create a cudaFlow to run the sliding_window_kernel.
+        auto cudaFlow = taskflow.emplace([&](tf::cudaFlow &cf)
+                                         {
+                                            // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
+                                            auto copy_in = cf.memcpy(d_input, input.data(), rows * cols * sizeof(int)).name("copy_in");
+
+                                            // launch the kernel function on the GPU.
+                                            int threadsPerBlock = 256;
+                                            dim3 block(16, 16);   // 256 threads per block. A standard value this can be increased on some GPU models. 
+                                            int noOfBlocks = cols * rows / 256;
+                                            if ( (cols * rows) % threadsPerBlock) 
+                                            {
+                                                noOfBlocks++;
+                                            }
+                                            dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
+                                            
+                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                                                        .name("sliding_window");
+
+                                            // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
+                                            auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
+                                            sliding_window.succeed(copy_in)
+                                                .precede(copy_out); })
+                            .name("cudaFlow");
+
+        auto free = taskflow.emplace([&]()
+                                     {
+                                         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
+                                         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); })
+                        .name("free");
+
+        // create the dependency graph.
+        cudaFlow.succeed(allocate_in, allocate_out)
+            .precede(free);
+
+        executor.run(taskflow)
+            .wait();
 
         return output;
     }
