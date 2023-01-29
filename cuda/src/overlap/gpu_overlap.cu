@@ -87,25 +87,29 @@ namespace gpu_overlap
     /// @param[in] cols            The number of columns in the input matrix.
     /// @param[in] neib_rows       The number of rows in the neighbourhood.
     /// @param[in] neib_cols       The number of columns in the neighbourhood.
-    /// @param[in] step_rows       The number of rows to step the neighbourhood for each iteration.
-    /// @param[in] step_cols       The number of columns to step the neighbourhood for each iteration.
+    /// @param[in] step_rows       The number of rows to step the neighbourhood over the input for each iteration.
+    /// @param[in] step_cols       The number of columns to step the neighbourhood over the input for each iteration.
     /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
     /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
     ///-----------------------------------------------------------------------------
     __global__ void sliding_window_kernel(int *input, int *output, int rows, int cols, int neib_rows, int neib_cols, int step_rows, int step_cols, bool wrap_mode, bool center_neigh)
     {
+        // The thread index is the index of the element in the input matrix that the current thread will operate on.
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index of the thread index
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index of the thread index
 
         // The threads in the block that are outside the bounds of the input matrix do nothing.
         if (i < rows && j < cols)
         {
+            // The output matrix is a 1D vector simulating a 4D vector with dimensions rows x cols x neigh_rows x neigh_cols.
+            // ii and jj are the row and column indices of the current element in the neighbourhood.
             for (int ii = 0; ii < neib_rows; ++ii)
             {
                 for (int jj = 0; jj < neib_cols; ++jj)
                 {
-                    int x = i + ii * step_rows;
-                    int y = j + jj * step_cols;
+                    // The indices of the current element in the neighbourhood.
+                    int x = i + ii * step_rows; // Row index of the current element in the neighbourhood.
+                    int y = j + jj * step_cols; // Column index of the current element in the neighbourhood.
 
                     // If the "center_neigh" flag is set, center the neighbourhood over the current element in the input matrix.
                     if (center_neigh)
@@ -125,12 +129,15 @@ namespace gpu_overlap
                     if (x >= 0 && x < rows && y >= 0 && y < cols)
                     {
                         // Set output matrix element i,j,ii,jj to the input matrix element x,y.
-                        output[i * cols + j * neib_rows * neib_cols + ii * neib_cols + jj] = input[x * cols + y];
+                        int temp_idx = (i * cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        int temp_out = input[x * cols + y];
+                        output[temp_idx] = temp_out;
                     }
                     else
                     {
                         // Set the element in the output matrix to 0 if the indices are outside the bounds of the input matrix.
-                        output[i * cols + j * neib_rows * neib_cols + ii * neib_cols + jj] = 0;
+                        int temp_idx = (i * cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        output[temp_idx] = 0;
                     }
                 }
             }
