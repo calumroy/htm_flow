@@ -72,11 +72,16 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp)
 # Link your executable to the Google Test library
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 
+# Required for CUDA debugging in Visual Studio Code. THis adds a -G flag to compilation.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
+endif()
+
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test)
+target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test gpu_overlap)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 
@@ -101,5 +106,6 @@ if(BUILD_TESTS)
 
   # Link your test executable to the Google Test library and other libraries
   target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
+
 
 endif()
