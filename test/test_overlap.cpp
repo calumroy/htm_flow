@@ -468,27 +468,48 @@ TEST(gpu_Images2Neibs, test1_wrap)
     EXPECT_EQ(output, expected_output);
 }
 
-// TEST(gpu_Images2Neibs, test2_large)
-// {
-//     // Check that a 40x40 patch is extracted from a 400x400 matrix
-//     // Use a step size of 1 in the column direction and 2 in the row direction.
-//     // Create an input matrix for testing (400x400) every element is 1
-//     int n_rows = 400;
-//     int n_cols = 400;
-//     std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
+TEST(gpu_Images2Neibs, test2_large)
+{
+    // Check that a 40x40 patch is extracted from a 400x400 matrix
+    // Use a step size of 1 in the column direction and 2 in the row direction.
+    // Create an input matrix for testing (400x400) every element is 1
+    int n_rows = 400;
+    int n_cols = 400;
+    std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
+    std::pair<int, int> input_shape = {input.size(), input[0].size()};
 
-//     // Set the neighbourhood shape and step size
-//     std::pair<int, int> neib_shape = {40, 40};
-//     std::pair<int, int> neib_step = {1, 1};
-//     bool wrap_mode = true;
-//     bool center_neigh = true;
+    // Set the neighbourhood shape and step size
+    std::pair<int, int> neib_shape = {40, 40};
+    std::pair<int, int> neib_step = {1, 1};
+    bool wrap_mode = true;
+    bool center_neigh = true;
 
-//     // Run the function and save the output
-//     std::vector<std::vector<std::vector<std::vector<int>>>> output = gpu_Images2Neibs(input, neib_shape, neib_step, wrap_mode, center_neigh);
+    // We need to flatten the input matrix
+    std::vector<int> flat_input = gpu_overlap::flattenVector(input);
 
-//     // Assert the output is the correct size
-//     ASSERT_EQ(output.size(), n_rows);
-//     ASSERT_EQ(output[0].size(), n_cols);
-//     ASSERT_EQ(output[0][0].size(), neib_shape.first);
-//     ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
-// }
+    // // Print the flat_input
+    // std::cout << "flat_input: " << std::endl;
+    // for (int i = 0; i < flat_input.size(); i++)
+    // {
+    //     std::cout << flat_input[i] << ", ";
+    // }
+
+    // Run the function and save the output
+    std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // // Print the flat output
+    // std::cout << "flat_output: " << std::endl;
+    // for (int i = 0; i < flat_output.size(); i++)
+    // {
+    //     std::cout << flat_output[i] << ", ";
+    // }
+
+    // Unflatten the output
+    auto output = gpu_overlap::unflattenVector(flat_output, input_shape.first, input_shape.second, neib_shape.first, neib_shape.second);
+
+    // Assert the output is the correct size
+    ASSERT_EQ(output.size(), n_rows);
+    ASSERT_EQ(output[0].size(), n_cols);
+    ASSERT_EQ(output[0][0].size(), neib_shape.first);
+    ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
+}

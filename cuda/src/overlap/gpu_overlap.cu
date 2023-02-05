@@ -202,7 +202,7 @@ namespace gpu_overlap
                                             { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
                                .name("allocate_in");
 
-        // // allocate the host and device storage for the ouput matrix.
+        // allocate the host and device storage for the ouput matrix.
         auto allocate_out = taskflow.emplace([&]()
                                              {
                                                 // Host storage
