@@ -222,6 +222,41 @@ namespace overlap
         return output;
     }
 
+    // Multiply two tensors element-wise
+    std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b)
+    {
+        std::vector<float> result;
+        result.reserve(a.size());
+
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            result.push_back(a[i] * b[i]);
+        }
+
+        return result;
+    }
+
+    // Apply tie breaker values to an input grid by multiplying the grid by the tie breaker values and adding the result to the grid.
+    std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker)
+    {
+        std::vector<float> multi_vals;
+        multi_vals.reserve(grid.size());
+
+        for (size_t i = 0; i < grid.size(); ++i)
+        {
+            multi_vals.push_back(grid[i] * tieBreaker[i]);
+        }
+
+        std::vector<float> result;
+        result.reserve(grid.size());
+
+        for (size_t i = 0; i < grid.size(); ++i)
+        {
+            result.push_back(grid[i] + multi_vals[i]);
+        }
+
+        return result;
+    }
     // Define a class to calculate the overlap values for columns in a single HTM layer
     OverlapCalculator::OverlapCalculator(int potential_width, int potential_height, int columns_width, int columns_height,
                                          int input_width, int input_height, bool center_pot_synapses, float connected_perm,
@@ -347,7 +382,7 @@ namespace overlap
     }
 
     void OverlapCalculator::check_new_input_params(
-        const std::vector<std::vector<int>> &newColSynPerm,
+        const std::vector<std::vector<float>> &newColSynPerm,
         const std::vector<std::vector<int>> &newInput)
     {
         assert(input_width_ == newInput[0].size());
@@ -356,7 +391,7 @@ namespace overlap
         assert(num_columns_ == newColSynPerm.size());
     }
 
-    void OverlapCalculator::calculate_overlap(const std::vector<std::vector<int>> &colSynPerm,
+    void OverlapCalculator::calculate_overlap(const std::vector<std::vector<float>> &colSynPerm,
                                               const std::vector<std::vector<int>> &inputGrid)
     {
         check_new_input_params(colSynPerm, inputGrid);
@@ -368,6 +403,8 @@ namespace overlap
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
         // colOverlapVals = addVectTieBreaker(colOverlapVals, colTieBreaker);
         // return std::make_pair(colOverlapVals, colInputPotSyn);
+
+        LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }
 
 } // namespace overlap

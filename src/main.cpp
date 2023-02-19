@@ -67,4 +67,7 @@ int main(int argc, char *argv[])
                                   connected_perm,
                                   min_overlap,
                                   wrap_input);
+
+    // Run the overlap calculation on the CPU
+    overlapCalc.calculate_overlap(col_syn_perm, new_input_mat);
 }

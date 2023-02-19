@@ -72,6 +72,12 @@ namespace overlap
         bool wrap_mode,
         bool center_neigh);
 
+    // Multiply two tensors element-wise
+    std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b);
+
+    // Mask the grid with the tieBreaker values by multiplying them element-wise and then adding the result to the grid input.
+    std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker);
+
     // Define a class to calculate the overlap values for columns in a single HTM layer
     class OverlapCalculator
     {
@@ -91,7 +97,7 @@ namespace overlap
         /// @param[in] inputGrid    The input grid (2D vector of ints).
         ///
         ///-----------------------------------------------------------------------------
-        void calculate_overlap(const std::vector<std::vector<int>> &colSynPerm,
+        void calculate_overlap(const std::vector<std::vector<float>> &colSynPerm,
                                const std::vector<std::vector<int>> &inputGrid);
 
     private:
@@ -141,7 +147,7 @@ namespace overlap
 
         // Check the new input parameter sizes to make sure they are the same as the inital input sizes.
         void check_new_input_params(
-            const std::vector<std::vector<int>> &newColSynPerm,
+            const std::vector<std::vector<float>> &newColSynPerm,
             const std::vector<std::vector<int>> &newInput);
 
         // Member variables
