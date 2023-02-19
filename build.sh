@@ -1,4 +1,10 @@
 #!/bin/sh
+
+# A Bash Scritp to build the project.
+# You can provide a release type parameter: Release, Debug, or RelWithDebInfo
+# If no parameter is provided, the default is Release.
+# Example: ./build.sh Debug
+
 # Go to library source tree root and run the usual:
 # make this an executable with chmod +x ./build.sh
 
@@ -10,13 +16,20 @@ mkdir -p build
 # Move into the build dir.
 cd build
 
-## Debug mode code
-# cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+# Set default release type if no parameter is provided.
+if [ -z "$1" ]; then
+  RELEASE_TYPE="Release"
+else
+  RELEASE_TYPE=$1
+fi
 
-# Debug but also optmised code to more closely resemble release code
-#cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+# Check if the provided parameter is valid
+if [ "$RELEASE_TYPE" != "Release" ] && [ "$RELEASE_TYPE" != "Debug" ] && [ "$RELEASE_TYPE" != "RelWithDebInfo" ]; then
+  echo "Invalid release type parameter. Please choose from Release, Debug, or RelWithDebInfo."
+  exit 1
+fi
 
-# Release mode code
-cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+# Build the project with the specified release type parameter.
+cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
 
 cmake --build .

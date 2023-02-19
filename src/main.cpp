@@ -85,26 +85,42 @@ int main(int argc, char *argv[])
     bool wrap_mode = true;
     bool center_neigh = false;
 
+    // Print the input
+    std::cout << "input: " << std::endl;
+    for (int i = 0; i < input.size(); ++i)
+    {
+        for (int j = 0; j < input[0].size(); ++j)
+        {
+            std::cout << input[i][j] << " ";
+        }
+        std::cout << std::endl;
+    }
+
     // We need to flatten the input matrix
     std::vector<int> flat_input = gpu_overlap::flattenVector(input);
-
-    // Print the flat_input
-    std::cout << "flat_input: " << std::endl;
-    for (int i = 0; i < flat_input.size(); i++)
-    {
-        std::cout << flat_input[i] << ", ";
-    }
 
     // Run the function and save the output
     std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
 
-    // Print the flat output
-    std::cout << "\nflat_output: " << std::endl;
-    for (int i = 0; i < flat_output.size(); i++)
-    {
-        std::cout << flat_output[i] << ", ";
-    }
-
     // Unflatten the output
     auto output = gpu_overlap::unflattenVector(flat_output, input_shape.first, input_shape.second, neib_shape.first, neib_shape.second);
+
+    // Print the unflattened 4D output
+    std::cout << "output: " << std::endl;
+    for (int i = 0; i < output.size(); ++i)
+    {
+        for (int j = 0; j < output[0].size(); ++j)
+        {
+            for (int k = 0; k < output[0][0].size(); ++k)
+            {
+                for (int l = 0; l < output[0][0][0].size(); ++l)
+                {
+                    std::cout << output[i][j][k][l] << " ";
+                }
+                std::cout << std::endl;
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+    }
 }
