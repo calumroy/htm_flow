@@ -9,8 +9,14 @@
 mkdir -p build
 # Move into the build dir.
 cd build
+
 ## Debug mode code
-# cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.7/bin/nvcc ..
+# cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+
 # Debug but also optmised code to more closely resemble release code
-cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+#cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+
+# Release mode code
+cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc ..
+
 cmake --build .

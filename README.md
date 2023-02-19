@@ -47,5 +47,14 @@ Paste this into https://taskflow.github.io/tfprof/ to get a nice view of the pro
 valgrind --tool=callgrind ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test5_large
 ```
 This will output a callgrind.out file.
-To view the profile use kcachegrind e.g `kcachegrind callgrind.out.1234`
+To view the profile use kcachegrind `sudo apt install kcachegrind`  
+e.g `kcachegrind callgrind.out.1234`
 
+## Memory leak check
+heaptrack `sudo apt install heaptrack` and `sudo apt install heaptrack-gui`
+```
+heaptrack ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test5_large
+```
+```
+heaptrack_gui ./heaptrack.htm_flow_tests.425833.zst
+```
