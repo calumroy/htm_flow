@@ -19,6 +19,14 @@ namespace overlap
         return x + y * width;
     }
 
+    // Define a function to convert 1D indices to 2D indices
+    std::tuple<int, int> unflatten_index(int index, int width)
+    {
+        int x = index % width;
+        int y = (index - x) / width;
+        return std::make_tuple(x, y);
+    }
+
     // Define a function to wrap 2D indices around the input dimensions
     std::tuple<int, int> wrap_indices(int x, int y, int input_width, int input_height)
     {
@@ -238,8 +246,13 @@ namespace overlap
         // Initialize the random number generator
         std::random_device rd;
         rng_ = std::mt19937(rd());
-        // Make the potential synapse tie breaker matrix
+        // Make the potential synapse tie breaker matrix.
+        // Construct a tiebreaker matrix for the columns potential synapses.
+        // It contains small values that help resolve any ties in potential overlap scores for columns.
         make_pot_syn_tie_breaker(pot_syn_tie_breaker_);
+
+        // Make the column input potential synapse tie breaker matrix.
+        make_col_tie_breaker(col_tie_breaker_, num_columns_, columns_width_, columns_height_);
 
         LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
@@ -271,6 +284,37 @@ namespace overlap
             std::vector<float> row(input_width);
             std::sample(rows_tie.begin(), rows_tie.end(), row.begin(), input_width, rng);
             pot_syn_tie_breaker[j] = std::move(row);
+        }
+    }
+
+    void OverlapCalculator::make_col_tie_breaker(std::vector<float> &tieBreaker, int numColumns, int columnsWidth, int columnsHeight)
+    {
+        // Make a vector of tiebreaker values to add to the columns overlap values vector.
+        float normValue = 1.0f / float(2 * numColumns + 2);
+
+        // Initialise a random seed so we can get the same random numbers.
+        // This means the tie breaker will be the same each time but it will
+        // be randomly distributed over the cells.
+        std::mt19937 gen(1);
+
+        // Create a tiebreaker that is not biased to either side of the columns grid.
+        for (int j = 0; j < tieBreaker.size(); j++)
+        {
+            // The tieBreaker is a flattened vector of the columns overlaps.
+
+            // workout the row and col number of the non flattened matrix.
+            int rowNum = std::floor(j / columnsWidth);
+            int colNum = j % columnsWidth;
+            if (std::uniform_real_distribution<float>(0, 1)(gen) > 0.5f)
+            {
+                // Some positions are bias to the bottom left
+                tieBreaker[j] = ((rowNum + 1) * columnsWidth + (columnsWidth - colNum - 1)) * normValue;
+            }
+            else
+            {
+                // Some Positions are bias to the top right
+                tieBreaker[j] = ((columnsHeight - rowNum) * columnsWidth + colNum) * normValue;
+            }
         }
     }
 

@@ -5,12 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "CUDA C++: Launch",
-            "type": "cuda-gdb",
+            "name": "CUDA C++: htm_flow",
+            "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow",
             "envFile": "${workspaceFolder}/.vscode/var_env.env",
-            "breakOnLaunch": true,
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": ""
         },
         {
             "name": "Test Overlap GPU CUDA C++",

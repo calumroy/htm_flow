@@ -23,6 +23,9 @@ namespace overlap
     // Define a function to convert 2D indices to 1D indices
     int flatten_index(int x, int y, int width);
 
+    // Define a function to convert 1D indices to 2D indices
+    std::tuple<int, int> unflatten_index(int index, int width);
+
     // Define a function to wrap 2D indices around the input dimensions
     std::tuple<int, int> wrap_indices(int x, int y, int input_width, int input_height);
 
@@ -104,8 +107,37 @@ namespace overlap
         // Get the step sizes for the potential synapses
         std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
                                            int columns_height, int potential_width, int potential_height);
-        // Make the potential synapse tie breaker matrix
+        ///------------------------------------------------------------------------------------
+        ///
+        /// make_pot_syn_tie_breaker - Create a tie breaker matrix for potential synapses.
+        ///
+        /// This function takes a 2D vector of floats representing the self.colInputPotSyn grid and creates a tie breaker matrix
+        /// holding small values for each element. The tie breaker values are created such that for a particular row in the
+        /// colInputPotSyn grid, the sum of all tie breaker values in that row is less than 0.5.
+        /// The tie breaker values are all multiples of the same number and each row has a different pattern of tie breaker values.
+        /// This is done by sliding the previous row's values along by 1 and wrapping at the end of the row.
+        /// The tie breaker matrix is used to resolve situations where columns have the same overlap number.
+        ///
+        /// @param[in,out] pot_syn_tie_breaker The 2D vector of floats representing the tie breaker matrix.
+        ///
+        ///------------------------------------------------------------------------------------
         void make_pot_syn_tie_breaker(std::vector<std::vector<float>> &pot_syn_tie_breaker);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// makeColTieBreaker Creates a tie-breaker vector with small values that are added
+        /// to the overlap values between columns. The tie breaker values
+        /// are randomly distributed over the cells and not biased to any side of the columns grid.
+        /// The tie breaker values are multiples of the same number.
+        /// For each column, the tie-breaker pattern is created by sliding the previous column's values along by 1
+        /// and wrapping at the end of the row.
+        ///
+        /// @param[in,out] tieBreaker A reference to a vector of floats representing the tie breaker values.
+        /// @param[in] numColumns An integer representing the number of columns in the columns grid.
+        /// @param[in] columnsWidth An integer representing the width of the columns grid.
+        /// @param[in] columnsHeight An integer representing the height of the columns grid.
+        ///-----------------------------------------------------------------------------
+        void make_col_tie_breaker(std::vector<float> &tieBreaker, int numColumns, int columnsWidth, int columnsHeight);
 
         // Check the new input parameter sizes to make sure they are the same as the inital input sizes.
         void check_new_input_params(
@@ -127,9 +159,9 @@ namespace overlap
         int step_x_;                                            // Step size in the x direction for the potential synapses
         int step_y_;                                            // Step size in the y direction for the potential synapses
         std::mt19937 rng_;                                      // Mersenne Twister random number generator
-        std::vector<std::vector<float>> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix
-        std::vector<std::vector<float>> col_input_pot_syn_tie_; // Potential synapse tie breaker matrix
-        std::vector<float> col_tie_breaker_;                    // Potential synapse tie breaker matrix
+        std::vector<std::vector<float>> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns.
+        std::vector<std::vector<float>> col_input_pot_syn_tie_; // Potential columns tie breaker matrix. This stores the columns inputs over the potential synapses plus the tie breaker values
+        std::vector<float> col_tie_breaker_;                    // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
     };
 
 } // namespace overlap
