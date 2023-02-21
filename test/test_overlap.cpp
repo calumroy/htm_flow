@@ -410,7 +410,7 @@ TEST(parallel_Images2Neibs, test5_large)
     ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
 }
 
-TEST(parallel_Images2Neibs, test6_large)
+TEST(parallel_Images2Neibs, test6_very_large)
 {
     // Check that a 40x40 patch is extracted from a 400x400 matrix
     // Use a step size of 1 in the column direction and 2 in the row direction.
@@ -525,7 +525,7 @@ TEST(gpu_Images2Neibs, test2_large)
     ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
 }
 
-TEST(gpu_Images2Neibs, test3_large)
+TEST(gpu_Images2Neibs, test3_very_large)
 {
     // Check that a 40x40 patch is extracted from a 400x400 matrix
     // Use a step size of 1 in the column direction and 2 in the row direction.
@@ -533,7 +533,11 @@ TEST(gpu_Images2Neibs, test3_large)
     int n_rows = 800;
     int n_cols = 800;
     std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
-    std::pair<int, int> input_shape = {input.size(), input[0].size()};
+    std::pair<int, int> input_shape = {n_rows, n_cols};
+
+    // Create a flat version of the input every element is 1. The flat version has the same size as the input
+    // but is a 1D vector. This is done to improve the gpu performance.
+    // std::vector<int> flat_input = std::vector<int>(n_rows * n_cols, 1);
 
     // Set the neighbourhood shape and step size
     std::pair<int, int> neib_shape = {40, 40};
@@ -547,12 +551,9 @@ TEST(gpu_Images2Neibs, test3_large)
     // Run the function and save the output
     std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
 
-    // Unflatten the output
-    auto output = gpu_overlap::unflattenVector(flat_output, input_shape.first, input_shape.second, neib_shape.first, neib_shape.second);
+    // Don't unflatten the output it is too cpu intensive for large matrices.
+    // Just run checks on the flattened output
 
     // Assert the output is the correct size
-    ASSERT_EQ(output.size(), n_rows);
-    ASSERT_EQ(output[0].size(), n_cols);
-    ASSERT_EQ(output[0][0].size(), neib_shape.first);
-    ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
+    ASSERT_EQ(flat_output.size(), n_rows * n_cols * neib_shape.first * neib_shape.second);
 }

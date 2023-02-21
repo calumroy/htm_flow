@@ -12,6 +12,17 @@ builds the project using cmake and gcc > 10.2.1
 Creates the executable in a out of source build directory.
 It also builds all the unit tests including the cuda GPU tests.
 
+You can build a debug or release version of the project.
+```
+build.sh Debug
+```
+```
+build.sh Release
+```
+```
+build.sh RelWithDebInfo
+```
+
 ## Task flow with GPU support
 To run the task flow with GPU support, you need to have CUDA installed on your system.
 This requires installing CUDA compiler nvcc.   
@@ -58,3 +69,13 @@ heaptrack ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test5_larg
 ```
 heaptrack_gui ./heaptrack.htm_flow_tests.425833.zst
 ```
+
+## Nvidia nsight-systems profiler
+To profile the cpu and gpu code using the Nvidia nsight-systems profiler.
+Install this deb package https://developer.nvidia.com/nsight-systems
+run `sudo nsys-ui`  
+documentation at https://docs.nvidia.com/nsight-systems/UserGuide/index.html
+
+For example to profile one the the gpu unit test cases in the nsys-ui gui use the following two commands as the command line arguments and the working directory.
+`htm_flow_tests --gtest_filter=gpu_Images2Neibs.test3_very_large`  
+`/home/calum/Documents/projects/htm_flow/build`  

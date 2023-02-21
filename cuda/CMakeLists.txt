@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 project(gpu_htm_flow_cuda_lib CUDA CXX C)  # enable cuda language
 
 if (NOT CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-    message(STATUS "This project has a top-level one called [${CMAKE_PROJECT_NAME}]")
+    message(STATUS "This project [${PROJECT_NAME}] has a top-level one called [${CMAKE_PROJECT_NAME}]")
+    message(STATUS "We are building the type [${CMAKE_BUILD_TYPE}] of this project [${PROJECT_NAME}]")
 else()
     message(STATUS "This project is a top-level one")
 endif()
