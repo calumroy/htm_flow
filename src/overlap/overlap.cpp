@@ -391,11 +391,19 @@ namespace overlap
         assert(num_columns_ == newColSynPerm.size());
     }
 
+    std::vector<int> OverlapCalculator::get_col_inputs(const std::vector < int >> &inputGrid)
+    {
+        // This function uses a convolution function to return the inputs that each column potentially connects to.
+    }
+
     void OverlapCalculator::calculate_overlap(const std::vector<std::vector<float>> &colSynPerm,
                                               const std::vector<std::vector<int>> &inputGrid)
     {
         check_new_input_params(colSynPerm, inputGrid);
-        // colInputPotSyn = getColInputs(inputGrid);
+
+        // Calculate the inputs to each column
+        col_input_pot_syn_ = get_col_inputs(inputGrid);
+
         // colInputPotSynTie = maskTieBreaker(colInputPotSyn, potSynTieBreaker);
         // colPotOverlaps = calcOverlap(colInputPotSynTie);
         // std::vector<std::vector<int>> connectedSynInputs =

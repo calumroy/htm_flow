@@ -34,6 +34,7 @@ int main(int argc, char *argv[])
     bool wrap_input = true;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
+    // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
     std::vector<std::vector<float>> col_syn_perm(num_columns, std::vector<float>(num_pot_syn));
     std::random_device rd;
     std::mt19937 gen(rd());

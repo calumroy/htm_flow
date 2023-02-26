@@ -469,7 +469,7 @@ TEST(gpu_Images2Neibs, test1_wrap)
     std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
 
     // Print the flat output
-    std::cout << "flat_output: " << std::endl;
+    std::cout << std::newline << "flat_output: " << std::endl;
     for (int i = 0; i < flat_output.size(); i++)
     {
         std::cout << flat_output[i] << ", ";

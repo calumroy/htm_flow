@@ -101,15 +101,16 @@ namespace overlap
                                const std::vector<std::vector<int>> &inputGrid);
 
     private:
-        // Calculate the potential synapses for a given column
-        inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,
-                                                                   const std::vector<std::vector<float>> &input_tensor);
-        // Calculate the potential overlap scores for a given set of potential synapses
-        inline std::vector<float> calculate_pot_overlap(const std::vector<std::tuple<int, int>> &pot_syn,
-                                                        const std::vector<std::vector<float>> &input_tensor);
-        // Calculate the actual overlap score for a given column based on its potential overlap scores
-        int calculate_overlap(const std::vector<float> &pot_overlap,
-                              const std::vector<std::tuple<int, int>> &pot_syn);
+        // // Calculate the potential synapses for a given column
+        // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,
+        //                                                            const std::vector<std::vector<float>> &input_tensor);
+        // // Calculate the potential overlap scores for a given set of potential synapses
+        // inline std::vector<float> calculate_pot_overlap(const std::vector<std::tuple<int, int>> &pot_syn,
+        //                                                 const std::vector<std::vector<float>> &input_tensor);
+        // // Calculate the actual overlap score for a given column based on its potential overlap scores
+        // int calculate_overlap(const std::vector<float> &pot_overlap,
+        //                       const std::vector<std::tuple<int, int>> &pot_syn);
+
         // Get the step sizes for the potential synapses
         std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
                                            int columns_height, int potential_width, int potential_height);
@@ -150,19 +151,37 @@ namespace overlap
             const std::vector<std::vector<float>> &newColSynPerm,
             const std::vector<std::vector<int>> &newInput);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_inputs This function uses a convolution function to
+        /// return the inputs that each column potentially connects to.
+        /// It outputs a 1D vector simulating a 2D vector where each row (in the sim 2D vector)
+        /// represents the potential pool of inputs that one column in a layer can connect too via potential synapses.
+        /// The input is also a 1D vector simulating a 2D vector (matrix) of the input grid.
+        /// This inputGrid has the number of elements equal to the input_width_ x input_height_.
+        /// @param[in] inputGrid A 1D vector simulating a 2D vector (matrix) of the input grid.
+        /// @return A 1D vector simulating a 2D vector (matrix) where each row represents the
+        ///         potential pool of inputs that one column in a layer can connect too.
+        std::vector<int> get_col_inputs(const std::vector < int >> &inputGrid);
+
         // Member variables
-        bool center_pot_synapses_;                              // Specifies if the potential synapses are centered over the columns
-        bool wrap_input_;                                       // Use a wrap input function instead of padding the input to calcualte the overlap scores
-        int potential_width_;                                   // Width of the potential synapses
-        int potential_height_;                                  // Height of the potential synapses
-        float connected_perm_;                                  // Probability that a column's potential synapses are connected to the input
-        int min_overlap_;                                       // Minimum overlap required for a column to be considered for inhibition
-        int input_width_;                                       // Width of the input
-        int input_height_;                                      // Height of the input
-        int columns_width_;                                     // Width of the columns
-        int columns_height_;                                    // Height of the columns
-        int num_columns_;                                       // Number of columns
-        int step_x_;                                            // Step size in the x direction for the potential synapses
+        bool center_pot_synapses_; // Specifies if the potential synapses are centered over the columns
+        bool wrap_input_;          // Use a wrap input function instead of padding the input to calcualte the overlap scores
+        int potential_width_;      // Width of the potential synapses
+        int potential_height_;     // Height of the potential synapses
+        float connected_perm_;     // Probability that a column's potential synapses are connected to the input
+        int min_overlap_;          // Minimum overlap required for a column to be considered for inhibition
+        int input_width_;          // Width of the input
+        int input_height_;         // Height of the input
+        int columns_width_;        // Width of the columns
+        int columns_height_;       // Height of the columns
+        int num_columns_;          // Number of columns making up this htm layer
+        // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
+        std::vector<float> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses
+        // Store the potential overlap value for every column
+        std::vector<float> col_pot_overlaps_; // This is a 1D vector with the size number of columns.
+
+        self.colPotOverlaps = None int step_x_;                 // Step size in the x direction for the potential synapses
         int step_y_;                                            // Step size in the y direction for the potential synapses
         std::mt19937 rng_;                                      // Mersenne Twister random number generator
         std::vector<std::vector<float>> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns.
