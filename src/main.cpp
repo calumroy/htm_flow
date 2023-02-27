@@ -35,26 +35,25 @@ int main(int argc, char *argv[])
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
-    std::vector<std::vector<float>> col_syn_perm(num_columns, std::vector<float>(num_pot_syn));
+    // It is a 1D vector simulating a 2D vector of size num_columns * num_pot_syn.
+    std::vector<float> col_syn_perm(num_columns * num_pot_syn);
+    std::pair<int, int> col_syn_perm_shape = {num_columns, num_pot_syn}; // Store the shape of the simulated col_syn_perm 2D vector.
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0, 1);
-    for (int i = 0; i < num_columns; ++i)
+    for (int i = 0; i < num_columns * num_pot_syn; ++i)
     {
-        for (int j = 0; j < num_pot_syn; ++j)
-        {
-            col_syn_perm[i][j] = dis(gen);
-        }
+        col_syn_perm[i] = dis(gen);
     }
     // Create a random input matrix. This is a matrix representing the input to the HTM layer.
-    std::vector<std::vector<int>> new_input_mat(num_input_rows, std::vector<int>(num_input_cols));
+    // It is a boolean input of 1 or 0.
+    // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
+    std::vector<int> new_input_mat(num_input_rows * num_input_cols);
+    std::pair<int, int> new_input_mat_shape = {num_input_rows, num_input_cols}; // Store the shape of the simulated 2D vector input matrix.
     std::uniform_int_distribution<> dis2(0, 1);
-    for (int i = 0; i < num_input_rows; ++i)
+    for (int i = 0; i < num_input_rows * num_input_cols; ++i)
     {
-        for (int j = 0; j < num_input_cols; ++j)
-        {
-            new_input_mat[i][j] = dis2(gen);
-        }
+        new_input_mat[i] = dis2(gen);
     }
 
     // Create an instance of the overlap calculation class
@@ -70,5 +69,5 @@ int main(int argc, char *argv[])
                                   wrap_input);
 
     // Run the overlap calculation on the CPU
-    overlapCalc.calculate_overlap(col_syn_perm, new_input_mat);
+    overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
 }

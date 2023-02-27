@@ -93,12 +93,16 @@ namespace overlap
         ///                    This is how well each column connects to the active input.
         ///                    This is the main function of this class and its purpose.
         ///
-        /// @param[in] colSynPerm   The synapse permanence values for each column.
-        /// @param[in] inputGrid    The input grid (2D vector of ints).
+        /// @param[in] colSynPerm   The synapse permanence values for each column. A 1D vector simulating a 2D vector of floats columns_width_ x columns_height_.
+        /// @param[in] colSynPerm_shape  The shape of the colSynPerm vector width and height as a pair of ints.
+        /// @param[in] inputGrid    The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
+        /// @param[in] inputGrid_shape   The shape of the inputGrid vector width and height as a pair of ints.
         ///
         ///-----------------------------------------------------------------------------
-        void calculate_overlap(const std::vector<std::vector<float>> &colSynPerm,
-                               const std::vector<std::vector<int>> &inputGrid);
+        void calculate_overlap(const std::vector<float> &colSynPerm,
+                               const std::pair<int, int> &colSynPerm_shape,
+                               const std::vector<int> &inputGrid,
+                               const std::pair<int, int> &inputGrid_shape);
 
     private:
         // // Calculate the potential synapses for a given column
@@ -146,10 +150,12 @@ namespace overlap
         ///-----------------------------------------------------------------------------
         void make_col_tie_breaker(std::vector<float> &tieBreaker, int numColumns, int columnsWidth, int columnsHeight);
 
-        // Check the new input parameter sizes to make sure they are the same as the inital input sizes.
-        void check_new_input_params(
-            const std::vector<std::vector<float>> &newColSynPerm,
-            const std::vector<std::vector<int>> &newInput);
+        // Check the new input parameter sizes to make sure they are the same as the inital input sizes and
+        // the 1D vectors are the right size for the simulated 2D vectors they represent.
+        void check_new_input_params(const std::vector<float> &newColSynPerm,
+                                    const std::pair<int, int> &colSynPerm_shape,
+                                    const std::vector<int> &newInput,
+                                    const std::pair<int, int> &inputGrid_shape);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -160,9 +166,10 @@ namespace overlap
         /// The input is also a 1D vector simulating a 2D vector (matrix) of the input grid.
         /// This inputGrid has the number of elements equal to the input_width_ x input_height_.
         /// @param[in] inputGrid A 1D vector simulating a 2D vector (matrix) of the input grid.
+        /// @param[in] inputGrid_shape The shape of the inputGrid vector width and height as a pair of ints.
         /// @return A 1D vector simulating a 2D vector (matrix) where each row represents the
         ///         potential pool of inputs that one column in a layer can connect too.
-        std::vector<int> get_col_inputs(const std::vector < int >> &inputGrid);
+        std::vector<int> get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape);
 
         // Member variables
         bool center_pot_synapses_; // Specifies if the potential synapses are centered over the columns
@@ -177,11 +184,11 @@ namespace overlap
         int columns_height_;       // Height of the columns
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
-        std::vector<float> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses
+        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses
         // Store the potential overlap value for every column
         std::vector<float> col_pot_overlaps_; // This is a 1D vector with the size number of columns.
 
-        self.colPotOverlaps = None int step_x_;                 // Step size in the x direction for the potential synapses
+        int step_x_;                                            // Step size in the x direction for the potential synapses
         int step_y_;                                            // Step size in the y direction for the potential synapses
         std::mt19937 rng_;                                      // Mersenne Twister random number generator
         std::vector<std::vector<float>> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns.

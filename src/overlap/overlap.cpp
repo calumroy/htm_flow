@@ -382,27 +382,37 @@ namespace overlap
     }
 
     void OverlapCalculator::check_new_input_params(
-        const std::vector<std::vector<float>> &newColSynPerm,
-        const std::vector<std::vector<int>> &newInput)
+        const std::vector<float> &newColSynPerm,
+        const std::pair<int, int> &colSynPerm_shape,
+        const std::vector<int> &newInput,
+        const std::pair<int, int> &inputGrid_shape)
     {
-        assert(input_width_ == newInput[0].size());
-        assert(input_height_ == newInput.size());
-        assert(potential_width_ * potential_height_ == newColSynPerm[0].size());
-        assert(num_columns_ == newColSynPerm.size());
+        assert(newInput.size() == inputGrid_shape.first * inputGrid_shape.second);
+        assert(input_width_ == inputGrid_shape.first);
+        assert(input_height_ == inputGrid_shape.second);
+        assert(newColSynPerm.size() == colSynPerm_shape.first * colSynPerm_shape.second);
+        assert(num_columns_ == colSynPerm_shape.first);
+        assert(potential_width_ * potential_height_ == colSynPerm_shape.second);
     }
 
-    std::vector<int> OverlapCalculator::get_col_inputs(const std::vector < int >> &inputGrid)
+    std::vector<int> OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
+        // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputWidth and inputHeight
+
+        std::vector<int> temp_out(inputGrid.size());
+        return temp_out;
     }
 
-    void OverlapCalculator::calculate_overlap(const std::vector<std::vector<float>> &colSynPerm,
-                                              const std::vector<std::vector<int>> &inputGrid)
+    void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
+                                              const std::pair<int, int> &colSynPerm_shape,
+                                              const std::vector<int> &inputGrid,
+                                              const std::pair<int, int> &inputGrid_shape)
     {
-        check_new_input_params(colSynPerm, inputGrid);
+        check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
 
         // Calculate the inputs to each column
-        col_input_pot_syn_ = get_col_inputs(inputGrid);
+        col_input_pot_syn_ = get_col_inputs(inputGrid, inputGrid_shape);
 
         // colInputPotSynTie = maskTieBreaker(colInputPotSyn, potSynTieBreaker);
         // colPotOverlaps = calcOverlap(colInputPotSynTie);
