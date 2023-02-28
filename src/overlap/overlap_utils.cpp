@@ -223,6 +223,97 @@ namespace overlap_utils
         return output;
     }
 
+    // The same function as above as the parallelized Taskflow Images2Neibs but using 1D input and output vectors as parameters.
+    template <typename T>
+    void parallel_Images2Neibs_1D(
+        std::vector<T> &output,
+        std::vector<int> &output_shape,
+        const std::vector<T> &input,
+        const std::pair<int, int> &input_shape,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool wrap_mode,
+        bool center_neigh)
+    {
+        // Determine the dimensions of the input matrix.
+        const int rows = input_shape.first;
+        const int cols = input_shape.second;
+
+        // Check that the neighbourhood shape is valid.
+        if (neib_shape.first > rows || neib_shape.second > cols)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
+        }
+
+        // Check the taskflow output matrix size.
+        // It should contain the number of rows of the ceiling of ((float)input.rows / (float)step.first))
+        // each row runs in it's own thread.
+
+        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+        int O = neib_shape.first;                                               // Number of rows in each patch
+        int P = neib_shape.second;                                              // Number of columns in each patch
+
+        assert(output.size() == N * M * O * P);
+        output_shape = {N, M, O, P};
+
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        taskflow.for_each_index(0, rows, step.first, [&](int i)
+                                {
+                                    std::vector<T> row_output;
+                                    for (int j = 0; j < cols; j += step.second)
+                                    {
+                                        std::vector<T> patch;
+                                        for (int ii = 0; ii < neib_shape.first; ++ii)
+                                        {
+                                            for (int jj = 0; jj < neib_shape.second; ++jj)
+                                            {
+                                                int x = i + ii;
+                                                int y = j + jj;
+
+                                                // If the "center_neigh" flag is set, center the neighbourhood
+                                                // over the current element in the input matrix.
+                                                if (center_neigh)
+                                                {
+                                                    x = i + ii - neib_shape.first / 2;
+                                                    y = j + jj - neib_shape.second / 2;
+                                                }
+
+                                                if (wrap_mode)
+                                                {
+                                                    x = (x + rows) % rows;
+                                                    y = (y + cols) % cols;
+                                                }
+                                                if (x >= 0 && x < rows && y >= 0 && y < cols)
+                                                {
+                                                    patch.push_back(input[x * cols + y]);
+                                                }
+                                                else
+                                                {
+                                                    patch.push_back(0);
+                                                }
+                                            }
+                                        }
+                                        row_output.insert(row_output.end(), patch.begin(), patch.end());
+                                    }
+                                    // Set the output matrix for this row. 
+                                    // Divide i the row index by the step size to get the correct row index to update.
+                                    int row_index = i / step.first;
+                                    std::copy(row_output.begin(), row_output.end(), output.begin() + row_index * M * O * P + j * O * P); });
+
+        // Run the taskflow.
+        executor.run(taskflow).get();
+    }
+
     // Multiply two tensors element-wise
     std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b)
     {

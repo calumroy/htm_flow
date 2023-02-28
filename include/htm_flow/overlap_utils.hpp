@@ -72,6 +72,38 @@ namespace overlap_utils
         bool wrap_mode,
         bool center_neigh);
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// parallel_Images2Neibs_1D    The same function as the Images2Neibs function above but using 1D input vector that simulates a 2D input.
+    ///                             The width and height of the input matrix are passed as parameters as well.
+    ///                             Additionally the output is a 1D vector that simulates a 4D vector and it is passed in as
+    ///                             a reference parameter to avoid copying the output.
+    ///                             The output 1D vector simulates a 4D vector with the following dimensions:
+    ///                                 The first dimension represents the row index of the input matrix.
+    ///                                 The second dimension represents the column index of the input matrix.
+    ///                                 The third dimension represents the row index of the neighbourhood patch within the sliding window.
+    ///                                 The fourth dimension represents the column index of the neighbourhood patch within the sliding window.
+    /// @param[out] output        The output matrix (1D vector of ints). The output is passed in as a reference parameter to avoid copying the output.
+    /// @param[out] output_shape  The shape of the output matrix (numInputRows, numInputCols, numNeibRows, numNeibCols). Used to interpret the 1D output vector as a 4D matrix.
+    /// @param[in] input         The input matrix (2D vector of ints).
+    /// @param[in] input_shape   The shape of the input matrix (width, height) = (numcols, numrows). Used to interpret the 1D input vector as a 2D matrix.
+    /// @param[in] neib_shape    The shape of the neighbourhood.
+    /// @param[in] neib_step     The step size of the sliding window.
+    /// @param[in] wrap_mode     Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
+    /// @param[in] center_neigh  Whether to center the neighbourhood patch around the input element or not. If not "false" then place the neighbourhood patch top left corner at the input element.
+    /// @return                  A 4D vector of ints. Each element stores the output patch for each element of the input matrix.
+    ///-----------------------------------------------------------------------------
+    template <typename T>
+    void parallel_Images2Neibs_1D(
+        std::vector<T> &output,
+        std::vector<int> &output_shape,
+        const std::vector<T> &input,
+        const std::pair<int, int> &input_shape,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool wrap_mode,
+        bool center_neigh);
+
     // Multiply two tensors element-wise
     std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b);
 
