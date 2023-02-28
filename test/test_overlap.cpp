@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 #include <src/overlap/overlap.cpp>
-// Include the gpu_overlap.hpp header file form the gpu_overlap library
+#include <src/overlap/overlap_utils.cpp>
+// Include the gpu_overlap.hpp header file from the gpu_overlap library
 #include <overlap/gpu_overlap.hpp>
 
 // Using the overlap namespace
-using namespace overlap;
+using namespace overlap_utils;
 TEST(Overlap, flatten_index)
 {
     ASSERT_EQ(3, flatten_index(1, 1, 2));
