@@ -252,70 +252,76 @@ namespace overlap_utils
             step = neib_shape;
         }
 
-        // Check the taskflow output matrix size.
-        // It should contain the number of rows of the ceiling of ((float)input.rows / (float)step.first))
-        // each row runs in it's own thread.
+        // Create the output matrix.
+        const int output_rows = static_cast<int>(ceil(static_cast<float>(rows) / step.first));
+        const int output_cols = static_cast<int>(ceil(static_cast<float>(cols) / step.second));
+        const int output_channels = neib_shape.first * neib_shape.second;
+        const int output_size = output_rows * output_cols * output_channels;
 
-        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
-        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
-        int O = neib_shape.first;                                               // Number of rows in each patch
-        int P = neib_shape.second;                                              // Number of columns in each patch
-
-        assert(output.size() == N * M * O * P);
-        output_shape = {N, M, O, P};
+        output.resize(output_size, 0);
 
         tf::Taskflow taskflow;
         tf::Executor executor;
 
         taskflow.for_each_index(0, rows, step.first, [&](int i)
                                 {
-                                    std::vector<T> row_output;
-                                    for (int j = 0; j < cols; j += step.second)
-                                    {
-                                        std::vector<T> patch;
-                                        for (int ii = 0; ii < neib_shape.first; ++ii)
-                                        {
-                                            for (int jj = 0; jj < neib_shape.second; ++jj)
-                                            {
-                                                int x = i + ii;
-                                                int y = j + jj;
+        const int output_row = i / step.first;
 
-                                                // If the "center_neigh" flag is set, center the neighbourhood
-                                                // over the current element in the input matrix.
-                                                if (center_neigh)
-                                                {
-                                                    x = i + ii - neib_shape.first / 2;
-                                                    y = j + jj - neib_shape.second / 2;
-                                                }
+        for (int j = 0; j < cols; j += step.second)
+        {
+            const int output_col = j / step.second;
 
-                                                if (wrap_mode)
-                                                {
-                                                    x = (x + rows) % rows;
-                                                    y = (y + cols) % cols;
-                                                }
-                                                if (x >= 0 && x < rows && y >= 0 && y < cols)
-                                                {
-                                                    patch.push_back(input[x * cols + y]);
-                                                }
-                                                else
-                                                {
-                                                    patch.push_back(0);
-                                                }
-                                            }
-                                        }
-                                        row_output.insert(row_output.end(), patch.begin(), patch.end());
-                                    }
-                                    // Set the output matrix for this row. 
-                                    // Divide i the row index by the step size to get the correct row index to update.
-                                    int row_index = i / step.first;
-                                    std::copy(row_output.begin(), row_output.end(), output.begin() + row_index * M * O * P + j * O * P); });
+            for (int ii = 0; ii < neib_shape.first; ++ii)
+            {
+                for (int jj = 0; jj < neib_shape.second; ++jj)
+                {
+                    int x = i + ii;
+                    int y = j + jj;
+
+                    // If the "center_neigh" flag is set, center the neighbourhood
+                    // over the current element in the input matrix.
+                    if (center_neigh)
+                    {
+                        x = i + ii - neib_shape.first / 2;
+                        y = j + jj - neib_shape.second / 2;
+                    }
+
+                    if (wrap_mode)
+                    {
+                        x = (x + rows) % rows;
+                        y = (y + cols) % cols;
+                    }
+
+                    if (x >= 0 && x < rows && y >= 0 && y < cols)
+                    {
+                        const int output_channel = (ii * neib_shape.second) + jj;
+                        const int output_index = ((output_row * output_cols) + output_col) * output_channels + output_channel;
+
+                        output[output_index] = input[x * cols + y];
+                    }
+                    else
+                    {
+                        const int output_channel = (ii * neib_shape.second) + jj;
+                        const int output_index = ((output_row * output_cols) + output_col) * output_channels + output_channel;
+
+                        output[output_index] = 0;
+                    }
+                }
+            }
+        } });
 
         // Run the taskflow.
         executor.run(taskflow).get();
+
+        output_shape = {output_rows,
+                        output_cols,
+                        neib_shape.first,
+                        neib_shape.second};
     }
 
     // Multiply two tensors element-wise
-    std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b)
+    std::vector<float>
+    multiple(const std::vector<float> &a, const std::vector<float> &b)
     {
         std::vector<float> result;
         result.reserve(a.size());

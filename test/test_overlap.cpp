@@ -559,3 +559,38 @@ TEST(gpu_Images2Neibs, test3_very_large)
     // Assert the output is the correct size
     ASSERT_EQ(flat_output.size(), n_rows * n_cols * neib_shape.first * neib_shape.second);
 }
+
+TEST(parallel_Images2Neibs_1D, test1_small)
+{
+    // Create the input vector
+    std::vector<int> input = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+    // Define the input shape
+    std::pair<int, int> input_shape = std::make_pair(3, 3);
+
+    // Define the neighbourhood shape and step
+    std::pair<int, int> neib_shape = std::make_pair(2, 2);
+    std::pair<int, int> neib_step = std::make_pair(1, 1);
+
+    // Set the wrap_mode and center_neigh flags
+    bool wrap_mode = false;
+    bool center_neigh = false;
+
+    // Define the expected output vector
+    std::vector<int> expected_output = {1, 2, 4, 5, 2, 3, 5, 6, 4, 5, 7, 8, 5, 6, 8, 9};
+
+    // Define the output shape
+    std::vector<int> output_shape = {(input_shape.first - neib_shape.first) / neib_step.first + 1,
+                                     (input_shape.second - neib_shape.second) / neib_step.second + 1,
+                                     neib_shape.first,
+                                     neib_shape.second};
+
+    // Create the output vector and initialize it with zeros
+    std::vector<int> output(output_shape[0] * output_shape[1] * output_shape[2] * output_shape[3], 0);
+
+    // Call the parallel_Images2Neibs_1D function
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // Check that the output vector is equal to the expected output vector
+    ASSERT_EQ(output, expected_output);
+}
