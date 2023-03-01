@@ -258,7 +258,11 @@ namespace overlap_utils
         const int output_channels = neib_shape.first * neib_shape.second;
         const int output_size = output_rows * output_cols * output_channels;
 
-        output.resize(output_size, 0);
+        // If the output vector is not the correct size, resize it.
+        if (output.size() != output_size)
+        {
+            output.resize(output_size, 0);
+        }
 
         tf::Taskflow taskflow;
         tf::Executor executor;
