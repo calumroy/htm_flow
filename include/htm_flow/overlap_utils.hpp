@@ -81,7 +81,7 @@ namespace overlap_utils
     ///-----------------------------------------------------------------------------
     ///
     /// parallel_Images2Neibs_1D    The same function as the Images2Neibs function above but using 1D input vector that simulates a 2D input.
-    ///                             The width and height of the input matrix are passed as parameters as well.
+    ///                             The height and width of the input matrix are passed as parameters as well.
     ///                             Additionally the output is a 1D vector that simulates a 4D vector and it is passed in as
     ///                             a reference parameter to avoid copying the output.
     ///                             The output 1D vector simulates a 4D vector with the following dimensions:

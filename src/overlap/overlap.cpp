@@ -154,11 +154,28 @@ namespace overlap
     std::vector<int> OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
-        // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputWidth and inputHeight
+        // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputHeight and inputWidth
+        // It outputs a simulated matrix using a 1D vector where each row (in the simulated 4D vector) represents the potential pool of inputs to one input element in the inputGrid.
+        // An element in the input grid is considered to be one "cortical column" with all the elements making up a "cortical layer".
 
-        std::vector<int> temp_out(inputGrid.size());
+        // Define the output shape
+        const int output_rows = static_cast<int>(ceil(static_cast<float>(potential_height_) / step_y_));
+        const int output_cols = static_cast<int>(ceil(static_cast<float>(potential_width_) / step_x_));
+        const int output_channels = step_y_ * step_x_;
+        const int output_size = output_rows * output_cols * output_channels;
 
-        // std::vector<std::vector<std::vector<std::vector<int>>>> output = parallel_Images2Neibs(input, neib_shape, neib_step, wrap_mode, center_neigh);
+        std::vector<int> output_shape = {output_rows,
+                                         output_cols,
+                                         step_y_,
+                                         step_x_};
+
+        // Define the neighbourhood shape and step for the parallel_Images2Neibs_1D
+        std::pair<int, int> neib_shape = std::make_pair(step_y_, step_x_);
+        std::pair<int, int> neib_step = std::make_pair(potential_height_, potential_width_);
+
+        // Call the parallel_Images2Neibs_1D function
+        parallel_Images2Neibs_1D(output, output_shape, inputGrid, inputGrid_shape, neib_shape, neib_step, wrap_input_, center_pot_synapses_);
+
         return temp_out;
     }
 
