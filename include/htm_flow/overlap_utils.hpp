@@ -29,6 +29,12 @@ namespace overlap_utils
     // Define a function to wrap 2D indices around the input dimensions
     std::tuple<int, int> wrap_indices(int x, int y, int input_width, int input_height);
 
+    // Multiply two tensors element-wise
+    std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b);
+
+    // Mask the grid with the tieBreaker values by multiplying them element-wise and then adding the result to the grid input.
+    std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker);
+
     ///-----------------------------------------------------------------------------
     ///
     /// Images2Neibs       Creates a new matrix by applying a sliding window operation to `input`.
@@ -103,11 +109,5 @@ namespace overlap_utils
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
         bool center_neigh);
-
-    // Multiply two tensors element-wise
-    std::vector<float> multiple(const std::vector<float> &a, const std::vector<float> &b);
-
-    // Mask the grid with the tieBreaker values by multiplying them element-wise and then adding the result to the grid input.
-    std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker);
 
 } // namespace overlap_utils
