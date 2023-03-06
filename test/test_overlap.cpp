@@ -624,14 +624,14 @@ TEST(parallel_Images2Neibs_1D, test2_nowrap_center)
     //  {4, 5, 6},
     //  {7, 8, 9}};
     // Create the input vector
-    std::vector<int> input = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    const std::vector<int> input = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
     // Define the input shape
-    std::pair<int, int> input_shape = std::make_pair(3, 3);
+    const std::pair<int, int> input_shape = std::make_pair(3, 3);
 
     // Define the neighbourhood shape and step
-    std::pair<int, int> neib_shape = std::make_pair(2, 2);
-    std::pair<int, int> neib_step = std::make_pair(1, 1);
+    const std::pair<int, int> neib_shape = std::make_pair(2, 2);
+    const std::pair<int, int> neib_step = std::make_pair(1, 1);
 
     // Set the wrap_mode and center_neigh flags
     bool wrap_mode = false;

@@ -18,6 +18,8 @@
 #include <tuple>
 #include <taskflow/taskflow.hpp>
 
+#include <htm_flow/overlap_utils.hpp>
+
 namespace overlap
 {
 
@@ -65,7 +67,7 @@ namespace overlap
         ///
         /// make_pot_syn_tie_breaker - Create a tie breaker matrix for potential synapses.
         ///
-        /// This function takes a 2D vector of floats representing the self.colInputPotSyn grid and creates a tie breaker matrix
+        /// This function takes a 1D vector simulating a 2D vector of floats representing the self.colInputPotSyn grid and creates a simulated 2D tie breaker matrix (outputs as a 1D vector)
         /// holding small values for each element. The tie breaker values are created such that for a particular row in the
         /// colInputPotSyn grid, the sum of all tie breaker values in that row is less than 0.5.
         /// The tie breaker values are all multiples of the same number and each row has a different pattern of tie breaker values.
@@ -73,9 +75,10 @@ namespace overlap
         /// The tie breaker matrix is used to resolve situations where columns have the same overlap number.
         ///
         /// @param[in,out] pot_syn_tie_breaker The 2D vector of floats representing the tie breaker matrix.
+        /// @param[in] size A pair of integers representing the height and width of the tie breaker matrix.
         ///
         ///------------------------------------------------------------------------------------
-        void make_pot_syn_tie_breaker(std::vector<std::vector<float>> &pot_syn_tie_breaker);
+        void make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -110,9 +113,11 @@ namespace overlap
         /// This inputGrid has the number of elements equal to the input_width_ x input_height_.
         /// @param[in] inputGrid A 1D vector simulating a 2D vector (matrix) of the input grid.
         /// @param[in] inputGrid_shape The shape of the inputGrid vector height and then width as a pair of ints.
-        /// @return A 1D vector simulating a 2D vector (matrix) where each row represents the
-        ///         potential pool of inputs that one column in a layer can connect too.
-        std::vector<int> get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape);
+        /// @param[out] col_inputs A 1D vector simulating a 2D vector (matrix) where each row represents the
+        ///             potential pool of inputs that one column in a layer can connect too. The number of rows
+        ///             is equal to the number of columns in the columns grid. The number of columns is equal to
+        ///             the number of potential synapses for each column.
+        void get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape);
 
         // Member variables
         bool center_pot_synapses_; // Specifies if the potential synapses are centered over the columns
@@ -127,15 +132,15 @@ namespace overlap
         int columns_height_;       // Height of the columns
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
-        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses
+        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         // Store the potential overlap value for every column
-        std::vector<float> col_pot_overlaps_;                   // This is a 1D vector with the size number of columns.
-        int step_x_;                                            // Step size in the x direction for the potential synapses
-        int step_y_;                                            // Step size in the y direction for the potential synapses
-        std::mt19937 rng_;                                      // Mersenne Twister random number generator
-        std::vector<std::vector<float>> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns.
-        std::vector<std::vector<float>> col_input_pot_syn_tie_; // Potential columns tie breaker matrix. This stores the columns inputs over the potential synapses plus the tie breaker values
-        std::vector<float> col_tie_breaker_;                    // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
+        std::vector<float> col_pot_overlaps_;      // This is a 1D vector with the size number of columns.
+        int step_x_;                               // Step size in the x direction for the potential synapses
+        int step_y_;                               // Step size in the y direction for the potential synapses
+        std::mt19937 rng_;                         // Mersenne Twister random number generator
+        std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<float> col_input_pot_syn_tie_; // Store the potential inputs to every column plus the tie breaker value. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<float> col_tie_breaker_;       // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
     };
 
 } // namespace overlap

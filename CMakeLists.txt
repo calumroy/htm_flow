@@ -72,7 +72,7 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp)
 # Link your executable to the Google Test library
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 
-# Required for CUDA debugging in Visual Studio Code. THis adds a -G flag to compilation.
+# Required for CUDA debugging in Visual Studio Code. This adds a -G flag to compilation.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
 endif()

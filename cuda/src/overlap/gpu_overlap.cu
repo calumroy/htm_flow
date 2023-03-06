@@ -271,6 +271,9 @@ namespace gpu_overlap
         int O = neib_shape.first;                                               // Number of rows in each patch
         int P = neib_shape.second;                                              // Number of columns in each patch
 
+        // Assert that the output matrix has the correct size.
+        assert(output.size() == N * M * O * P);
+
         // Allocate memory on the GPU for the input and output matrices.
         int *d_input, *d_output;
         TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input");
