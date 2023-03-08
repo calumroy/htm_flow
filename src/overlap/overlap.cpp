@@ -197,6 +197,11 @@ namespace overlap
         // Calculate the inputs to each column
         get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape);
 
+        // Print the col_input_pot_syn_ vector
+        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+        std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
+        overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
+
         // colInputPotSynTie = maskTieBreaker(colInputPotSyn, potSynTieBreaker);
         // colPotOverlaps = calcOverlap(colInputPotSynTie);
         // std::vector<std::vector<int>> connectedSynInputs =

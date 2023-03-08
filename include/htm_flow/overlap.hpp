@@ -128,8 +128,8 @@ namespace overlap
         int min_overlap_;          // Minimum overlap required for a column to be considered for inhibition
         int input_width_;          // Width of the input
         int input_height_;         // Height of the input
-        int columns_width_;        // Width of the columns
-        int columns_height_;       // Height of the columns
+        int columns_width_;        // Width of the cortical columns
+        int columns_height_;       // Height of the cortical columns
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
         std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_

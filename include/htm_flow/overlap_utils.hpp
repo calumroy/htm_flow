@@ -35,6 +35,19 @@ namespace overlap_utils
     // Mask the grid with the tieBreaker values by multiplying them element-wise and then adding the result to the grid input.
     std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker);
 
+    // Define a function to print out a 1D vector that is simulating a 2D vector.
+    void print_2d_vector(const std::vector<int> &vec1D, const std::pair<int, int> &vec2D_shape);
+
+    // Define a function to print out a 1D vector that is simulating a 4D vector.
+    // vec4D_shape is a vector of size 4 that contains the shape of the 4D vector.
+    void print_4d_vector(const std::vector<int> &vec1D, std::vector<int> &vec4D_shape);
+
+    // Take a 1D vector and convert it to a 2D vector.
+    std::vector<std::vector<int>> unflattenVector(const std::vector<int> &vec1D, size_t numRows, size_t numCols);
+
+    // Take a 1D vector and convert it to a 4D vector.
+    std::vector<std::vector<std::vector<std::vector<int>>>> unflattenVector(const std::vector<int> &vec1D, size_t numLayers, size_t numChannels, size_t numRows, size_t numCols);
+
     ///-----------------------------------------------------------------------------
     ///
     /// Images2Neibs       Creates a new matrix by applying a sliding window operation to `input`.
@@ -109,10 +122,6 @@ namespace overlap_utils
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
         bool center_neigh);
-
-    template <typename T>
-    void parallel_Images2Neibs_1D_test(
-        std::vector<T> &output);
 
     // -----------------------------------------------------------------------------
     // Header only implementations of the functions above.
@@ -397,12 +406,6 @@ namespace overlap_utils
                         output_cols,
                         neib_shape.first,
                         neib_shape.second};
-    }
-
-    template <typename T>
-    void parallel_Images2Neibs_1D_test(
-        std::vector<T> &output)
-    {
     }
 
 } // namespace overlap_utils
