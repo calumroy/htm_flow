@@ -123,6 +123,35 @@ namespace overlap_utils
         bool wrap_mode,
         bool center_neigh);
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// parallel_maskTieBreaker   Applies a tie breaker to the input vector.
+    ///                           The tie breaker is applied to the input vector element-wise.
+    ///                           Multiply the tiebreaker values by the input grid then add them to it.
+    //                            Since the grid contains ones and zeros some tiebreaker values are
+    //                            masked out. This means the tie breaker will be different for each input
+    //                            pattern.
+    /// @param[in] grid           The input grid (1D vector) but could be simulating a 2D matrix.
+    /// @param[in] tieBreaker     The tie breaker (1D vector must be same size as grid).
+    /// @return                   A 1D vector of floats.
+    template <typename T>
+    std::vector<float> parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker);
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calcOverlap   Calculates the overlap between the input vector and the grid.
+    ///               The input vector is a 1D vector that simulates a 2D matrix.
+    ///               Calculate the potential overlap scores for every column.
+    ///               Sum the potential inputs for every column.
+    template <typename T>
+    std::vector<float> parallel_calcOverlap(const std::vector<T> &b);
+
+    // WIP
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calcOverlap   Calculates the column synapses  between the input vector and the grid.
+    // void connected_syn_input(const std::vector<float> &j, const std::vector<float> &k, const std::vector<float> &connected_perm, int n_rows, int n_cols, tf::Taskflow &tf);
+
     // -----------------------------------------------------------------------------
     // Header only implementations of the functions above.
     // templated functions must be defined in the header file.
@@ -341,8 +370,8 @@ namespace overlap_utils
         }
 
         // Create the output matrix.
-        const int output_rows = static_cast<int>(ceil(static_cast<float>(input_rows) / step.first));
-        const int output_cols = static_cast<int>(ceil(static_cast<float>(input_cols) / step.second));
+        const int output_rows = static_cast<int>(output_shape.at(0));
+        const int output_cols = static_cast<int>(output_shape.at(1));
         const int output_channels = neib_shape.first * neib_shape.second;
         const int output_size = output_rows * output_cols * output_channels;
 
@@ -352,6 +381,7 @@ namespace overlap_utils
         tf::Taskflow taskflow;
         tf::Executor executor;
 
+        // Parallelised over the rows of the input matrix, each row runs in it's own thread.
         taskflow.for_each_index(0, input_rows, neib_step.first, [&](int i)
                                 {
         const int output_row = i / neib_step.first;
@@ -407,5 +437,87 @@ namespace overlap_utils
                         neib_shape.first,
                         neib_shape.second};
     }
+
+    template <typename T>
+    std::vector<float> parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker)
+    {
+        // Create a vector to hold the results of the computation.
+        std::vector<float> result(bool_grid.size());
+
+        int g_len = bool_grid.size();
+
+        // Create a Taskflow object to manage tasks and their dependencies
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        // Define a lambda function that multiplies each element of the input bool_grid
+        // with the corresponding element of the tieBreaker values, and adds the result
+        // to the corresponding element of the output vector.
+        auto multiply_then_add = [&](int i)
+        {
+            // Output is a float.
+            result[i] = static_cast<float>(bool_grid[i] * tieBreaker[i]) + bool_grid[i];
+        };
+
+        // Add a task to the Taskflow that applies the task_multiply_then_add function to each
+        // element of the input bool_grid and the tieBreaker values.
+        tf::Task task_multiply_then_add = taskflow.for_each_index(0, g_len, 1, multiply_then_add);
+
+        // Execute the Taskflow and wait for it to finish.
+        executor.run(taskflow).wait();
+
+        return result;
+    }
+
+    template <typename T>
+    std::vector<float> parallel_calcOverlap(const std::vector<T> &b)
+    {
+        // Create a vector to hold the results of the computation.
+        std::vector<float> m(b.size());
+
+        // Create a Taskflow object to manage tasks and their dependencies.
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        // Define a lambda function that computes the sum of each column of the input b vector.
+        auto compute_sum = [&](int j)
+        {
+            for (int i = 0; i < b.size(); i++)
+            {
+                if (i == j)
+                {
+                    m[i] += static_cast<float>(b[i]);
+                }
+            }
+        };
+
+        // Add a task to the Taskflow that applies the compute_sum function to each column of the input b vector.
+        tf::Task task_compute_sum = taskflow.for_each_index(0, static_cast<int>(b.size()), 1, compute_sum);
+
+        // Execute the Taskflow and wait for it to finish.
+        executor.run(taskflow).wait();
+
+        return m;
+    }
+
+    // WIP
+    // void connected_syn_input(const std::vector<float> &j, const std::vector<float> &k, const std::vector<float> &connected_perm, int n_rows, int n_cols, tf::Taskflow &tf)
+    // {
+    //     std::vector<float> check_conn(n_rows * n_cols, 0.0f);
+
+    //     tf::Task check_conn_task = tf.emplace([&check_conn, &j, &k, &connected_perm, n_rows, n_cols]()
+    //                                           { tf::for_each_index(tf::index(n_rows), tf::index(n_cols), [&](int i, int j)
+    //                                                                {
+    //         int index = i * n_cols + j;
+    //         if (connected_perm[0] < j[index]) {
+    //             check_conn[index] = k[index];
+    //         } }); });
+
+    //     tf::Task j_task = tf.emplace([&j, n_rows, n_cols]() {});
+    //     tf::Task k_task = tf.emplace([&k, n_rows, n_cols]() {});
+    //     tf::Task connected_perm_task = tf.emplace([&connected_perm, n_rows, n_cols]() {});
+
+    //     check_conn_task.succeed(j_task, k_task, connected_perm_task);
+    // }
 
 } // namespace overlap_utils

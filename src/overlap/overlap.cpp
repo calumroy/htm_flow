@@ -42,10 +42,10 @@ namespace overlap
         // Make the potential synapse tie breaker matrix.
         // Construct a tiebreaker matrix for the columns potential synapses.
         // It contains small values that help resolve any ties in potential overlap scores for columns.
-        make_pot_syn_tie_breaker(pot_syn_tie_breaker_, std::make_pair(potential_height_, potential_width_));
+        make_pot_syn_tie_breaker(pot_syn_tie_breaker_, std::make_pair(num_columns_, potential_height * potential_width));
 
         // Make the column input potential synapse tie breaker matrix.
-        make_col_tie_breaker(col_tie_breaker_, num_columns_, columns_width_, columns_height_);
+        make_col_tie_breaker(col_tie_breaker_, columns_height_, columns_width_);
 
         LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
@@ -83,8 +83,10 @@ namespace overlap
         }
     }
 
-    void OverlapCalculator::make_col_tie_breaker(std::vector<float> &tieBreaker, int numColumns, int columnsWidth, int columnsHeight)
+    void OverlapCalculator::make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth)
     {
+        int numColumns = columnsWidth * columnsHeight;
+
         // Make a vector of tiebreaker values to add to the columns overlap values vector.
         float normValue = 1.0f / float(2 * numColumns + 2);
 
@@ -149,8 +151,8 @@ namespace overlap
         const std::pair<int, int> &inputGrid_shape)
     {
         assert(newInput.size() == inputGrid_shape.first * inputGrid_shape.second);
-        assert(input_width_ == inputGrid_shape.first);
-        assert(input_height_ == inputGrid_shape.second);
+        assert(input_width_ == inputGrid_shape.second); // input_width_ equal to the number of columns in the input grid
+        assert(input_height_ == inputGrid_shape.first); // input_height_ equal to the number of rows in the input grid
         assert(newColSynPerm.size() == colSynPerm_shape.first * colSynPerm_shape.second);
         assert(num_columns_ == colSynPerm_shape.first);
         assert(potential_width_ * potential_height_ == colSynPerm_shape.second);
@@ -160,24 +162,18 @@ namespace overlap
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
         // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputHeight and inputWidth
-        // It outputs a simulated 2D vector using a 1D vector where each row (in the simulated 4D vector) represents the potential pool of inputs from one "cortical column" to the inputGrid.
+        // It outputs a simulated 4D vector using a 1D vector where each row (in the simulated 4D vector) represents the potential pool of inputs from the inputGrid to one "cortical column".
         // The output vector named "col_inputs" is a 1D vector of the flattened 4D vector.
-
-        // Define the output shape.
-        const int output_rows = static_cast<int>(ceil(static_cast<float>(input_height_) / step_y_));
-        const int output_cols = static_cast<int>(ceil(static_cast<float>(input_width_) / step_x_));
-        const int output_channels = potential_height_ * potential_width_;
-        const int output_size = output_rows * output_cols * output_channels;
 
         // Assert the output vector is the correct size.
         // The size of the output vector should be equal to the number of columns times the number of potential synapses.
-        // The step_x_ and step_y_ values should be set such that the output vector is the correct size.
+        const int output_size = num_columns_ * potential_height_ * potential_width_;
         assert(col_inputs.size() == output_size);
 
-        std::vector<int> col_inputs_shape = {output_rows,
-                                             output_cols,
-                                             step_y_,
-                                             step_x_};
+        std::vector<int> col_inputs_shape = {columns_height_,
+                                             columns_width_,
+                                             potential_height_,
+                                             potential_width_};
 
         // Define the neighbourhood shape and step for the parallel_Images2Neibs_1D
         const std::pair<int, int> neib_shape = std::make_pair(potential_height_, potential_width_);
@@ -197,13 +193,19 @@ namespace overlap
         // Calculate the inputs to each column
         get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape);
 
+        // TODO remove this
         // Print the col_input_pot_syn_ vector
-        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
-        std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
-        overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
+        // overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+        // std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
+        // overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
 
-        // colInputPotSynTie = maskTieBreaker(colInputPotSyn, potSynTieBreaker);
-        // colPotOverlaps = calcOverlap(colInputPotSynTie);
+        // Add a masked small tiebreaker value to the col_input_pot_syn_ scores (the inputs to the columns from potential synapses).
+        // col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
+
+        // Calculate the potential overlap scores for every column.
+        // Sum the potential inputs for every column.
+        // col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
+
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);

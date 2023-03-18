@@ -88,13 +88,13 @@ namespace overlap
         /// The tie breaker values are multiples of the same number.
         /// For each column, the tie-breaker pattern is created by sliding the previous column's values along by 1
         /// and wrapping at the end of the row.
+        /// The number of cortical columns is equal to columns_width_ * columns_height_.
         ///
         /// @param[in,out] tieBreaker A reference to a vector of floats representing the tie breaker values.
-        /// @param[in] numColumns An integer representing the number of columns in the columns grid.
         /// @param[in] columnsWidth An integer representing the width of the columns grid.
         /// @param[in] columnsHeight An integer representing the height of the columns grid.
         ///-----------------------------------------------------------------------------
-        void make_col_tie_breaker(std::vector<float> &tieBreaker, int numColumns, int columnsWidth, int columnsHeight);
+        void make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth);
 
         // Check the new input parameter sizes to make sure they are the same as the inital input sizes and
         // the 1D vectors are the right size for the simulated 2D vectors they represent.
@@ -126,8 +126,8 @@ namespace overlap
         int potential_height_;     // Height of the potential synapses
         float connected_perm_;     // Probability that a column's potential synapses are connected to the input
         int min_overlap_;          // Minimum overlap required for a column to be considered for inhibition
-        int input_width_;          // Width of the input
-        int input_height_;         // Height of the input
+        int input_width_;          // Width of the input, equal to the number of columns in the input grid
+        int input_height_;         // Height of the input, equal to the number of rows in the input grid
         int columns_width_;        // Width of the cortical columns
         int columns_height_;       // Height of the cortical columns
         int num_columns_;          // Number of columns making up this htm layer
@@ -138,7 +138,7 @@ namespace overlap
         int step_x_;                               // Step size in the x direction for the potential synapses
         int step_y_;                               // Step size in the y direction for the potential synapses
         std::mt19937 rng_;                         // Mersenne Twister random number generator
-        std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 4D vector with the size of the number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_input_pot_syn_tie_; // Store the potential inputs to every column plus the tie breaker value. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_tie_breaker_;       // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
     };
