@@ -369,11 +369,15 @@ namespace overlap_utils
             step = neib_shape;
         }
 
-        // Create the output matrix.
-        const int output_rows = static_cast<int>(output_shape.at(0));
-        const int output_cols = static_cast<int>(output_shape.at(1));
+        // Check the output matrix size.
+        const int no_output_rows = static_cast<int>(output_shape.at(0));
+        const int no_output_cols = static_cast<int>(output_shape.at(1));
         const int output_channels = neib_shape.first * neib_shape.second;
-        const int output_size = output_rows * output_cols * output_channels;
+        const int output_size = no_output_rows * no_output_cols * output_channels;
+
+        // Define the maximum output shape (the total number of convolutions that can be achieved with the given input size and step sizes)
+        const int max_output_rows = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));
+        const int max_output_cols = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second));
 
         // Assert the output vector is the correct size.
         assert(output.size() == output_size);
@@ -386,44 +390,52 @@ namespace overlap_utils
                                 {
         const int output_row = i / neib_step.first;
 
-        for (int j = 0; j < input_cols; j += neib_step.second)
+        // Make sure the output row is within the maximum output size.
+        if (output_row < no_output_rows)
         {
-            const int output_col = j / neib_step.second;
-
-            for (int ii = 0; ii < neib_shape.first; ++ii)
+            for (int j = 0; j < input_cols; j += neib_step.second)
             {
-                for (int jj = 0; jj < neib_shape.second; ++jj)
+                const int output_col = j / neib_step.second;
+
+                // Make sure the output column is within the maximum output size.
+                if (output_col < no_output_cols)
                 {
-                    int x = i + ii;
-                    int y = j + jj;
-
-                    // If the "center_neigh" flag is set, center the neighbourhood
-                    // over the current element in the input matrix.
-                    if (center_neigh)
+                    for (int ii = 0; ii < neib_shape.first; ++ii)
                     {
-                        x = i + ii - neib_shape.first / 2;
-                        y = j + jj - neib_shape.second / 2;
-                    }
+                        for (int jj = 0; jj < neib_shape.second; ++jj)
+                        {
+                            int x = i + ii;
+                            int y = j + jj;
 
-                    if (wrap_mode)
-                    {
-                        x = (x + input_rows) % input_rows;
-                        y = (y + input_cols) % input_cols;
-                    }
+                            // If the "center_neigh" flag is set, center the neighbourhood
+                            // over the current element in the input matrix.
+                            if (center_neigh)
+                            {
+                                x = i + ii - neib_shape.first / 2;
+                                y = j + jj - neib_shape.second / 2;
+                            }
 
-                    if (x >= 0 && x < input_rows && y >= 0 && y < input_cols)
-                    {
-                        const int output_channel = (ii * neib_shape.second) + jj;
-                        const int output_index = ((output_row * output_cols) + output_col) * output_channels + output_channel;
+                            if (wrap_mode)
+                            {
+                                x = (x + input_rows) % input_rows;
+                                y = (y + input_cols) % input_cols;
+                            }
 
-                        output[output_index] = input[x * input_cols + y];
-                    }
-                    else
-                    {
-                        const int output_channel = (ii * neib_shape.second) + jj;
-                        const int output_index = ((output_row * output_cols) + output_col) * output_channels + output_channel;
+                            if (x >= 0 && x < input_rows && y >= 0 && y < input_cols)
+                            {
+                                const int output_channel = (ii * neib_shape.second) + jj;
+                                const int output_index = ((output_row * no_output_cols) + output_col) * output_channels + output_channel;
 
-                        output[output_index] = 0;
+                                output[output_index] = input[x * input_cols + y];
+                            }
+                            else
+                            {
+                                const int output_channel = (ii * neib_shape.second) + jj;
+                                const int output_index = ((output_row * no_output_cols) + output_col) * output_channels + output_channel;
+
+                                output[output_index] = 0;
+                            }
+                        }
                     }
                 }
             }
@@ -431,11 +443,6 @@ namespace overlap_utils
 
         // Run the taskflow.
         executor.run(taskflow).get();
-
-        output_shape = {output_rows,
-                        output_cols,
-                        neib_shape.first,
-                        neib_shape.second};
     }
 
     template <typename T>

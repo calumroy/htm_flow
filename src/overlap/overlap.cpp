@@ -195,16 +195,16 @@ namespace overlap
 
         // TODO remove this
         // Print the col_input_pot_syn_ vector
-        // overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
-        // std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
-        // overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
+        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+        std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
+        overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
 
         // Add a masked small tiebreaker value to the col_input_pot_syn_ scores (the inputs to the columns from potential synapses).
-        // col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
+        col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
 
         // Calculate the potential overlap scores for every column.
         // Sum the potential inputs for every column.
-        // col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
+        col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
 
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);

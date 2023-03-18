@@ -709,16 +709,158 @@ TEST(parallel_Images2Neibs_1D, test3_asymmetrical)
 
     // Define the expected output vector
     std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 11, 12, 3, 4, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7, 3, 4, 7, 8, 8, 5, 12, 9, 5, 6, 9, 10, 6, 7, 10, 11, 7, 8, 11, 12};
-    // Define the output shape
-    const int output_rows = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));
-    const int output_cols = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second));
-    const int output_channels = neib_shape.first * neib_shape.second;
-    const int output_size = output_rows * output_cols * output_channels;
+    // Define the maximum output shape (the total number of convolutions that can be acheived with the given input size and step sizes)
+    const int max_output_rows = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));
+    const int max_output_cols = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second));
 
-    std::vector<int> output_shape = {output_rows,
-                                     output_cols,
+    // We want to limit the size of the output to be slightly smaller then the total number of convolutions that can be acheived with the given input size and step sizes.
+    // This test a situations where we might want the output size to be smaller then the total number of possible convolutions.
+    std::vector<int> output_shape = {max_output_rows,
+                                     max_output_cols,
                                      neib_shape.first,
                                      neib_shape.second};
+
+    const int output_channels = neib_shape.first * neib_shape.second;
+    const int output_size = output_shape[0] * output_shape[1] * output_channels; // 3 * 4 * 4 = 48
+
+    // Create the output vector and initialize it with zeros
+    std::vector<int> output(output_size, 0);
+
+    // Call the parallel_Images2Neibs_1D function
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // Check that the output vector is equal to the expected output vector
+    ASSERT_EQ(output, expected_output);
+}
+
+TEST(parallel_Images2Neibs_1D, test4_limit_output_size)
+{
+
+    // This simulates the 2D vector input
+    // {{1, 2, 3, 4},
+    //  {5, 6, 7, 8},
+    //  {9, 10, 11, 12}};
+    // Create the input vector
+    const std::vector<int> input = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+    // Define the input shape
+    const std::pair<int, int> input_shape = std::make_pair(3, 4);
+
+    // Define the neighbourhood shape and step
+    const std::pair<int, int> neib_shape = std::make_pair(2, 2);
+    const std::pair<int, int> neib_step = std::make_pair(1, 1);
+
+    // Define the shape of the output vector.
+    // We want to limit the size of the output to be slightly smaller then the total number of convolutions that can be achieved with the given input size and step sizes.
+    // This test a situations where we might want the output size to be smaller then the total number of possible convolutions.
+    std::vector<int> output_shape = {3, // Limit the output size to 3 rows
+                                     3, // Limit the output size to 3 columns
+                                     neib_shape.first,
+                                     neib_shape.second};
+
+    const int output_channels = neib_shape.first * neib_shape.second;
+    const int output_size = output_shape[0] * output_shape[1] * output_channels; // 3 * 3 * 4 = 36
+
+    // Set the wrap_mode and center_neigh flags
+    bool wrap_mode = true;
+    bool center_neigh = true;
+
+    // This simulates the 4D vector output
+    // {{{{12, 9}, {4, 1},
+    //   {{9, 10}, {1, 2}},
+    //   {{10, 11}, {2, 3},
+    //   {{11, 12}, {3, 4}}},
+    //  {{{4, 1}, {8, 5}},
+    //   {{1, 2}, {5, 6}},
+    //   {{2, 3}, {6, 7}},
+    //   {{3, 4}, {7, 8}}},
+    //  {{{8, 5}, {12, 9}},
+    //   {{5, 6}, {9, 10}},
+    //   {{6, 7}, {10, 11}},
+    //   {{7, 8}, {11, 12}}}}
+
+    // Since the output size is limited to 3 columns 3 rows, the last column is not included in the output.
+    // This means we want the output to be equal to the following 4D vector
+    // {{{{12, 9}, {4, 1},
+    //   {{9, 10}, {1, 2}},
+    //   {{10, 11}, {2, 3}}},
+    //  {{{4, 1}, {8, 5}},
+    //   {{1, 2}, {5, 6}},
+    //   {{2, 3}, {6, 7}}},
+    //  {{{8, 5}, {12, 9}},
+    //   {{5, 6}, {9, 10}},
+    //   {{6, 7}, {10, 11}}}}
+
+    // Define the expected output vector
+    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7, 8, 5, 12, 9, 5, 6, 9, 10, 6, 7, 10, 11};
+
+    // Create the output vector and initialize it with zeros
+    std::vector<int> output(output_size, 0);
+
+    // Call the parallel_Images2Neibs_1D function
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // Check that the output vector is equal to the expected output vector
+    ASSERT_EQ(output, expected_output);
+}
+
+TEST(parallel_Images2Neibs_1D, test5_limit_output_size_2)
+{
+
+    // This simulates the 2D vector input
+    // {{1, 2, 3, 4},
+    //  {5, 6, 7, 8},
+    //  {9, 10, 11, 12}};
+    // Create the input vector
+    const std::vector<int> input = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+    // Define the input shape
+    const std::pair<int, int> input_shape = std::make_pair(3, 4);
+
+    // Define the neighbourhood shape and step
+    const std::pair<int, int> neib_shape = std::make_pair(2, 2);
+    const std::pair<int, int> neib_step = std::make_pair(1, 1);
+
+    // Define the shape of the output vector.
+    // We want to limit the size of the output to be slightly smaller then the total number of convolutions that can be achieved with the given input size and step sizes.
+    // This test a situations where we might want the output size to be smaller then the total number of possible convolutions.
+    std::vector<int> output_shape = {2, // Limit the output size to 2 rows
+                                     3, // Limit the output size to 3 columns
+                                     neib_shape.first,
+                                     neib_shape.second};
+
+    const int output_channels = neib_shape.first * neib_shape.second;
+    const int output_size = output_shape[0] * output_shape[1] * output_channels; // 2 * 3 * 4 = 24
+
+    // Set the wrap_mode and center_neigh flags
+    bool wrap_mode = true;
+    bool center_neigh = true;
+
+    // This simulates the 4D vector output
+    // {{{{12, 9}, {4, 1},
+    //   {{9, 10}, {1, 2}},
+    //   {{10, 11}, {2, 3},
+    //   {{11, 12}, {3, 4}}},
+    //  {{{4, 1}, {8, 5}},
+    //   {{1, 2}, {5, 6}},
+    //   {{2, 3}, {6, 7}},
+    //   {{3, 4}, {7, 8}}},
+    //  {{{8, 5}, {12, 9}},
+    //   {{5, 6}, {9, 10}},
+    //   {{6, 7}, {10, 11}},
+    //   {{7, 8}, {11, 12}}}}
+
+    // Since the output size is limited to  2 rows 3 columns, the last column or row is not included in the output.
+    // This means we want the output to be equal to the following 4D vector
+    // {{{{12, 9}, {4, 1},
+    //   {{9, 10}, {1, 2}},
+    //   {{10, 11}, {2, 3}}},
+    //  {{{4, 1}, {8, 5}},
+    //   {{1, 2}, {5, 6}},
+    //   {{2, 3}, {6, 7}}}}
+
+    // Define the expected output vector
+    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7};
 
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
