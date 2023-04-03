@@ -124,7 +124,7 @@ namespace overlap
         bool wrap_input_;          // Use a wrap input function instead of padding the input to calcualte the overlap scores
         int potential_width_;      // Width of the potential synapses
         int potential_height_;     // Height of the potential synapses
-        float connected_perm_;     // Probability that a column's potential synapses are connected to the input
+        float connected_perm_;     // The permanence value that a column's potential synapses must be greater than for them to be considered "connected".
         int min_overlap_;          // Minimum overlap required for a column to be considered for inhibition
         int input_width_;          // Width of the input, equal to the number of columns in the input grid
         int input_height_;         // Height of the input, equal to the number of rows in the input grid
@@ -141,6 +141,7 @@ namespace overlap
         std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 4D vector with the size of the number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_input_pot_syn_tie_; // Store the potential inputs to every column plus the tie breaker value. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_tie_breaker_;       // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
+        std::vector<float> con_syn_input_;         // Stores the connected inputs to every column. This is the same as col_input_pot_syn_ except any synapses that are not connected are set to 0. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
     };
 
 } // namespace overlap

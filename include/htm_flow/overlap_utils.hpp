@@ -149,8 +149,23 @@ namespace overlap_utils
     // WIP
     ///-----------------------------------------------------------------------------
     ///
-    /// calcOverlap   Calculates the column synapses  between the input vector and the grid.
-    // void connected_syn_input(const std::vector<float> &j, const std::vector<float> &k, const std::vector<float> &connected_perm, int n_rows, int n_cols, tf::Taskflow &tf);
+    /// get_connected_syn_input   Calculates the inputs to the "connected" cortical column synapses, the
+    ///                           input to the column synapses that have a higher then a predefined permanence values.
+    ///                           The cortical columns are represented as a simulated 2D matrix with n_rows and n_cols.
+    ///                           The col_syn_perm and col_input_pot_syn are 1D vectors that simulate a 2D vector with the
+    ///                           size number of cortical columns x number of potential synapses. Where each row in the
+    ///                           col_syn_perm is the synapse permanence values for a column and each row in the col_input_pot_syn
+    ///                           is the potential input to the synapses for a column.
+    ///
+    /// @param[in] col_syn_perm       The permanence values of the column synapses (1D vector simulating a 2D vector).
+    /// @param[in] col_input_pot_syn  The potential input to the column synapses (1D vector of bools simulating a 2D vector of bools).
+    /// @param[in] connected_perm     The permanence value that defines a synapse as "connected".
+    /// @param[in] n_rows             The number of rows of the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of cortical columns.
+    /// @param[in] n_cols             The number of columns making up the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of potential synapses.
+    /// @param[out] check_conn        The input to the "connected" cortical column synapses (1D vector of bools simulating a 2D vector of bools).
+    /// @param[in] tf                 The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
+    template <typename T>
+    void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn, float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn, tf::Taskflow &tf);
 
     // -----------------------------------------------------------------------------
     // Header only implementations of the functions above.
@@ -507,24 +522,25 @@ namespace overlap_utils
         return m;
     }
 
-    // WIP
-    // void connected_syn_input(const std::vector<float> &j, const std::vector<float> &k, const std::vector<float> &connected_perm, int n_rows, int n_cols, tf::Taskflow &tf)
-    // {
-    //     std::vector<float> check_conn(n_rows * n_cols, 0.0f);
+    template <typename T>
+    void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn, float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn, tf::Taskflow &tf)
+    {
+        tf::Task check_conn_task = tf.emplace([&check_conn, &col_syn_perm, &col_input_pot_syn, connected_perm, n_rows, n_cols]()
+                                              { tf.for_each_index(tf::index(n_rows), tf::index(n_cols), [&](int i, int j)
+                                                                  {
+            int index = i * n_cols + j;
+            if (col_syn_perm[index] > connected_perm) {
+                check_conn[index] = col_input_pot_syn[index];  // The synapse is connected so set the input to the input potential.
+            } else
+            {
+                check_conn[index] = 0;  // The synapse is not connected so set the input to 0.
+            } }); });
 
-    //     tf::Task check_conn_task = tf.emplace([&check_conn, &j, &k, &connected_perm, n_rows, n_cols]()
-    //                                           { tf::for_each_index(tf::index(n_rows), tf::index(n_cols), [&](int i, int j)
-    //                                                                {
-    //         int index = i * n_cols + j;
-    //         if (connected_perm[0] < j[index]) {
-    //             check_conn[index] = k[index];
-    //         } }); });
+        tf::Task load_in1_task = tf.emplace([&col_syn_perm, n_rows, n_cols]() {});
+        tf::Task load_in2_task = tf.emplace([&col_input_pot_syn, n_rows, n_cols]() {});
 
-    //     tf::Task j_task = tf.emplace([&j, n_rows, n_cols]() {});
-    //     tf::Task k_task = tf.emplace([&k, n_rows, n_cols]() {});
-    //     tf::Task connected_perm_task = tf.emplace([&connected_perm, n_rows, n_cols]() {});
-
-    //     check_conn_task.succeed(j_task, k_task, connected_perm_task);
-    // }
+        // Once the check_conn_task has been added to the task graph, we can call succeed() on it to mark it as complete. This tells Taskflow that the input data is ready, and it can now schedule and execute the task.
+        check_conn_task.succeed(load_in1_task, load_in2_task);
+    }
 
 } // namespace overlap_utils

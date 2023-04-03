@@ -34,7 +34,8 @@ namespace overlap
           step_y_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).second),
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
           col_input_pot_syn_tie_(num_columns_ * potential_height * potential_width, 0.0),
-          col_tie_breaker_(num_columns_, 0.0)
+          col_tie_breaker_(num_columns_, 0.0),
+          con_syn_input_(num_columns_ * potential_height * potential_width, 0.0f)
     {
         // Initialize the random number generator
         std::random_device rd;
@@ -188,6 +189,12 @@ namespace overlap
                                               const std::vector<int> &inputGrid,
                                               const std::pair<int, int> &inputGrid_shape)
     {
+
+        // Create a Taskflow object to manage tasks and their dependencies.
+        // There should be one taskflow object for the entire program.
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
         check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
 
         // Calculate the inputs to each column
@@ -206,6 +213,7 @@ namespace overlap
         // Sum the potential inputs for every column.
         col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
 
+        overlap_utils::connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_, num_columns_, potential_height_ * potential_width_, con_syn_input_, taskflow);
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
