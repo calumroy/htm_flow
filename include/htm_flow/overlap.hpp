@@ -141,7 +141,7 @@ namespace overlap
         std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 4D vector with the size of the number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_input_pot_syn_tie_; // Store the potential inputs to every column plus the tie breaker value. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_tie_breaker_;       // Store a tie breaker value for each column to be applied to overlap scores for each column to resolve overlap score ties.
-        std::vector<float> con_syn_input_;         // Stores the connected inputs to every column. This is the same as col_input_pot_syn_ except any synapses that are not connected are set to 0. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<int> con_syn_input_;           // Stores the connected inputs to every column. This is the same as col_input_pot_syn_ except any synapses that are not connected are set to 0. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
     };
 
 } // namespace overlap

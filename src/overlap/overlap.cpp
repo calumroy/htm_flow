@@ -35,7 +35,7 @@ namespace overlap
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
           col_input_pot_syn_tie_(num_columns_ * potential_height * potential_width, 0.0),
           col_tie_breaker_(num_columns_, 0.0),
-          con_syn_input_(num_columns_ * potential_height * potential_width, 0.0f)
+          con_syn_input_(num_columns_ * potential_height * potential_width, 0)
     {
         // Initialize the random number generator
         std::random_device rd;
@@ -213,7 +213,9 @@ namespace overlap
         // Sum the potential inputs for every column.
         col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
 
-        overlap_utils::connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_, num_columns_, potential_height_ * potential_width_, con_syn_input_, taskflow);
+        overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
+                                               num_columns_, potential_height_ * potential_width_,
+                                               con_syn_input_, taskflow);
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
