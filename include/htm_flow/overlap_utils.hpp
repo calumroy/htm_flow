@@ -530,20 +530,23 @@ namespace overlap_utils
                                  tf::Taskflow &taskflow)
     {
         tf::Task check_conn_task = taskflow.emplace([&col_syn_perm, &col_input_pot_syn, connected_perm, n_rows, n_cols, &check_conn, &taskflow]()
-                                                    { taskflow.for_each_index(n_rows, n_cols, 1, [&](int i, int j)
+                                                    { taskflow.for_each_index(0, n_rows * n_cols, 1, [&](int i)
                                                                               {
-            int index = i * n_cols + j;
-            if (col_syn_perm[index] > connected_perm) {
-                check_conn[index] = col_input_pot_syn[index];  // The synapse is connected so set the input to the input potential.
-            } else
-            {
-                check_conn[index] = 0;  // The synapse is not connected so set the input to 0.
-            } }); });
-
+                const int row = i / n_cols;
+                const int col = i % n_cols;
+                // use `row` and `col` to compute the required values
+                int index = row * n_cols + col;
+                if (col_syn_perm[index] > connected_perm) 
+                {
+                    check_conn[index] = col_input_pot_syn[index];  
+                } 
+                else 
+                {
+                    check_conn[index] = 0;  // Set to 0 as the cortical column synape is not considered to be connected.
+                } }); });
         tf::Task load_in1_task = taskflow.emplace([&col_syn_perm, n_rows, n_cols]() {});
         tf::Task load_in2_task = taskflow.emplace([&col_input_pot_syn, n_rows, n_cols]() {});
 
-        // Once the check_conn_task has been added to the task graph, we can call succeed() on it to mark it as complete. This tells Taskflow that the input data is ready, and it can now schedule and execute the task.
         check_conn_task.succeed(load_in1_task, load_in2_task);
     }
 
