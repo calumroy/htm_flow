@@ -162,7 +162,7 @@ namespace overlap_utils
     /// @param[in] connected_perm     The permanence value that defines a synapse as "connected".
     /// @param[in] n_rows             The number of rows of the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of cortical columns.
     /// @param[in] n_cols             The number of columns making up the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of potential synapses.
-    /// @param[out] check_conn        The input to the "connected" cortical column synapses (1D vector of bools simulating a 2D vector of bools).
+    /// @param[out] check_conn        The output of this function. This represents the inputs to the "connected" cortical column synapses (1D vector of bools simulating a 2D vector of bools). The non connected synapses are set to false or 0. It looks identical to the col_input_pot_syn input except for the non connected synapses.
     /// @param[in] taskflow           The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
     template <typename T>
     void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn,
@@ -524,6 +524,10 @@ namespace overlap_utils
         return m;
     }
 
+    // Output is the check_conn vector.
+    // This represents the inputs to the "connected" cortical column synapses
+    // (1D vector of bools simulating a 2D vector of bools). The non connected synapses are set to false or 0.
+    // It looks identical to the col_input_pot_syn input except for the non connected synapses.
     template <typename T>
     void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn,
                                  float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn,

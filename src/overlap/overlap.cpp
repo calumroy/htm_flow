@@ -202,9 +202,13 @@ namespace overlap
 
         // TODO remove this
         // Print the col_input_pot_syn_ vector
+        LOG(INFO, "inputGrid");
         overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
         std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
+        LOG(INFO, "col_input_pot_syn_");
         overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
+        LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
+        overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
 
         // Add a masked small tiebreaker value to the col_input_pot_syn_ scores (the inputs to the columns from potential synapses).
         col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
@@ -216,6 +220,13 @@ namespace overlap
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
                                                num_columns_, potential_height_ * potential_width_,
                                                con_syn_input_, taskflow);
+
+        // TODO remove this
+        // Print the con_syn_input_ vector
+        const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
+        LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
+        overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
+
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
