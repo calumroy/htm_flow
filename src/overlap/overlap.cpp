@@ -221,7 +221,15 @@ namespace overlap
                                                num_columns_, potential_height_ * potential_width_,
                                                con_syn_input_, taskflow);
 
+        ///////////////////////////////////////////////////////////////////////////
+        // Run the constructed taskflow graph.
+        ///////////////////////////////////////////////////////////////////////////
+        tf::Future<void> fu = executor.run(taskflow);
+        fu.wait(); // block until the execution completes.
+        executor.run(taskflow).wait();
+
         // TODO remove this
+        LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
         // Print the con_syn_input_ vector
         const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
         LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));

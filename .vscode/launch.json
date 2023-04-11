@@ -58,7 +58,9 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow_tests",
-            "args": [],
+            "args": [
+                "--gtest_filter=get_connected_syn_input.test1_small"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

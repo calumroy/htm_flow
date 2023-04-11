@@ -983,3 +983,45 @@ TEST(gpu_Images2Neibs, test2_1D_nowrap_center)
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
 }
+
+TEST(get_connected_syn_input, test1_small)
+{
+    // Test the get_connected_syn_input function with a small example.
+    // This function is used to get the input to the connected synapses for each cortical column.
+
+    // Example data
+    std::vector<float> col_syn_perm2 = {0.1f, 0.2f, 0.3f, 0.4f};
+    std::vector<int> col_input_pot_syn2 = {1, 0, 1, 0};
+    float connected_perm2 = 0.25f;
+    int n_rows2 = 2;
+    int n_cols2 = 2;
+    std::vector<int> check_conn2(n_rows2 * n_cols2, 2);
+
+    tf::Taskflow taskflow2;
+    taskflow2.name("get_connected_syn_input");
+
+    // Define the expected output vector
+    std::vector<int> expected_output = {0, 0, 1, 0};
+
+    // Execute the task flow graph
+    tf::Executor executor2;
+
+    // Call the function with the example data
+    overlap_utils::get_connected_syn_input(col_syn_perm2, col_input_pot_syn2, connected_perm2, n_rows2, n_cols2,
+                                           check_conn2, taskflow2);
+
+    tf::Future<void> fu = executor2.run(taskflow2);
+    fu.wait(); // block until the execution completes.
+    executor2.run(taskflow2).wait();
+
+    //  Print the output vector for the connected synapses
+    std::cout << "Connected synapses2: ";
+
+    for (int i = 0; i < check_conn2.size(); ++i)
+    {
+        std::cout << check_conn2[i] << " ";
+    }
+    std::cout << std::endl;
+
+    ASSERT_EQ(check_conn2, expected_output);
+}
