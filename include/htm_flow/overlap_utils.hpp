@@ -629,14 +629,10 @@ namespace overlap_utils
                 if (col_syn_perm[index] > connected_perm) 
                 {
                     check_conn[index] = col_input_pot_syn[index];  
-                    // Print to std out for debugging.
-                    std::cout << "check_conn[" << index << "] = " << check_conn[index] << std::endl;
                 } 
                 else 
                 {
                     check_conn[index] = static_cast<T>(0);  // Set to 0 as the cortical column synape is not considered to be connected.
-                    // Print to std out for debugging.
-                    std::cout << "check_conn[" << index << "] = " << check_conn[index] << std::endl;
                 } }); })
                                    .name("check_conn_task");
 
