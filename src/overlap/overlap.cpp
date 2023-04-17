@@ -35,7 +35,10 @@ namespace overlap
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
           col_input_pot_syn_tie_(num_columns_ * potential_height * potential_width, 0.0),
           col_tie_breaker_(num_columns_, 0.0),
-          con_syn_input_(num_columns_ * potential_height * potential_width, 0)
+          con_syn_input_(num_columns_ * potential_height * potential_width, 0),
+          col_overlaps_(num_columns_, 0),
+          col_overlaps_tie_(num_columns_, 0.0)
+
     {
         // Initialize the random number generator
         std::random_device rd;
@@ -220,6 +223,12 @@ namespace overlap
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
                                                num_columns_, potential_height_ * potential_width_,
                                                con_syn_input_, taskflow);
+
+        // Get the actual overlap scores for every column by summing the connected synapse inputs.
+        col_overlaps_ = overlap_utils::parallel_calcOverlap(con_syn_input_);
+
+        // Add a small tie breaker value to each column's actual overlap score so draws in overlap scores can be resolved.
+        overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, taskflow);
 
         ///////////////////////////////////////////////////////////////////////////
         // Run the constructed taskflow graph.

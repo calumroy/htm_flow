@@ -143,6 +143,16 @@ namespace overlap_utils
 
     ///-----------------------------------------------------------------------------
     ///
+    /// parallel_addVectors   Adds two vectors element-wise.
+    /// @param[in] vectorVals The first vector (1D vector).
+    /// @param[in] tieBreaker The second vector (1D vector).
+    /// @param[out] gridPlusTieB The output vector (1D vector) of adding the two input vectors together.
+    /// @param[out] taskflow      The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
+    template <typename T>
+    void parallel_addVectors(const std::vector<T> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow);
+
+    ///-----------------------------------------------------------------------------
+    ///
     /// calcOverlap   Calculates the overlap between the input vector and the grid.
     ///               The input vector is a 1D vector that simulates a 2D matrix.
     ///               Calculate the potential overlap scores for every column.
@@ -167,7 +177,7 @@ namespace overlap_utils
     /// @param[in] n_rows             The number of rows of the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of cortical columns.
     /// @param[in] n_cols             The number of columns making up the col_syn_perm or col_input_pot_syn simulated 2D vector inputs. This is equal to the number of potential synapses.
     /// @param[out] check_conn        The output of this function. This represents the inputs to the "connected" cortical column synapses (1D vector of bools simulating a 2D vector of bools). The non connected synapses are set to false or 0. It looks identical to the col_input_pot_syn input except for the non connected synapses.
-    /// @param[in] taskflow           The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
+    /// @param[out] taskflow           The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
     template <typename T>
     void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn,
                                  float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn,
@@ -574,6 +584,19 @@ namespace overlap_utils
         executor.run(taskflow).wait();
 
         return result;
+    }
+
+    template <typename T>
+    void parallel_addVectors(const std::vector<T> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow)
+    {
+        tf::Task load_in1_task = taskflow.emplace([&vectorVals]() {}).name("load_in1_task");
+        tf::Task load_in2_task = taskflow.emplace([&tieBreaker]() {}).name("load_in2_task");
+        // Define the task to add the two input vectors together (parallelised over the elements of the vector)
+        auto add_vectVals = taskflow.for_each_index(0, vectorVals.size(), [&](auto i)
+                                                    { gridPlusTieB[i] = vectorVals[i] + tieBreaker[i]; });
+
+        // Define the inputs and outputs of the taskflow
+        add_vectVals.succeed(load_in1_task, load_in2_task);
     }
 
     template <typename T>
