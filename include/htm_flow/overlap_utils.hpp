@@ -155,12 +155,18 @@ namespace overlap_utils
     ///
     /// calcOverlap   Calculates the overlap between the input vector and the grid.
     ///               The input vector is a 1D vector that simulates a 2D matrix.
-    ///               Calculate the potential overlap scores for every column.
-    ///               Sum the potential inputs for every column.
+    ///               Calculate the overlap scores for every column by
+    ///               summing the inputs for every column. The input vector is
+    ///               a 1D vector that simulates a 2D matrix where each row is the inputs
+    ///               for one cortical column.
+    /// @param[in] in_grid           The input grid (1D vector) but could be simulating a 2D matrix.
+    /// @param[in] n_rows         The number of rows of the input grid simulated 2D vector. This is equal to the number of cortical columns.
+    /// @param[in] n_cols         The number of columns making up the input grid simulated 2D vector. This is equal to the number of potential synapses of each cortical column.
+    /// @param[out] out_rowsum    A 1D vector equal in length to the n_rows. Each element is the overlap score for that column and is the sum of the inputs for that cortical column.
+    /// @param[out] taskflow      The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
     template <typename T>
-    std::vector<float> parallel_calcOverlap(const std::vector<T> &b);
+    void parallel_calcOverlap(const std::vector<T> &in_grid, int n_rows, int n_cols, std::vector<T> &out_rowsum, tf::Taskflow &taskflow);
 
-    // WIP
     ///-----------------------------------------------------------------------------
     ///
     /// get_connected_syn_input   Calculates the inputs to the "connected" cortical column synapses, the
@@ -599,35 +605,29 @@ namespace overlap_utils
         add_vectVals.succeed(load_in1_task, load_in2_task);
     }
 
-    template <typename T>
-    std::vector<float> parallel_calcOverlap(const std::vector<T> &b)
+    template <typename T, typename F>
+    void parallel_calcOverlap(const std::vector<T> &in_grid, int n_rows, int n_cols, std::vector<T> &out_rowsum, tf::Taskflow &taskflow)
     {
-        // Create a vector to hold the results of the computation.
-        std::vector<float> m(b.size());
-
-        // Create a Taskflow object to manage tasks and their dependencies.
-        tf::Taskflow taskflow;
-        tf::Executor executor;
-
-        // Define a lambda function that computes the sum of each column of the input b vector.
+        tf::Task load_in1_task = taskflow.emplace([&in_grid, n_rows, n_cols]() {}).name("load_in1_task");
+        // Define a lambda function that computes the sum of each row of the input in_grid vector.
         auto compute_sum = [&](int j)
         {
-            for (int i = 0; i < b.size(); i++)
+            int row_start = j * n_cols;
+            int row_end = row_start + n_cols;
+            T row_sum = 0;
+            for (int i = row_start; i < row_end; i++)
             {
-                if (i == j)
-                {
-                    m[i] += static_cast<float>(b[i]);
-                }
+                int row_idx = i % n_cols;
+                row_sum += in_grid[i];
             }
+            out_rowsum[j] = row_sum;
         };
 
-        // Add a task to the Taskflow that applies the compute_sum function to each column of the input b vector.
-        tf::Task task_compute_sum = taskflow.for_each_index(0, static_cast<int>(b.size()), 1, compute_sum);
+        // Add a task to the Taskflow that applies the compute_sum function to each row of the input b vector.
+        tf::Task task_compute_sum = taskflow.for_each_index(0, n_rows, 1, compute_sum);
 
-        // Execute the Taskflow and wait for it to finish.
-        executor.run(taskflow).wait();
-
-        return m;
+        // Wait for the task to finish.
+        task_compute_sum.succeed(load_in1_task);
     }
 
     // Output is the check_conn vector.

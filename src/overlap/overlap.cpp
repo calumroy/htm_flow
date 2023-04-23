@@ -218,14 +218,14 @@ namespace overlap
 
         // Calculate the potential overlap scores for every column.
         // Sum the potential inputs for every column.
-        col_pot_overlaps_ = overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_);
+        overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, taskflow);
 
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
                                                num_columns_, potential_height_ * potential_width_,
                                                con_syn_input_, taskflow);
 
         // Get the actual overlap scores for every column by summing the connected synapse inputs.
-        col_overlaps_ = overlap_utils::parallel_calcOverlap(con_syn_input_);
+        overlap_utils::parallel_calcOverlap(con_syn_input_, num_columns_, potential_height_ * potential_width_, col_overlaps_, taskflow);
 
         // Add a small tie breaker value to each column's actual overlap score so draws in overlap scores can be resolved.
         overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, taskflow);
