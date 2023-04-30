@@ -35,6 +35,10 @@ namespace overlap_utils
     // Mask the grid with the tieBreaker values by multiplying them element-wise and then adding the result to the grid input.
     std::vector<float> maskTieBreaker(const std::vector<float> &grid, const std::vector<float> &tieBreaker);
 
+    // Define a function to print out a 1D vector.
+    template <typename T>
+    void print_1d_vector(const std::vector<T> &vec1D);
+
     // Define a function to print out a 1D vector that is simulating a 2D vector.
     template <typename T>
     void print_2d_vector(const std::vector<T> &vec1D, const std::pair<int, int> &vec2D_shape);
@@ -132,9 +136,9 @@ namespace overlap_utils
     /// parallel_maskTieBreaker   Applies a tie breaker to the input vector.
     ///                           The tie breaker is applied to the input vector element-wise.
     ///                           Multiply the tiebreaker values by the input grid then add them to it.
-    //                            Since the grid contains ones and zeros some tiebreaker values are
-    //                            masked out. This means the tie breaker will be different for each input
-    //                            pattern.
+    ///                           Since the grid contains ones and zeros some tiebreaker values are
+    ///                           masked out. This means the tie breaker will be different for each input
+    ///                           pattern.
     /// @param[in] grid           The input grid (1D vector) but could be simulating a 2D matrix.
     /// @param[in] tieBreaker     The tie breaker (1D vector must be same size as grid).
     /// @return                   A 1D vector of floats.
@@ -148,17 +152,16 @@ namespace overlap_utils
     /// @param[in] tieBreaker The second vector (1D vector).
     /// @param[out] gridPlusTieB The output vector (1D vector) of adding the two input vectors together.
     /// @param[out] taskflow      The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
-    template <typename T>
-    void parallel_addVectors(const std::vector<T> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow);
+    template <typename T, typename F>
+    void parallel_addVectors(const std::vector<F> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow);
 
     ///-----------------------------------------------------------------------------
     ///
     /// calcOverlap   Calculates the overlap between the input vector and the grid.
-    ///               The input vector is a 1D vector that simulates a 2D matrix.
     ///               Calculate the overlap scores for every column by
     ///               summing the inputs for every column. The input vector is
-    ///               a 1D vector that simulates a 2D matrix where each row is the inputs
-    ///               for one cortical column.
+    ///               a 1D vector that simulates a 2D matrix where each row in the
+    ///               simulated 2D matrix is the inputs for one cortical column.
     /// @param[in] in_grid           The input grid (1D vector) but could be simulating a 2D matrix.
     /// @param[in] n_rows         The number of rows of the input grid simulated 2D vector. This is equal to the number of cortical columns.
     /// @param[in] n_cols         The number of columns making up the input grid simulated 2D vector. This is equal to the number of potential synapses of each cortical column.
@@ -193,6 +196,15 @@ namespace overlap_utils
     // Header only implementations of the functions above.
     // templated functions must be defined in the header file.
     // -----------------------------------------------------------------------------
+    template <typename T>
+    void print_1d_vector(const std::vector<T> &vec1D)
+    {
+        for (int i = 0; i < vec1D.size(); i++)
+        {
+            std::cout << vec1D[i] << " ";
+        }
+        std::cout << std::endl;
+    }
 
     template <typename T>
     void print_2d_vector(const std::vector<T> &vec1D, const std::pair<int, int> &vec2D_shape)
@@ -592,39 +604,39 @@ namespace overlap_utils
         return result;
     }
 
-    template <typename T>
-    void parallel_addVectors(const std::vector<T> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow)
+    template <typename T, typename F>
+    void parallel_addVectors(const std::vector<F> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow)
     {
+        int v_len = static_cast<int>(vectorVals.size());
         tf::Task load_in1_task = taskflow.emplace([&vectorVals]() {}).name("load_in1_task");
         tf::Task load_in2_task = taskflow.emplace([&tieBreaker]() {}).name("load_in2_task");
         // Define the task to add the two input vectors together (parallelised over the elements of the vector)
-        auto add_vectVals = taskflow.for_each_index(0, vectorVals.size(), [&](auto i)
-                                                    { gridPlusTieB[i] = vectorVals[i] + tieBreaker[i]; });
+        tf::Task add_vectVals = taskflow.for_each_index(0, v_len, 1, [&](int i)
+                                                        { gridPlusTieB[i] = vectorVals[i] + tieBreaker[i]; });
 
         // Define the inputs and outputs of the taskflow
         add_vectVals.succeed(load_in1_task, load_in2_task);
     }
 
-    template <typename T, typename F>
+    template <typename T>
     void parallel_calcOverlap(const std::vector<T> &in_grid, int n_rows, int n_cols, std::vector<T> &out_rowsum, tf::Taskflow &taskflow)
     {
-        tf::Task load_in1_task = taskflow.emplace([&in_grid, n_rows, n_cols]() {}).name("load_in1_task");
-        // Define a lambda function that computes the sum of each row of the input in_grid vector.
-        auto compute_sum = [&](int j)
-        {
-            int row_start = j * n_cols;
-            int row_end = row_start + n_cols;
-            T row_sum = 0;
-            for (int i = row_start; i < row_end; i++)
-            {
-                int row_idx = i % n_cols;
-                row_sum += in_grid[i];
-            }
-            out_rowsum[j] = row_sum;
-        };
+        tf::Task load_in1_task = taskflow.emplace([&in_grid, n_rows, n_cols, &out_rowsum]() {}).name("load_in1_task");
 
         // Add a task to the Taskflow that applies the compute_sum function to each row of the input b vector.
-        tf::Task task_compute_sum = taskflow.for_each_index(0, n_rows, 1, compute_sum);
+        tf::Task task_compute_sum = taskflow.emplace([&in_grid, n_rows, n_cols, &out_rowsum, &taskflow]()
+                                                     { taskflow.for_each_index(0, n_rows, 1, [&](int j)
+                                                                               {
+                                // Define a lambda function that computes the sum of each row of the input in_grid vector.
+                                int row_start = j * n_cols;
+                                int row_end = row_start + n_cols - 1;
+                                T row_sum = 0;
+                                for (int i = row_start; i <= row_end; i++)
+                                {
+                                    int row_idx = i % n_cols;
+                                    row_sum += in_grid[i];
+                                }
+                                out_rowsum[j] = row_sum; }); });
 
         // Wait for the task to finish.
         task_compute_sum.succeed(load_in1_task);
@@ -655,7 +667,7 @@ namespace overlap_utils
                 } 
                 else 
                 {
-                    check_conn[index] = static_cast<T>(0);  // Set to 0 as the cortical column synape is not considered to be connected.
+                    check_conn[index] = static_cast<T>(0);  // Set to 0 as the cortical column synapse is not considered to be connected.
                 } }); })
                                    .name("check_conn_task");
 

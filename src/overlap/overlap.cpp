@@ -30,6 +30,7 @@ namespace overlap
           columns_height_(columns_height),
           num_columns_(columns_width * columns_height),
           col_input_pot_syn_(num_columns_ * potential_height * potential_width, 0.0),
+          col_pot_overlaps_(num_columns_, 0),
           step_x_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).first),
           step_y_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).second),
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
@@ -38,7 +39,6 @@ namespace overlap
           con_syn_input_(num_columns_ * potential_height * potential_width, 0),
           col_overlaps_(num_columns_, 0),
           col_overlaps_tie_(num_columns_, 0.0)
-
     {
         // Initialize the random number generator
         std::random_device rd;
@@ -217,17 +217,20 @@ namespace overlap
         col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
 
         // Calculate the potential overlap scores for every column.
-        // Sum the potential inputs for every column.
+        // Sum the potential inputs for every column, Calculate the col_pot_overlaps_.
         overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, taskflow);
 
+        // Calculate the connected synapse inputs for every column. The synapses who's permanence values are above the connected_perm_ threshold and are connected to an active input.
+        // Calculate the con_syn_input_.
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
                                                num_columns_, potential_height_ * potential_width_,
                                                con_syn_input_, taskflow);
 
         // Get the actual overlap scores for every column by summing the connected synapse inputs.
+        // These are the sums for each cortical column of the number of connected synapses that are connected to an active input.
         overlap_utils::parallel_calcOverlap(con_syn_input_, num_columns_, potential_height_ * potential_width_, col_overlaps_, taskflow);
 
-        // Add a small tie breaker value to each column's actual overlap score so draws in overlap scores can be resolved.
+        // Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
         overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, taskflow);
 
         ///////////////////////////////////////////////////////////////////////////
@@ -243,7 +246,12 @@ namespace overlap
         const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
         LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
         overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
-
+        LOG(INFO, "col_pot_overlaps_ shape: " + std::to_string(col_pot_overlaps_.size()));
+        overlap_utils::print_1d_vector(col_pot_overlaps_);
+        LOG(INFO, "col_overlaps_ shape: " + std::to_string(col_overlaps_.size()));
+        overlap_utils::print_1d_vector(col_overlaps_);
+        LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
+        overlap_utils::print_1d_vector(col_overlaps_tie_);
         // std::vector<std::vector<int>> connectedSynInputs =
         //     getConnectedSynInput(colSynPerm, colInputPotSyn);
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
