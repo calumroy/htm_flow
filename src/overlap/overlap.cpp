@@ -203,7 +203,7 @@ namespace overlap
         // Calculate the inputs to each column
         get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape);
 
-        // TODO remove this
+        // TODO remove these prints.
         // Print the col_input_pot_syn_ vector
         LOG(INFO, "inputGrid");
         overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
@@ -257,7 +257,8 @@ namespace overlap
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
         // colOverlapVals = addVectTieBreaker(colOverlapVals, colTieBreaker);
         // return std::make_pair(colOverlapVals, colInputPotSyn);
-
+        // dump the graph to a DOT file through std::cout
+        taskflow.dump(std::cout);
         LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }
 

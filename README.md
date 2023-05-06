@@ -47,6 +47,17 @@ To run the unit tests, use the executable `./build/htm_flow_tests`
 To list all unit tests use googletest flags `./build/htm_flow_tests --gtest_list_tests`  
 To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags `./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
 
+# Visualize Taskflow Graphs
+You can dump a taskflow graph to a DOT format and visualize it using a number of free GraphViz tools such as [GraphViz Online](https://dreampuf.github.io/GraphvizOnline/).
+
+e.g add the code 
+```
+// dump the graph to a DOT file through std::cout
+taskflow.dump(std::cout); 
+```
+
+After the graph has been dumped to the console, copy the output to the GraphViz Online tool and click the "Generate Graph" button.
+
 ## Task Flow Profiler
 To run the tests and output a task flow graph showing the thread profile use the flag
 `TF_ENABLE_PROFILER=simple.json`  e.g `TF_ENABLE_PROFILER=simple.json ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
