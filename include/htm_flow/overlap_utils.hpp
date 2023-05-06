@@ -567,7 +567,8 @@ namespace overlap_utils
                     }
                 }
             }
-        } });
+        } })
+            .name("Images2Neibs_1D");
 
         // Run the taskflow.
         executor.run(taskflow).get();
@@ -596,7 +597,7 @@ namespace overlap_utils
 
         // Add a task to the Taskflow that applies the task_multiply_then_add function to each
         // element of the input bool_grid and the tieBreaker values.
-        tf::Task task_multiply_then_add = taskflow.for_each_index(0, g_len, 1, multiply_then_add);
+        tf::Task task_multiply_then_add = taskflow.for_each_index(0, g_len, 1, multiply_then_add).name("parallel_maskTieBreaker");
 
         // Execute the Taskflow and wait for it to finish.
         executor.run(taskflow).wait();
@@ -608,11 +609,12 @@ namespace overlap_utils
     void parallel_addVectors(const std::vector<F> &vectorVals, const std::vector<T> &tieBreaker, std::vector<T> &gridPlusTieB, tf::Taskflow &taskflow)
     {
         int v_len = static_cast<int>(vectorVals.size());
-        tf::Task load_in1_task = taskflow.emplace([&vectorVals]() {}).name("load_in1_task");
-        tf::Task load_in2_task = taskflow.emplace([&tieBreaker]() {}).name("load_in2_task");
+        tf::Task load_in1_task = taskflow.emplace([&vectorVals]() {}).name("addVectors_in1");
+        tf::Task load_in2_task = taskflow.emplace([&tieBreaker]() {}).name("addVectors_in2");
         // Define the task to add the two input vectors together (parallelised over the elements of the vector)
         tf::Task add_vectVals = taskflow.for_each_index(0, v_len, 1, [&](int i)
-                                                        { gridPlusTieB[i] = vectorVals[i] + tieBreaker[i]; });
+                                                        { gridPlusTieB[i] = vectorVals[i] + tieBreaker[i]; })
+                                    .name("addVectors");
 
         // Define the inputs and outputs of the taskflow
         add_vectVals.succeed(load_in1_task, load_in2_task);
@@ -636,7 +638,8 @@ namespace overlap_utils
                                     int row_idx = i % n_cols;
                                     row_sum += in_grid[i];
                                 }
-                                out_rowsum[j] = row_sum; }); });
+                                out_rowsum[j] = row_sum; }); })
+                                        .name("calcOverlap");
 
         // Wait for the task to finish.
         task_compute_sum.succeed(load_in1_task);
@@ -669,7 +672,7 @@ namespace overlap_utils
                 {
                     check_conn[index] = static_cast<T>(0);  // Set to 0 as the cortical column synapse is not considered to be connected.
                 } }); })
-                                   .name("check_conn_task");
+                                   .name("get_connected_syn_input");
 
         check_conn_task.succeed(load_in1_task, load_in2_task);
     }

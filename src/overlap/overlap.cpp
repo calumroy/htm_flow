@@ -233,6 +233,9 @@ namespace overlap
         // Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
         overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, taskflow);
 
+        // dump the graph to a DOT file through std::cout
+        taskflow.dump(std::cout);
+
         ///////////////////////////////////////////////////////////////////////////
         // Run the constructed taskflow graph.
         ///////////////////////////////////////////////////////////////////////////
@@ -257,8 +260,7 @@ namespace overlap
         // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
         // colOverlapVals = addVectTieBreaker(colOverlapVals, colTieBreaker);
         // return std::make_pair(colOverlapVals, colInputPotSyn);
-        // dump the graph to a DOT file through std::cout
-        taskflow.dump(std::cout);
+
         LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }
 
