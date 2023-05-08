@@ -134,10 +134,13 @@ namespace overlap
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
         std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<int> col_inputs_shape_;  // Equal to {columns_height_, columns_width_, potential_height_, potential_width_}, the shape of the col_input_pot_syn_ vector. A more convenient way to pass the shape of the col_input_pot_syn_ vector around.
         // Store the potential overlap value for every column
         std::vector<float> col_pot_overlaps_;      // This is a 1D vector with the size number of columns.
         int step_x_;                               // Step size in the x direction for the potential synapses
         int step_y_;                               // Step size in the y direction for the potential synapses
+        const std::pair<int, int> neib_shape_;     // Equal to {potential_height_, potential_width_}, the shape of the neighborhood of a column. This is a pair of ints representing the height and width of the neighborhood.
+        const std::pair<int, int> neib_step_;      // Equal to {step_x_, step_y_}, the step size in the x and y direction for the neighborhood. This is a pair of ints representing the step size in the x and y direction.
         std::mt19937 rng_;                         // Mersenne Twister random number generator
         std::vector<float> pot_syn_tie_breaker_;   // Potential synapse tie breaker matrix. It contains small values that help resolve any ties in potential overlap scores for columns. This is a 1D vector simulating a 4D vector with the size of the number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<float> col_input_pot_syn_tie_; // Store the potential inputs to every column plus the tie breaker value. This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_

@@ -30,9 +30,12 @@ namespace overlap
           columns_height_(columns_height),
           num_columns_(columns_width * columns_height),
           col_input_pot_syn_(num_columns_ * potential_height * potential_width, 0.0),
+          col_inputs_shape_{columns_height_, columns_width_, potential_height_, potential_width_},
           col_pot_overlaps_(num_columns_, 0),
           step_x_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).first),
           step_y_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).second),
+          neib_shape_(potential_height_, potential_width_),
+          neib_step_(step_y_, step_x_),
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
           col_input_pot_syn_tie_(num_columns_ * potential_height * potential_width, 0.0),
           col_tie_breaker_(num_columns_, 0.0),
@@ -174,17 +177,8 @@ namespace overlap
         const int output_size = num_columns_ * potential_height_ * potential_width_;
         assert(col_inputs.size() == output_size);
 
-        std::vector<int> col_inputs_shape = {columns_height_,
-                                             columns_width_,
-                                             potential_height_,
-                                             potential_width_};
-
-        // Define the neighbourhood shape and step for the parallel_Images2Neibs_1D
-        const std::pair<int, int> neib_shape = std::make_pair(potential_height_, potential_width_);
-        const std::pair<int, int> neib_step = std::make_pair(step_y_, step_x_);
-
         // Call the parallel_Images2Neibs_1D function
-        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape, inputGrid, inputGrid_shape, neib_shape, neib_step, wrap_input_, center_pot_synapses_, taskflow);
+        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape_, inputGrid, inputGrid_shape, neib_shape_, neib_step_, wrap_input_, center_pot_synapses_, taskflow);
     }
 
     void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
