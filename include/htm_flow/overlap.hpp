@@ -117,7 +117,8 @@ namespace overlap
         ///             potential pool of inputs that one column in a layer can connect too. The number of rows
         ///             is equal to the number of columns in the columns grid. The number of columns is equal to
         ///             the number of potential synapses for each column.
-        void get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape);
+        /// @param[out] taskflow A tf::Taskflow object that the function gets added to. This can be run by a taskflow executor.
+        void get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, tf::Taskflow &taskflow);
 
         // Member variables
         bool center_pot_synapses_; // Specifies if the potential synapses are centered over the columns

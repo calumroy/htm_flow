@@ -110,7 +110,7 @@ namespace overlap_utils
     ///                                 The second dimension represents the column index of the input matrix.
     ///                                 The third dimension represents the row index of the neighbourhood patch within the sliding window.
     ///                                 The fourth dimension represents the column index of the neighbourhood patch within the sliding window.
-    /// @param[out] output        The output matrix (1D vector of ints). The output is passed in as a reference parameter to avoid copying the output.
+    /// @param[out] output        The output matrix (1D vector of ints) simulating a 4D vector of ints. Each element stores the output patch for each element of the input matrix.
     /// @param[out] output_shape  The shape of the output matrix (numInputRows, numInputCols, numNeibRows, numNeibCols). Used to interpret the 1D output vector as a 4D matrix.
     /// @param[in] input         The input matrix (2D vector of ints).
     /// @param[in] input_shape   The shape of the input matrix (width, height) = (numcols, numrows). Used to interpret the 1D input vector as a 2D matrix.
@@ -118,7 +118,7 @@ namespace overlap_utils
     /// @param[in] neib_step     The step size of the sliding window.
     /// @param[in] wrap_mode     Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
     /// @param[in] center_neigh  Whether to center the neighbourhood patch around the input element or not. If not "false" then place the neighbourhood patch top left corner at the input element.
-    /// @return                  A 4D vector of ints. Each element stores the output patch for each element of the input matrix.
+    /// @param[out] taskflow     A tf::Taskflow object that this functions tasks get added to. This can then be used by a taskflow executor to run this function in parallel.
     ///-----------------------------------------------------------------------------
     template <typename T>
     void parallel_Images2Neibs_1D(
@@ -128,8 +128,9 @@ namespace overlap_utils
         const std::pair<int, int> &input_shape,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool wrap_mode,
-        bool center_neigh);
+        bool &wrap_mode,
+        bool &center_neigh,
+        tf::Taskflow &taskflow);
 
     ///-----------------------------------------------------------------------------
     ///
@@ -477,51 +478,49 @@ namespace overlap_utils
         const std::pair<int, int> &input_shape,
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
-        bool wrap_mode,
-        bool center_neigh)
+        bool &wrap_mode,
+        bool &center_neigh,
+        tf::Taskflow &taskflow)
     {
         // Determine the dimensions of the input matrix.
-        const int input_rows = input_shape.first;
-        const int input_cols = input_shape.second;
+        // Number of input rows = input_shape.first;
+        // Number of input columns = input_shape.second;
 
         // Check that the neighbourhood shape is valid.
-        if (neib_shape.first > input_rows || neib_shape.second > input_cols)
+        if (neib_shape.first > input_shape.first || neib_shape.second > input_shape.second)
         {
             throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
         }
 
-        // Set the default step size to the neighbourhood shape.
-        std::pair<int, int> step = neib_step;
-        if (step.first == 0 && step.second == 0)
-        {
-            step = neib_shape;
-        }
+        // Check the output matrix size before creating the task for this function. This is a sanity check.
+        const int check_no_output_rows = static_cast<int>(output_shape.at(0));
+        const int check_no_output_cols = static_cast<int>(output_shape.at(1));
+        const int check_output_channels = neib_shape.first * neib_shape.second;
+        const int check_output_size = check_no_output_rows * check_no_output_cols * check_output_channels;
+        // Assert the output vector is the correct size.
+        assert(output.size() == check_output_size);
 
-        // Check the output matrix size.
+        //////////////////// Define the taskflow lambda function /////////////////////////////////
+        // Where the real work is defined!
+        // We must pass in all the variables the lambda function uses by reference and make sure these variables will not go out of
+        // scope when the task is executed later on. Note all the variables are passed in by reference to the parallel_Images2Neibs_1D function as well.
+        tf::Task load_in1_task = taskflow.emplace([&output, &output_shape, &input, &input_shape, &neib_shape, &neib_step, &wrap_mode, &center_neigh]() {}).name("inputs");
+
+        // Parallised over the rows of the input matrix, each row runs in it's own thread.
+        tf::Task main_task = taskflow.for_each_index(0, input_shape.first, neib_step.first, [&](int i)
+                                                     {
+        // Create these in the lambda otherwise they will go out of scope and cause a segfault as the task is executed later on after the 
+        // function has returned.
         const int no_output_rows = static_cast<int>(output_shape.at(0));
         const int no_output_cols = static_cast<int>(output_shape.at(1));
         const int output_channels = neib_shape.first * neib_shape.second;
-        const int output_size = no_output_rows * no_output_cols * output_channels;
 
-        // Define the maximum output shape (the total number of convolutions that can be achieved with the given input size and step sizes)
-        const int max_output_rows = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));
-        const int max_output_cols = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second));
-
-        // Assert the output vector is the correct size.
-        assert(output.size() == output_size);
-
-        tf::Taskflow taskflow;
-        tf::Executor executor;
-
-        // Parallelised over the rows of the input matrix, each row runs in it's own thread.
-        taskflow.for_each_index(0, input_rows, neib_step.first, [&](int i)
-                                {
         const int output_row = i / neib_step.first;
 
         // Make sure the output row is within the maximum output size.
         if (output_row < no_output_rows)
         {
-            for (int j = 0; j < input_cols; j += neib_step.second)
+            for (int j = 0; j < input_shape.second; j += neib_step.second)
             {
                 const int output_col = j / neib_step.second;
 
@@ -545,16 +544,16 @@ namespace overlap_utils
 
                             if (wrap_mode)
                             {
-                                x = (x + input_rows) % input_rows;
-                                y = (y + input_cols) % input_cols;
+                                x = (x + input_shape.first) % input_shape.first;
+                                y = (y + input_shape.second) % input_shape.second;
                             }
 
-                            if (x >= 0 && x < input_rows && y >= 0 && y < input_cols)
+                            if (x >= 0 && x < input_shape.first && y >= 0 && y < input_shape.second)
                             {
                                 const int output_channel = (ii * neib_shape.second) + jj;
                                 const int output_index = ((output_row * no_output_cols) + output_col) * output_channels + output_channel;
 
-                                output[output_index] = input[x * input_cols + y];
+                                output[output_index] = input[x * input_shape.second + y];
                             }
                             else
                             {
@@ -568,10 +567,9 @@ namespace overlap_utils
                 }
             }
         } })
-            .name("Images2Neibs_1D");
+                                 .name("Images2Neibs_1D");
 
-        // Run the taskflow.
-        executor.run(taskflow).get();
+        load_in1_task.precede(main_task);
     }
 
     template <typename T>

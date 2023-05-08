@@ -162,7 +162,7 @@ namespace overlap
         assert(potential_width_ * potential_height_ == colSynPerm_shape.second);
     }
 
-    void OverlapCalculator::get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape)
+    void OverlapCalculator::get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
         // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputHeight and inputWidth
@@ -184,7 +184,7 @@ namespace overlap
         const std::pair<int, int> neib_step = std::make_pair(step_y_, step_x_);
 
         // Call the parallel_Images2Neibs_1D function
-        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape, inputGrid, inputGrid_shape, neib_shape, neib_step, wrap_input_, center_pot_synapses_);
+        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape, inputGrid, inputGrid_shape, neib_shape, neib_step, wrap_input_, center_pot_synapses_, taskflow);
     }
 
     void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
@@ -200,8 +200,10 @@ namespace overlap
 
         check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
 
-        // Calculate the inputs to each column
-        get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape);
+        // Calculate the inputs to each column.
+        tf::Taskflow tf1;
+        get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape, tf1);
+        tf::Task f1_task = taskflow.composed_of(tf1).name("get_col_inputs");
 
         // TODO remove these prints.
         // Print the col_input_pot_syn_ vector

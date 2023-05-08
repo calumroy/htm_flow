@@ -609,8 +609,14 @@ TEST(parallel_Images2Neibs_1D, test1_small)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    tf::Taskflow taskflow;
+
     // Call the parallel_Images2Neibs_1D function
-    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Create a taskflow executor to run the above taskflow
+    tf::Executor executor;
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
@@ -665,8 +671,14 @@ TEST(parallel_Images2Neibs_1D, test2_nowrap_center)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    tf::Taskflow taskflow;
+
     // Call the parallel_Images2Neibs_1D function
-    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Create a taskflow executor to run the above taskflow
+    tf::Executor executor;
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
@@ -726,8 +738,13 @@ TEST(parallel_Images2Neibs_1D, test3_asymmetrical)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    tf::Taskflow taskflow;
     // Call the parallel_Images2Neibs_1D function
-    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Create a taskflow executor to run the above taskflow
+    tf::Executor executor;
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
@@ -797,8 +814,13 @@ TEST(parallel_Images2Neibs_1D, test4_limit_output_size)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    tf::Taskflow taskflow;
     // Call the parallel_Images2Neibs_1D function
-    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Create a taskflow executor to run the above taskflow
+    tf::Executor executor;
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
@@ -865,8 +887,13 @@ TEST(parallel_Images2Neibs_1D, test5_limit_output_size_2)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    tf::Taskflow taskflow;
     // Call the parallel_Images2Neibs_1D function
-    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    parallel_Images2Neibs_1D(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Create a taskflow executor to run the above taskflow
+    tf::Executor executor;
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
