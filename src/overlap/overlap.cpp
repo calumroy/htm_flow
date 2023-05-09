@@ -186,48 +186,51 @@ namespace overlap
                                               const std::vector<int> &inputGrid,
                                               const std::pair<int, int> &inputGrid_shape)
     {
+        check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
 
         // Create a Taskflow object to manage tasks and their dependencies.
         // There should be one taskflow object for the entire program.
         tf::Taskflow taskflow;
         tf::Executor executor;
 
-        check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
+        // Create sub taskflow graphs for each task that must be run after the previous task.
+        tf::Taskflow tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9, tf10;
 
         // Calculate the inputs to each column.
-        tf::Taskflow tf1;
         get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape, tf1);
-        tf::Task f1_task = taskflow.composed_of(tf1).name("get_col_inputs");
-
-        // TODO remove these prints.
-        // Print the col_input_pot_syn_ vector
-        LOG(INFO, "inputGrid");
-        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
-        std::vector<int> col_input_pot_shape = {columns_height_, columns_width_, potential_height_, potential_width_};
-        LOG(INFO, "col_input_pot_syn_");
-        overlap_utils::print_4d_vector(col_input_pot_syn_, col_input_pot_shape);
-        LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
-        overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
 
         // Add a masked small tiebreaker value to the col_input_pot_syn_ scores (the inputs to the columns from potential synapses).
-        col_input_pot_syn_tie_ = overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_);
+        overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_, col_input_pot_syn_tie_, tf2);
 
         // Calculate the potential overlap scores for every column.
         // Sum the potential inputs for every column, Calculate the col_pot_overlaps_.
-        overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, taskflow);
+        overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, tf3);
 
         // Calculate the connected synapse inputs for every column. The synapses who's permanence values are above the connected_perm_ threshold and are connected to an active input.
         // Calculate the con_syn_input_.
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
                                                num_columns_, potential_height_ * potential_width_,
-                                               con_syn_input_, taskflow);
+                                               con_syn_input_, tf4);
 
         // Get the actual overlap scores for every column by summing the connected synapse inputs.
         // These are the sums for each cortical column of the number of connected synapses that are connected to an active input.
-        overlap_utils::parallel_calcOverlap(con_syn_input_, num_columns_, potential_height_ * potential_width_, col_overlaps_, taskflow);
+        overlap_utils::parallel_calcOverlap(con_syn_input_, num_columns_, potential_height_ * potential_width_, col_overlaps_, tf5);
 
         // Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
-        overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, taskflow);
+        overlap_utils::parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, tf6);
+
+        // Set the order of the tasks.
+        tf::Task f1_task = taskflow.composed_of(tf1).name("get_col_inputs");
+        tf::Task f2_task = taskflow.composed_of(tf2).name("parallel_maskTieBreaker");
+        tf::Task f3_task = taskflow.composed_of(tf3).name("parallel_calcOverlap");
+        tf::Task f4_task = taskflow.composed_of(tf4).name("get_connected_syn_input");
+        tf::Task f5_task = taskflow.composed_of(tf5).name("parallel_calcOverlap");
+        tf::Task f6_task = taskflow.composed_of(tf6).name("parallel_addVectors");
+        f1_task.precede(f2_task);
+        f2_task.precede(f3_task);
+        f2_task.precede(f4_task);
+        f4_task.precede(f5_task);
+        f5_task.precede(f6_task);
 
         // dump the graph to a DOT file through std::cout
         taskflow.dump(std::cout);
@@ -238,6 +241,15 @@ namespace overlap
         tf::Future<void> fu = executor.run(taskflow);
         fu.wait(); // block until the execution completes.
         executor.run(taskflow).wait();
+
+        // TODO remove these print outs.
+        // Print the col_input_pot_syn_ vector
+        LOG(INFO, "inputGrid");
+        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+        LOG(INFO, "col_input_pot_syn_");
+        overlap_utils::print_4d_vector(col_input_pot_syn_, col_inputs_shape_);
+        LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
+        overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
 
         // TODO remove this
         LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
@@ -251,11 +263,6 @@ namespace overlap
         overlap_utils::print_1d_vector(col_overlaps_);
         LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
         overlap_utils::print_1d_vector(col_overlaps_tie_);
-        // std::vector<std::vector<int>> connectedSynInputs =
-        //     getConnectedSynInput(colSynPerm, colInputPotSyn);
-        // std::vector<std::vector<int>> colOverlapVals = calcOverlap(connectedSynInputs);
-        // colOverlapVals = addVectTieBreaker(colOverlapVals, colTieBreaker);
-        // return std::make_pair(colOverlapVals, colInputPotSyn);
 
         LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }

@@ -142,9 +142,10 @@ namespace overlap_utils
     ///                           pattern.
     /// @param[in] grid           The input grid (1D vector) but could be simulating a 2D matrix.
     /// @param[in] tieBreaker     The tie breaker (1D vector must be same size as grid).
-    /// @return                   A 1D vector of floats.
+    /// @param[out] output        The output grid (1D vector) but could be simulating a 2D matrix.
+    /// @param[out] taskflow      The taskflow graph object.
     template <typename T>
-    std::vector<float> parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker);
+    void parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker, std::vector<float> &output, tf::Taskflow &taskflow);
 
     ///-----------------------------------------------------------------------------
     ///
@@ -573,16 +574,10 @@ namespace overlap_utils
     }
 
     template <typename T>
-    std::vector<float> parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker)
+    void parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker, std::vector<float> &output, tf::Taskflow &taskflow)
     {
-        // Create a vector to hold the results of the computation.
-        std::vector<float> result(bool_grid.size());
-
-        int g_len = bool_grid.size();
-
-        // Create a Taskflow object to manage tasks and their dependencies
-        tf::Taskflow taskflow;
-        tf::Executor executor;
+        // Check that the output vector is the correct size.
+        assert(output.size() == bool_grid.size());
 
         // Define a lambda function that multiplies each element of the input bool_grid
         // with the corresponding element of the tieBreaker values, and adds the result
@@ -590,17 +585,12 @@ namespace overlap_utils
         auto multiply_then_add = [&](int i)
         {
             // Output is a float.
-            result[i] = static_cast<float>(bool_grid[i] * tieBreaker[i]) + bool_grid[i];
+            output[i] = static_cast<float>(bool_grid[i] * tieBreaker[i]) + bool_grid[i];
         };
 
         // Add a task to the Taskflow that applies the task_multiply_then_add function to each
         // element of the input bool_grid and the tieBreaker values.
-        tf::Task task_multiply_then_add = taskflow.for_each_index(0, g_len, 1, multiply_then_add).name("parallel_maskTieBreaker");
-
-        // Execute the Taskflow and wait for it to finish.
-        executor.run(taskflow).wait();
-
-        return result;
+        tf::Task task_multiply_then_add = taskflow.for_each_index(0, static_cast<int>(bool_grid.size()), 1, multiply_then_add).name("parallel_maskTieBreaker");
     }
 
     template <typename T, typename F>
