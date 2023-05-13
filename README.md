@@ -28,8 +28,14 @@ To run the task flow with GPU support, you need to have CUDA installed on your s
 This requires installing CUDA compiler nvcc.   
 See https://taskflow.github.io/taskflow/CompileTaskflowWithCUDA.html  
 
-To build a gpu example use nvcc e.g
+once you have CUDA installed, you can build the project with GPU support using the build script.
+```
+build.sh
+```
+
+To build a gpu example using nvcc e.g
 `/usr/local/cuda-11.7/bin/nvcc -std=c++17 -I ./include/ --extended-lambda ./cuda/task_gpu_test.cu -o gpu_test`
+This is not needed however as the build script will automatically build the cuda examples.
 
 Info on CUDA cmake building
 https://developer.nvidia.com/blog/building-cuda-applications-cmake/
