@@ -242,27 +242,27 @@ namespace overlap
         fu.wait(); // block until the execution completes.
         executor.run(taskflow).wait();
 
-        // TODO remove these print outs.
-        // Print the col_input_pot_syn_ vector
-        LOG(INFO, "inputGrid");
-        overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
-        LOG(INFO, "col_input_pot_syn_");
-        overlap_utils::print_4d_vector(col_input_pot_syn_, col_inputs_shape_);
-        LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
-        overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
+        // // TODO remove these print outs.
+        // // Print the col_input_pot_syn_ vector
+        // LOG(INFO, "inputGrid");
+        // overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+        // LOG(INFO, "col_input_pot_syn_");
+        // overlap_utils::print_4d_vector(col_input_pot_syn_, col_inputs_shape_);
+        // LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
+        // overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
 
-        // TODO remove this
-        LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
-        // Print the con_syn_input_ vector
-        const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
-        LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
-        overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
-        LOG(INFO, "col_pot_overlaps_ shape: " + std::to_string(col_pot_overlaps_.size()));
-        overlap_utils::print_1d_vector(col_pot_overlaps_);
-        LOG(INFO, "col_overlaps_ shape: " + std::to_string(col_overlaps_.size()));
-        overlap_utils::print_1d_vector(col_overlaps_);
-        LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
-        overlap_utils::print_1d_vector(col_overlaps_tie_);
+        // // TODO remove this
+        // LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
+        // // Print the con_syn_input_ vector
+        // const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
+        // LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
+        // overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
+        // LOG(INFO, "col_pot_overlaps_ shape: " + std::to_string(col_pot_overlaps_.size()));
+        // overlap_utils::print_1d_vector(col_pot_overlaps_);
+        // LOG(INFO, "col_overlaps_ shape: " + std::to_string(col_overlaps_.size()));
+        // overlap_utils::print_1d_vector(col_overlaps_);
+        // LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
+        // overlap_utils::print_1d_vector(col_overlaps_tie_);
 
         LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }

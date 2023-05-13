@@ -590,7 +590,7 @@ namespace overlap_utils
 
         // Add a task to the Taskflow that applies the task_multiply_then_add function to each
         // element of the input bool_grid and the tieBreaker values.
-        tf::Task task_multiply_then_add = taskflow.for_each_index(0, static_cast<int>(bool_grid.size()), 1, multiply_then_add).name("parallel_maskTieBreaker");
+        tf::Task task_multiply_then_add = taskflow.for_each_index(0, static_cast<int>(bool_grid.size()), 1, multiply_then_add).name("multiply_then_add");
     }
 
     template <typename T, typename F>

@@ -20,13 +20,13 @@ int main(int argc, char *argv[])
 
     using overlap::OverlapCalculator;
 
-    int pot_width = 3;
-    int pot_height = 3;
+    int pot_width = 30;
+    int pot_height = 30;
     bool center_pot_synapses = true;
-    int num_input_rows = 4;
-    int num_input_cols = 5;
-    int num_column_rows = 4;
-    int num_column_cols = 4;
+    int num_input_rows = 40;
+    int num_input_cols = 50;
+    int num_column_rows = 400;
+    int num_column_cols = 400;
     float connected_perm = 0.3;
     int min_overlap = 3;
     int num_pot_syn = pot_width * pot_height;
