@@ -198,8 +198,9 @@ namespace gpu_overlap
                                 .name("allocate_out");
 
         // create a cudaFlow to run the sliding_window_kernel.
-        auto cudaFlow = taskflow.emplace([&](tf::cudaFlow &cf)
+        auto cudaFlow = taskflow.emplace([&]()
                                          {
+                                            tf::cudaFlow cf;
                                             // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
                                             auto copy_in = cf.memcpy(d_input, input.data(), rows * cols * sizeof(int)).name("copy_in");
 
@@ -219,7 +220,11 @@ namespace gpu_overlap
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
                                             auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
                                             sliding_window.succeed(copy_in)
-                                                .precede(copy_out); })
+                                                .precede(copy_out); 
+                                                
+                                        tf::cudaStream stream;
+                                        cf.run(stream);
+                                        stream.synchronize(); })
                             .name("cudaFlow");
 
         auto free = taskflow.emplace([&]()

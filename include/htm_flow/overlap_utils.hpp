@@ -17,7 +17,7 @@
 #include <vector>
 #include <tuple>
 #include <taskflow/taskflow.hpp>
-
+#include <taskflow/algorithm/for_each.hpp>
 namespace overlap_utils
 {
     // Define a function to convert 2D indices to 1D indices

@@ -70,6 +70,11 @@ To run the tests and output a task flow graph showing the thread profile use the
 This will output a json file with the task flow profile.
 Paste this into https://taskflow.github.io/tfprof/ to get a nice view of the profile.
 
+Top get just a terminal output of the profiling data use the TF_ENABLE_PROFILER flag with no file name.  
+```
+TF_ENABLE_PROFILER= ./build/htm_flow_tests
+```
+
 ## Valgrind callgrind profiler
 ```
 valgrind --tool=callgrind ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test5_large

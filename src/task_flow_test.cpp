@@ -1,4 +1,5 @@
 #include <taskflow/taskflow.hpp> // Taskflow is header-only
+#include <taskflow/algorithm/for_each.hpp>
 
 // import task_gpu_test local library
 #include <task_gpu_test.hpp>
