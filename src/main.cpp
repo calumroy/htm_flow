@@ -5,6 +5,9 @@
 // Include the gpu_overlap.hpp header file form the gpu_overlap library
 #include <overlap/gpu_overlap.hpp>
 
+#include <utilities/logger.hpp>
+#include <utilities/stopwatch.hpp>
+
 // Function: main
 int main(int argc, char *argv[])
 {
@@ -68,6 +71,10 @@ int main(int argc, char *argv[])
                                   min_overlap,
                                   wrap_input);
 
+    LOG(INFO, "Starting the overlap calculation.");
+    START_STOPWATCH();
     // Run the overlap calculation on the CPU
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
+    STOP_STOPWATCH();
+    PRINT_ELAPSED_TIME();
 }
