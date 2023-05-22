@@ -165,7 +165,7 @@ namespace overlap
         assert(potential_width_ * potential_height_ == colSynPerm_shape.second);
     }
 
-    void OverlapCalculator::get_col_inputs(std::vector<int> &col_inputs, const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, tf::Taskflow &taskflow)
+    void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
         // inputGrid is a 1D vector simulating a 2D vector (matrix) of the input grid with the inputHeight and inputWidth
@@ -197,7 +197,7 @@ namespace overlap
         tf::Taskflow tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9, tf10;
 
         // Calculate the inputs to each column.
-        get_col_inputs(col_input_pot_syn_, inputGrid, inputGrid_shape, tf1);
+        get_col_inputs(inputGrid, inputGrid_shape, col_input_pot_syn_, tf1);
 
         // Add a masked small tiebreaker value to the col_input_pot_syn_ scores (the inputs to the columns from potential synapses).
         overlap_utils::parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_, col_input_pot_syn_tie_, tf2);
