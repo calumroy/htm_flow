@@ -44,6 +44,8 @@ int main(int argc, char *argv[])
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0, 1);
+    // TODO: remove this.
+    // This is slow and only for testing.
     for (int i = 0; i < num_columns * num_pot_syn; ++i)
     {
         col_syn_perm[i] = dis(gen);
@@ -59,6 +61,7 @@ int main(int argc, char *argv[])
         new_input_mat[i] = dis2(gen);
     }
 
+    START_STOPWATCH();
     // Create an instance of the overlap calculation class
     OverlapCalculator overlapCalc(pot_width,
                                   pot_height,
@@ -72,7 +75,7 @@ int main(int argc, char *argv[])
                                   wrap_input);
 
     LOG(INFO, "Starting the overlap calculation.");
-    START_STOPWATCH();
+
     // Run the overlap calculation on the CPU
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
     STOP_STOPWATCH();

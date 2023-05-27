@@ -49,10 +49,10 @@ namespace overlap
         // Make the potential synapse tie breaker matrix.
         // Construct a tiebreaker matrix for the columns potential synapses.
         // It contains small values that help resolve any ties in potential overlap scores for columns.
-        make_pot_syn_tie_breaker(pot_syn_tie_breaker_, std::make_pair(num_columns_, potential_height * potential_width));
+        parallel_make_pot_syn_tie_breaker(pot_syn_tie_breaker_, std::make_pair(num_columns_, potential_height * potential_width));
 
         // Make the column input potential synapse tie breaker matrix.
-        make_col_tie_breaker(col_tie_breaker_, columns_height_, columns_width_);
+        parallel_make_col_tie_breaker(col_tie_breaker_, columns_height_, columns_width_);
 
         LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
@@ -90,6 +90,41 @@ namespace overlap
         }
     }
 
+    void OverlapCalculator::parallel_make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size)
+    {
+        int input_height = size.first;
+        int input_width = size.second;
+
+        float n = static_cast<float>(input_width);
+        float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);
+
+        std::vector<float> rows_tie(input_width);
+        for (int i = 0; i < input_width; ++i)
+        {
+            rows_tie[i] = (i + 1) * norm_value;
+        }
+
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        // Create a task for each row
+        for (int j = 0; j < input_height; ++j)
+        {
+            taskflow.emplace([&pot_syn_tie_breaker, &rows_tie, j, input_width]()
+                             {
+            std::mt19937 rng(1);
+            std::vector<float> row(input_width);
+            std::sample(rows_tie.begin(), rows_tie.end(), row.begin(), input_width, rng);
+            for (int i = 0; i < input_width; ++i)
+            {
+                pot_syn_tie_breaker[j * input_width + i] = row[i];
+            } });
+        }
+
+        // Execute the taskflow
+        executor.run(taskflow).wait();
+    }
+
     void OverlapCalculator::make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth)
     {
         int numColumns = columnsWidth * columnsHeight;
@@ -121,6 +156,33 @@ namespace overlap
                 tieBreaker[j] = ((columnsHeight - rowNum) * columnsWidth + colNum) * normValue;
             }
         }
+    }
+
+    void OverlapCalculator::parallel_make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth)
+    {
+        int numColumns = columnsWidth * columnsHeight;
+        float normValue = 1.0f / float(2 * numColumns + 2);
+
+        std::mt19937 gen(1);
+
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        taskflow.for_each_index(0, static_cast<int>(tieBreaker.size()), 1, [&tieBreaker, columnsHeight, columnsWidth, normValue, &gen](int j)
+                                {
+        int rowNum = std::floor(j / columnsWidth);
+        int colNum = j % columnsWidth;
+
+        if (std::uniform_real_distribution<float>(0, 1)(gen) > 0.5f) {
+            // Some positions are bias to the bottom left
+            tieBreaker[j] = ((rowNum + 1) * columnsWidth + (columnsWidth - colNum - 1)) * normValue;
+        } else {
+            // Some Positions are bias to the top right
+            tieBreaker[j] = ((columnsHeight - rowNum) * columnsWidth + colNum) * normValue;
+        } })
+            .name("make_col_tie_breaker_loop");
+
+        executor.run(taskflow).wait();
     }
 
     std::pair<int, int> OverlapCalculator::get_step_sizes(int input_width, int input_height,

@@ -80,6 +80,11 @@ namespace overlap
         ///------------------------------------------------------------------------------------
         void make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size);
 
+        ///------------------------------------------------------------------------------------
+        ///
+        /// parallel_make_pot_syn_tie_breaker - Same as the make_pot_syn_tie_breaker function but uses taskflow to parallelize the process.
+        void parallel_make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size);
+
         ///-----------------------------------------------------------------------------
         ///
         /// makeColTieBreaker Creates a tie-breaker vector with small values that are added
@@ -95,6 +100,11 @@ namespace overlap
         /// @param[in] columnsHeight An integer representing the height of the columns grid.
         ///-----------------------------------------------------------------------------
         void make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// parallel_make_col_tie_breaker - Same as the make_col_tie_breaker function but uses taskflow to parallelize the process.
+        void parallel_make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth);
 
         // Check the new input parameter sizes to make sure they are the same as the inital input sizes and
         // the 1D vectors are the right size for the simulated 2D vectors they represent.

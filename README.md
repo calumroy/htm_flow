@@ -82,6 +82,7 @@ valgrind --tool=callgrind ./build/htm_flow_tests --gtest_filter=parallel_Images2
 This will output a callgrind.out file.
 To view the profile use kcachegrind `sudo apt install kcachegrind`  
 e.g `kcachegrind callgrind.out.1234`
+Valgrind gives the best profiling data when compiled with debug symbols `./build.sh Debug`  
 
 ## Memory leak check
 heaptrack `sudo apt install heaptrack` and `sudo apt install heaptrack-gui`
