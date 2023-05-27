@@ -948,8 +948,15 @@ TEST(gpu_Images2Neibs, test1_1D_wrap)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    // Create the taskflow and executor
+    tf::Taskflow taskflow;
+    tf::Executor executor;
+
     // Call the gpu_Images2Neibs 1D function
-    gpu_overlap::gpu_Images2Neibs(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    gpu_overlap::gpu_Images2Neibs(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Run the taskflow
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);
@@ -1004,8 +1011,15 @@ TEST(gpu_Images2Neibs, test2_1D_nowrap_center)
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
 
+    // Create the taskflow and executor
+    tf::Taskflow taskflow;
+    tf::Executor executor;
+
     // Call the gpu_Images2Neibs function
-    gpu_overlap::gpu_Images2Neibs(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+    gpu_overlap::gpu_Images2Neibs(output, output_shape, input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh, taskflow);
+
+    // Run the taskflow
+    executor.run(taskflow).wait();
 
     // Check that the output vector is equal to the expected output vector
     ASSERT_EQ(output, expected_output);

@@ -1,5 +1,4 @@
 #include <vector>
-#include <taskflow/taskflow.hpp>
 #include <taskflow/cuda/cudaflow.hpp>
 
 #include <overlap/gpu_overlap.hpp>
@@ -252,7 +251,8 @@ namespace gpu_overlap
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
-        bool center_neigh)
+        bool center_neigh,
+        tf::Taskflow &taskflow)
     {
         // Determine the dimensions of the input matrix.
         const int rows = input_shape.first;
@@ -287,10 +287,6 @@ namespace gpu_overlap
         // Copy the input matrix to the GPU.
         TF_CHECK_CUDA(cudaMemcpy(d_input, input.data(), rows * cols * sizeof(int), cudaMemcpyHostToDevice), "failed to copy input to device");
 
-        // Create taskflow object and executor.
-        tf::Taskflow taskflow;
-        tf::Executor executor;
-
         // Launch the kernel function on the GPU using taskflow.
         auto kernel = taskflow.emplace([&]()
                                        {
@@ -319,7 +315,6 @@ namespace gpu_overlap
         // Set task dependencies and run the taskflow.
         kernel.precede(copy);
         copy.precede(free_memory);
-        executor.run(taskflow).get();
 
         output_shape = {N,  // output_rows
                         M,  // output_cols

@@ -4,6 +4,8 @@
 #include <vector>
 #include <tuple>
 
+#include <taskflow/taskflow.hpp>
+
 namespace gpu_overlap
 {
     ///-----------------------------------------------------------------------------
@@ -60,7 +62,7 @@ namespace gpu_overlap
     /// @param[in] neib_step     The step size of the sliding window.
     /// @param[in] wrap_mode     Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
     /// @param[in] center_neigh  Whether to center the neighbourhood patch around the input element or not. If not "false" then place the neighbourhood patch top left corner at the input element.
-    /// @return                  A 4D vector of ints. Each element stores the output patch for each element of the input matrix.
+    /// @param[out] taskflow           The taskflow graph object. Used so this function can add its tasks to the graph. See C++ taskflow library.
     ///-----------------------------------------------------------------------------
     void gpu_Images2Neibs(
         std::vector<int> &output,
@@ -70,6 +72,7 @@ namespace gpu_overlap
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
-        bool center_neigh);
+        bool center_neigh,
+        tf::Taskflow &taskflow);
 
 } // namespace gpu_overlap
