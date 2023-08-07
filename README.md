@@ -23,6 +23,13 @@ build.sh Release
 build.sh RelWithDebInfo
 ```
 
+You may need cmake installed to build the project.
+```
+sudo apt install cmake
+```
+
+
+
 ## Task flow with GPU support
 To run the task flow with GPU support, you need to have CUDA installed on your system.
 This requires installing CUDA compiler nvcc.   
