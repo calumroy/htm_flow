@@ -2,11 +2,19 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CXX_STANDARD 17)
 
-project("htm_flow" VERSION 0.9 LANGUAGES CXX DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
-
 # Cmake option to enable buildign cuda GPU section or not. Requires CUDA 11.0 or higher.
 # To use specify -DUSE_GPU=ON when running cmake.
 option(USE_GPU "Enable GPU support" OFF) 
+
+# Check if USE_GPU option is set to ON
+if(USE_GPU)
+    project("htm_flow" VERSION 0.9 LANGUAGES CXX CUDA DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+    set(CUDA_DIR ${PROJECT_SOURCE_DIR}/cuda)
+else()
+    # If USE_GPU is OFF, then build the project without CUDA
+    project("htm_flow" VERSION 0.9 LANGUAGES CXX DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+endif()
+
 
 # error setting
 add_library(error_settings INTERFACE)
@@ -54,19 +62,20 @@ include_directories("include")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-# add_subdirectory(cuda)
+if(USE_GPU)
+    add_subdirectory(cuda)
 
-# # Add test task flow executable (use this to confirm that task flow is working)
-# # test_script name
-# set(TEST_SCRIPT_NAME task_flow_test)
-# add_executable(${TEST_SCRIPT_NAME} ./src/task_flow_test.cpp)
+    # Add test task flow executable (use this to confirm that task flow is working)
+    # test_script name
+    set(TEST_SCRIPT_NAME task_flow_test)
+    add_executable(${TEST_SCRIPT_NAME} ./src/task_flow_test.cpp)
 
-# target_compile_features(${TEST_SCRIPT_NAME} PRIVATE cxx_std_17)
+    target_compile_features(${TEST_SCRIPT_NAME} PRIVATE cxx_std_17)
 
-# target_link_libraries(${TEST_SCRIPT_NAME} PRIVATE task_gpu_test)
+    target_link_libraries(${TEST_SCRIPT_NAME} PRIVATE task_gpu_test)
 
-# install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
-
+    install(TARGETS ${TEST_SCRIPT_NAME} DESTINATION bin)
+endif()
 
 # Add all the cpp files in the src directory
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp)
@@ -84,8 +93,11 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-# target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test gpu_overlap)
-target_link_libraries(${PROJECT_NAME} PRIVATE)
+if(USE_GPU)
+  target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test gpu_overlap)
+else()
+  target_link_libraries(${PROJECT_NAME} PRIVATE)
+endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 
@@ -108,11 +120,12 @@ if(BUILD_TESTS)
   # Add your test files
   add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
 
-  # # Link your test executable to the Google Test library and other libraries
-  # target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
-
-  target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
-
+  # Link your test executable to the Google Test library and other libraries
+  if(USE_GPU)
+    target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
+  else()
+    target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
+  endif()
 
 
 endif()
