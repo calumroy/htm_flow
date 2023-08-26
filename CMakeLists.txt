@@ -4,6 +4,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 project("htm_flow" VERSION 0.9 LANGUAGES CXX DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
 
+# Cmake option to enable buildign cuda GPU section or not. Requires CUDA 11.0 or higher.
+# To use specify -DUSE_GPU=ON when running cmake.
+option(USE_GPU "Enable GPU support" OFF) 
+
 # error setting
 add_library(error_settings INTERFACE)
 add_library(tf::error_settings ALIAS error_settings)
@@ -21,17 +25,19 @@ target_compile_options(
 # https://cliutils.gitlab.io/modern-cmake/chapters/packages/CUDA.html
 # -----------------------------------------------------------------------------
 
-# include(CheckLanguage)
-# message(STATUS "Configuring CUDA ...")
-# check_language(CUDA)
-# if(NOT CMAKE_CUDA_COMPILER)
-#   message(FATAL_ERROR "\nNo CUDA compiler found")
-# endif()
-# enable_language(CUDA)
-# if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11")
-#   message(STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-#   message(FATAL_ERROR "\nTaskflow requires CUDA at least v11")
-# endif()
+if(USE_GPU)
+    include(CheckLanguage)
+    message(STATUS "Configuring CUDA ...")
+    check_language(CUDA)
+    if(NOT CMAKE_CUDA_COMPILER)
+        message(FATAL_ERROR "\nNo CUDA compiler found")
+    endif()
+    enable_language(CUDA)
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11")
+        message(STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+        message(FATAL_ERROR "\nTaskflow requires CUDA at least v11")
+    endif()
+endif()
 
 
 add_library(default_settings INTERFACE)
