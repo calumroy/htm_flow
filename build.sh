@@ -41,6 +41,7 @@ else
 fi
 
 # Build the project with the specified release type parameter and GPU option.
-cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.0/bin/nvcc $GPU_OPTION ..
+# which nvcc should equal someting like /usr/local/cuda-12.2/bin/nvcc
+cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DCMAKE_CUDA_COMPILER=$(which nvcc) $GPU_OPTION ..
 
 cmake --build .
