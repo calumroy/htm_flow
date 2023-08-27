@@ -117,6 +117,11 @@ if(BUILD_TESTS)
   # Add all the cpp files in the test directory
   file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
 
+  # Filter out the GPU test files if GPU flag is set to FALSE
+  if(NOT USE_GPU)
+    list(FILTER TEST_FILES EXCLUDE REGEX ".*gpu.*\.cpp$")
+  endif()
+
   # Add your test files
   add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
 
