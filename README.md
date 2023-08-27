@@ -37,8 +37,9 @@ See https://taskflow.github.io/taskflow/CompileTaskflowWithCUDA.html
 
 once you have CUDA installed, you can build the project with GPU support using the build script.
 ```
-build.sh
+build.sh Release GPU
 ```
+This will build the project with GPU support and also build the GPU unit tests.
 
 To build a gpu example using nvcc e.g
 `/usr/local/cuda-11.7/bin/nvcc -std=c++17 -I ./include/ --extended-lambda ./cuda/task_gpu_test.cu -o gpu_test`

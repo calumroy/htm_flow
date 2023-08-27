@@ -2,8 +2,8 @@
 
 #include <htm_flow/overlap.hpp>
 
-// Include the gpu_overlap.hpp header file form the gpu_overlap library
-#include <overlap/gpu_overlap.hpp>
+// // Include the gpu_overlap.hpp header file form the gpu_overlap library
+// #include <overlap/gpu_overlap.hpp>
 
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
