@@ -96,9 +96,9 @@ TEST(gpu_Images2Neibs, test2_large)
 
 TEST(gpu_Images2Neibs, test3_very_large)
 {
-    // Check that a 40x40 patch is extracted from a 400x400 matrix
+    // Check that a 40x40 patch is extracted from a 800x800 matrix
     // Use a step size of 1 in the column direction and 2 in the row direction.
-    // Create an input matrix for testing but create an already flatten version(400x400) every element is 1
+    // Create an input matrix for testing but create an already flatten version(800x800) every element is 1
     int n_rows = 800;
     int n_cols = 800;
     std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
