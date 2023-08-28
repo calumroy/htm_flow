@@ -39,3 +39,6 @@ src/taskflow*
 
 # ignore all build artifacts
 build/*
+
+# ignore all libraries
+lib/*
