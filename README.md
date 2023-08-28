@@ -83,6 +83,18 @@ Top get just a terminal output of the profiling data use the TF_ENABLE_PROFILER 
 TF_ENABLE_PROFILER= ./build/htm_flow_tests
 ```
 
+For very large files the online profiler may not work.
+use a local version of the profiler. Rename the output file to simple.tfp
+```
+git clone https://github.com/taskflow/taskflow.git
+cd taskflow
+mkdir build
+cd build
+cmake ../ -DTF_BUILD_PROFILER=ON
+./tfprof/server/tfprof --mount ../tfprof/ --input ../../htm_flow/simple.tfp
+```
+Now go to http://localhost:8080/ to view the profile.
+
 ## Valgrind callgrind profiler
 ```
 valgrind --tool=callgrind ./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test5_large

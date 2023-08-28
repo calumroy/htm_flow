@@ -42,3 +42,7 @@ build/*
 
 # ignore all libraries
 lib/*
+
+# ignore taskflow profile files
+*.tfp
+*simple.json
