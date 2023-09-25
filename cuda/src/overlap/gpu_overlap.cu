@@ -242,7 +242,135 @@ namespace gpu_overlap
         return output;
     }
 
+    // GPU implementation of the overlap calculation.
+    // Try to minimise the number of memory allocations and copies to and from the GPU.
+    // There are six main steps:
+    //        1. Get the inputs for each column. 
+    //               This used the gpu_Images2Neibs. We recreate this function to reduce memory allocations and copies.
+    //        2. Calculate the potential overlap scores for every column.
+    //               This uses the parallel_maskTieBreaker which is just a element wise multiplication and then addtion.
+    //        3. Calculate the connected synapse inputs for every column.
+    //               parallel_calcOverlap which is just a sum of each row.
+    //        4. Get the connected synapse inputs for every column.
+    //               Simply apply an if statement to each element in a matrix if larger then a threshold return the corresponding element in another matrix.
+    //        5. Calculate the actual overlap scores for every column.
+    //               parallel_calcOverlap which is just a sum of each row.
+    //        6. Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
+    //               This uses the parallel_addVectors which is just a element wise addition.
+    void OverlapCalculator::calculate_overlap_gpu(const std::vector<float> &colSynPerm,
+                                                  const std::pair<int, int> &colSynPerm_shape,
+                                                  const std::vector<int> &inputGrid,
+                                                  const std::pair<int, int> &inputGrid_shape)
+    {
+        // The original implementation of the overlap calculation.
+        // get_col_inputs(inputGrid, inputGrid_shape, col_input_pot_syn_, tf1);
+        // parallel_maskTieBreaker(col_input_pot_syn_, pot_syn_tie_breaker_, col_input_pot_syn_tie_, tf2);
+        // parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, tf3);
+        // get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
+        //                                        num_columns_, potential_height_ * potential_width_,
+        //                                        con_syn_input_, tf4);
+        // parallel_calcOverlap(con_syn_input_, num_columns_, potential_height_ * potential_width_, col_overlaps_, tf5);
+        // parallel_addVectors(col_overlaps_, col_tie_breaker_, col_overlaps_tie_, tf6);
+
+        // Create a Taskflow object to manage tasks and their dependencies.
+        // There should be one taskflow object for the entire program.
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        // Step 1. Get the inputs for each column.
+        // Determine the dimensions of the input matrix.
+        const int rows = input_shape.first;
+        const int cols = input_shape.second;
+
+        // Check that the neighbourhood shape is valid.
+        if (neib_shape.first > rows || neib_shape.second > cols)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
+        }
+
+        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+        int O = neib_shape.first;                                               // Number of rows in each patch
+        int P = neib_shape.second;                                              // Number of columns in each patch
+
+        // Create the output matrix. A 1D vector simulating a 4D vector with dimensions N x M x O x P.
+        std::vector<int> output;
+
+        // Allocate memory on the GPU for the input matrix.
+        int *d_input, *d_output;
+
+        // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
+        auto allocate_in = taskflow.emplace([&]()
+                                            { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
+                               .name("allocate_in");
+
+        // allocate the host and device storage for the ouput matrix.
+        auto allocate_out = taskflow.emplace([&]()
+                                             {
+                                                // Host storage
+                                                output.resize(N * M * O * P);
+                                                TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output"); })
+                                .name("allocate_out");
+
+        // create a cudaFlow to run the sliding_window_kernel.
+        auto cudaFlow = taskflow.emplace([&]()
+                                         {
+                                            tf::cudaFlow cf;
+                                            // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
+                                            auto copy_in = cf.memcpy(d_input, input.data(), rows * cols * sizeof(int)).name("copy_in");
+
+                                            // launch the kernel function on the GPU.
+                                            int threadsPerBlock = 256;
+                                            dim3 block(16, 16);   // 256 threads per block. A standard value this can be increased on some GPU models. 
+                                            int noOfBlocks = cols * rows / 256;
+                                            if ( (cols * rows) % threadsPerBlock) 
+                                            {
+                                                noOfBlocks++;
+                                            }
+                                            dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
+                                            
+                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                                                        .name("sliding_window");
+
+                                            // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
+                                            auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
+                                            sliding_window.succeed(copy_in)
+                                                .precede(copy_out); 
+                                                
+                                        tf::cudaStream stream;
+                                        cf.run(stream);
+                                        stream.synchronize(); })
+                            .name("cudaFlow");
+
+        auto free = taskflow.emplace([&]()
+                                     {
+                                         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
+                                         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); })
+                        .name("free");
+
+        // create the dependency graph.
+        cudaFlow.succeed(allocate_in, allocate_out)
+            .precede(free);
+
+        executor.run(taskflow)
+            .wait();
+
+        return output;
+
+
+    }
+
+    // TODO: Remove this function as it doesn't work!
     // Same function as above but different input and output parameters.
+    // NOTE: passing in the tasflow and trying to run it outside of the function doesn't work
+    // since many other vars in this function will go out of scope.
     void gpu_Images2Neibs(
         std::vector<int> &output,
         std::vector<int> &output_shape,
