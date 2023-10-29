@@ -143,7 +143,7 @@ namespace overlap
         int columns_height_;       // Height of the cortical columns
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
-        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses = columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<int> col_inputs_shape_;  // Equal to {columns_height_, columns_width_, potential_height_, potential_width_}, the shape of the col_input_pot_syn_ vector. A more convenient way to pass the shape of the col_input_pot_syn_ vector around.
         // Store the potential overlap value for every column
         std::vector<float> col_pot_overlaps_;      // This is a 1D vector with the size number of columns.

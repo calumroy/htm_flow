@@ -58,7 +58,11 @@ namespace gpu_overlap
     void calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
-                               const std::pair<int, int> &inputGrid_shape);
+                               const std::pair<int, int> &inputGrid_shape,
+                               const std::pair<int, int> &neib_shape,
+                               const std::pair<int, int> &neib_step,
+                               bool wrap_mode,
+                               bool center_neigh);
 
 
     // DOES NOT WORK
