@@ -57,9 +57,12 @@ This is done automatically by the setup.sh script.
 setup.sh 
 ```  
 
-To run the unit tests, use the executable `./build/htm_flow_tests`  
-To list all unit tests use googletest flags `./build/htm_flow_tests --gtest_list_tests`  
-To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags `./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+To run the unit tests, use the executable   
+`./build/htm_flow_tests`  
+To list all unit tests use googletest flags   
+`./build/htm_flow_tests --gtest_list_tests`  
+To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags  
+`./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
 
 # Visualize Taskflow Graphs
 You can dump a taskflow graph to a DOT format and visualize it using a number of free GraphViz tools such as [GraphViz Online](https://dreampuf.github.io/GraphvizOnline/).

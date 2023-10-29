@@ -257,7 +257,7 @@ namespace gpu_overlap
     //               parallel_calcOverlap which is just a sum of each row.
     //        6. Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
     //               This uses the parallel_addVectors which is just a element wise addition.
-    void OverlapCalculator::calculate_overlap_gpu(const std::vector<float> &colSynPerm,
+    void calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                                   const std::pair<int, int> &colSynPerm_shape,
                                                   const std::vector<int> &inputGrid,
                                                   const std::pair<int, int> &inputGrid_shape)
@@ -279,90 +279,90 @@ namespace gpu_overlap
 
         // Step 1. Get the inputs for each column.
         // Determine the dimensions of the input matrix.
-        const int rows = input_shape.first;
-        const int cols = input_shape.second;
+        // const int rows = input_shape.first;
+        // const int cols = input_shape.second;
 
-        // Check that the neighbourhood shape is valid.
-        if (neib_shape.first > rows || neib_shape.second > cols)
-        {
-            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
-        }
+        // // Check that the neighbourhood shape is valid.
+        // if (neib_shape.first > rows || neib_shape.second > cols)
+        // {
+        //     throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        // }
 
-        // Set the default step size to the neighbourhood shape.
-        std::pair<int, int> step = neib_step;
-        if (step.first == 0 && step.second == 0)
-        {
-            step = neib_shape;
-        }
+        // // Set the default step size to the neighbourhood shape.
+        // std::pair<int, int> step = neib_step;
+        // if (step.first == 0 && step.second == 0)
+        // {
+        //     step = neib_shape;
+        // }
 
-        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
-        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
-        int O = neib_shape.first;                                               // Number of rows in each patch
-        int P = neib_shape.second;                                              // Number of columns in each patch
+        // int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+        // int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+        // int O = neib_shape.first;                                               // Number of rows in each patch
+        // int P = neib_shape.second;                                              // Number of columns in each patch
 
-        // Create the output matrix. A 1D vector simulating a 4D vector with dimensions N x M x O x P.
-        std::vector<int> output;
+        // // Create the output matrix. A 1D vector simulating a 4D vector with dimensions N x M x O x P.
+        // std::vector<int> output;
 
-        // Allocate memory on the GPU for the input matrix.
-        int *d_input, *d_output;
+        // // Allocate memory on the GPU for the input matrix.
+        // int *d_input, *d_output;
 
-        // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
-        auto allocate_in = taskflow.emplace([&]()
-                                            { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
-                               .name("allocate_in");
+        // // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
+        // auto allocate_in = taskflow.emplace([&]()
+        //                                     { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
+        //                        .name("allocate_in");
 
-        // allocate the host and device storage for the ouput matrix.
-        auto allocate_out = taskflow.emplace([&]()
-                                             {
-                                                // Host storage
-                                                output.resize(N * M * O * P);
-                                                TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output"); })
-                                .name("allocate_out");
+        // // allocate the host and device storage for the ouput matrix.
+        // auto allocate_out = taskflow.emplace([&]()
+        //                                      {
+        //                                         // Host storage
+        //                                         output.resize(N * M * O * P);
+        //                                         TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output"); })
+        //                         .name("allocate_out");
 
-        // create a cudaFlow to run the sliding_window_kernel.
-        auto cudaFlow = taskflow.emplace([&]()
-                                         {
-                                            tf::cudaFlow cf;
-                                            // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
-                                            auto copy_in = cf.memcpy(d_input, input.data(), rows * cols * sizeof(int)).name("copy_in");
+        // // create a cudaFlow to run the sliding_window_kernel.
+        // auto cudaFlow = taskflow.emplace([&]()
+        //                                  {
+        //                                     tf::cudaFlow cf;
+        //                                     // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
+        //                                     auto copy_in = cf.memcpy(d_input, input.data(), rows * cols * sizeof(int)).name("copy_in");
 
-                                            // launch the kernel function on the GPU.
-                                            int threadsPerBlock = 256;
-                                            dim3 block(16, 16);   // 256 threads per block. A standard value this can be increased on some GPU models. 
-                                            int noOfBlocks = cols * rows / 256;
-                                            if ( (cols * rows) % threadsPerBlock) 
-                                            {
-                                                noOfBlocks++;
-                                            }
-                                            dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
+        //                                     // launch the kernel function on the GPU.
+        //                                     int threadsPerBlock = 256;
+        //                                     dim3 block(16, 16);   // 256 threads per block. A standard value this can be increased on some GPU models. 
+        //                                     int noOfBlocks = cols * rows / 256;
+        //                                     if ( (cols * rows) % threadsPerBlock) 
+        //                                     {
+        //                                         noOfBlocks++;
+        //                                     }
+        //                                     dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
-                                                                        .name("sliding_window");
+        //                                     auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+        //                                                                 .name("sliding_window");
 
-                                            // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
-                                            auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
-                                            sliding_window.succeed(copy_in)
-                                                .precede(copy_out); 
+        //                                     // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
+        //                                     auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
+        //                                     sliding_window.succeed(copy_in)
+        //                                         .precede(copy_out); 
                                                 
-                                        tf::cudaStream stream;
-                                        cf.run(stream);
-                                        stream.synchronize(); })
-                            .name("cudaFlow");
+        //                                 tf::cudaStream stream;
+        //                                 cf.run(stream);
+        //                                 stream.synchronize(); })
+        //                     .name("cudaFlow");
 
-        auto free = taskflow.emplace([&]()
-                                     {
-                                         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
-                                         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); })
-                        .name("free");
+        // auto free = taskflow.emplace([&]()
+        //                              {
+        //                                  TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
+        //                                  TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); })
+        //                 .name("free");
 
-        // create the dependency graph.
-        cudaFlow.succeed(allocate_in, allocate_out)
-            .precede(free);
+        // // create the dependency graph.
+        // cudaFlow.succeed(allocate_in, allocate_out)
+        //     .precede(free);
 
-        executor.run(taskflow)
-            .wait();
+        // executor.run(taskflow)
+        //     .wait();
 
-        return output;
+        // return output;
 
 
     }
@@ -371,83 +371,83 @@ namespace gpu_overlap
     // Same function as above but different input and output parameters.
     // NOTE: passing in the tasflow and trying to run it outside of the function doesn't work
     // since many other vars in this function will go out of scope.
-    void gpu_Images2Neibs(
-        std::vector<int> &output,
-        std::vector<int> &output_shape,
-        const std::vector<int> &input,
-        const std::pair<int, int> &input_shape,
-        const std::pair<int, int> &neib_shape,
-        const std::pair<int, int> &neib_step,
-        bool wrap_mode,
-        bool center_neigh,
-        tf::Taskflow &taskflow)
-    {
-        // Determine the dimensions of the input matrix.
-        const int rows = input_shape.first;
-        const int cols = input_shape.second;
+    // void gpu_Images2Neibs(
+    //     std::vector<int> &output,
+    //     std::vector<int> &output_shape,
+    //     const std::vector<int> &input,
+    //     const std::pair<int, int> &input_shape,
+    //     const std::pair<int, int> &neib_shape,
+    //     const std::pair<int, int> &neib_step,
+    //     bool wrap_mode,
+    //     bool center_neigh,
+    //     tf::Taskflow &taskflow)
+    // {
+    //     // Determine the dimensions of the input matrix.
+    //     const int rows = input_shape.first;
+    //     const int cols = input_shape.second;
 
-        // Check that the neighbourhood shape is valid.
-        if (neib_shape.first > rows || neib_shape.second > cols)
-        {
-            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
-        }
+    //     // Check that the neighbourhood shape is valid.
+    //     if (neib_shape.first > rows || neib_shape.second > cols)
+    //     {
+    //         throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+    //     }
 
-        // Set the default step size to the neighbourhood shape.
-        std::pair<int, int> step = neib_step;
-        if (step.first == 0 && step.second == 0)
-        {
-            step = neib_shape;
-        }
+    //     // Set the default step size to the neighbourhood shape.
+    //     std::pair<int, int> step = neib_step;
+    //     if (step.first == 0 && step.second == 0)
+    //     {
+    //         step = neib_shape;
+    //     }
 
-        int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
-        int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
-        int O = neib_shape.first;                                               // Number of rows in each patch
-        int P = neib_shape.second;                                              // Number of columns in each patch
+    //     int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
+    //     int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
+    //     int O = neib_shape.first;                                               // Number of rows in each patch
+    //     int P = neib_shape.second;                                              // Number of columns in each patch
 
-        // Assert that the output matrix has the correct size.
-        assert(output.size() == N * M * O * P);
+    //     // Assert that the output matrix has the correct size.
+    //     assert(output.size() == N * M * O * P);
 
-        // Allocate memory on the GPU for the input and output matrices.
-        int *d_input, *d_output;
-        TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input");
-        TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output");
+    //     // Allocate memory on the GPU for the input and output matrices.
+    //     int *d_input, *d_output;
+    //     TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input");
+    //     TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output");
 
-        // Copy the input matrix to the GPU.
-        TF_CHECK_CUDA(cudaMemcpy(d_input, input.data(), rows * cols * sizeof(int), cudaMemcpyHostToDevice), "failed to copy input to device");
+    //     // Copy the input matrix to the GPU.
+    //     TF_CHECK_CUDA(cudaMemcpy(d_input, input.data(), rows * cols * sizeof(int), cudaMemcpyHostToDevice), "failed to copy input to device");
 
-        // Launch the kernel function on the GPU using taskflow.
-        auto kernel = taskflow.emplace([&]()
-                                       {
-            int threadsPerBlock = 256;
-            dim3 block(16, 16);
-            int noOfBlocks = cols * rows / 256;
-            if ((cols * rows) % threadsPerBlock)
-            {
-                noOfBlocks++;
-            }
-            dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
-            sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh); });
+    //     // Launch the kernel function on the GPU using taskflow.
+    //     auto kernel = taskflow.emplace([&]()
+    //                                    {
+    //         int threadsPerBlock = 256;
+    //         dim3 block(16, 16);
+    //         int noOfBlocks = cols * rows / 256;
+    //         if ((cols * rows) % threadsPerBlock)
+    //         {
+    //             noOfBlocks++;
+    //         }
+    //         dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
+    //         sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh); });
 
-        // Copy the output matrix from the GPU using taskflow.
-        auto copy = taskflow.emplace([&]()
-                                     {
-            output.resize(N * M * O * P);
-            TF_CHECK_CUDA(cudaMemcpy(output.data(), d_output, N * M * O * P * sizeof(int), cudaMemcpyDeviceToHost), "failed to copy output to host"); });
+    //     // Copy the output matrix from the GPU using taskflow.
+    //     auto copy = taskflow.emplace([&]()
+    //                                  {
+    //         output.resize(N * M * O * P);
+    //         TF_CHECK_CUDA(cudaMemcpy(output.data(), d_output, N * M * O * P * sizeof(int), cudaMemcpyDeviceToHost), "failed to copy output to host"); });
 
-        // Free memory on the GPU using taskflow.
-        auto free_memory = taskflow.emplace([&]()
-                                            {
-            TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
-            TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); });
+    //     // Free memory on the GPU using taskflow.
+    //     auto free_memory = taskflow.emplace([&]()
+    //                                         {
+    //         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
+    //         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); });
 
-        // Set task dependencies and run the taskflow.
-        kernel.precede(copy);
-        copy.precede(free_memory);
+    //     // Set task dependencies and run the taskflow.
+    //     kernel.precede(copy);
+    //     copy.precede(free_memory);
 
-        output_shape = {N,  // output_rows
-                        M,  // output_cols
-                        O,  // neib_shape.first
-                        P}; // neib_shape.second
-    }
+    //     output_shape = {N,  // output_rows
+    //                     M,  // output_cols
+    //                     O,  // neib_shape.first
+    //                     P}; // neib_shape.second
+    // }
 
 } // namespace gpu_overlap
