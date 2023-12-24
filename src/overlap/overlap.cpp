@@ -32,8 +32,8 @@ namespace overlap
           col_input_pot_syn_(num_columns_ * potential_height * potential_width, 0.0),
           col_inputs_shape_{columns_height_, columns_width_, potential_height_, potential_width_},
           col_pot_overlaps_(num_columns_, 0),
-          step_x_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).first),
-          step_y_(get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).second),
+          step_x_(overlap_utils::get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).first),
+          step_y_(overlap_utils::get_step_sizes(input_width, input_height, columns_width, columns_height, potential_width, potential_height).second),
           neib_shape_(potential_height_, potential_width_),
           neib_step_(step_y_, step_x_),
           pot_syn_tie_breaker_(num_columns_ * potential_height * potential_width, 0.0),
@@ -185,34 +185,6 @@ namespace overlap
         executor.run(taskflow).wait();
     }
 
-    std::pair<int, int> OverlapCalculator::get_step_sizes(int input_width, int input_height,
-                                                          int col_width, int col_height,
-                                                          int pot_width, int pot_height)
-    {
-        // Work out how large to make the step sizes so all of the
-        // inputGrid can be covered as best as possible by the columns
-        // potential synapses.
-        int step_x = static_cast<int>(std::round(static_cast<float>(input_width) / static_cast<float>(col_width)));
-        int step_y = static_cast<int>(std::round(static_cast<float>(input_height) / static_cast<float>(col_height)));
-
-        // The step sizes may need to be increased if the potential sizes are too small.
-        if (pot_width + (col_width - 1) * step_x < input_width)
-        {
-            // Calculate how many of the input elements cannot be covered with the current step_x value.
-            int uncovered_x = (input_width - (pot_width + (col_width - 1) * step_x));
-            // Use this to update the step_x value so all input elements are covered.
-            step_x = step_x + static_cast<int>(std::ceil(static_cast<float>(uncovered_x) / static_cast<float>(col_width - 1)));
-        }
-
-        if (pot_height + (col_height - 1) * step_y < input_height)
-        {
-            int uncovered_y = (input_height - (pot_height + (col_height - 1) * step_y));
-            step_y = step_y + static_cast<int>(std::ceil(static_cast<float>(uncovered_y) / static_cast<float>(col_height - 1)));
-        }
-
-        return std::make_pair(step_x, step_y);
-    }
-
     void OverlapCalculator::check_new_input_params(
         const std::vector<float> &newColSynPerm,
         const std::pair<int, int> &colSynPerm_shape,
@@ -225,6 +197,12 @@ namespace overlap
         assert(newColSynPerm.size() == colSynPerm_shape.first * colSynPerm_shape.second);
         assert(num_columns_ == colSynPerm_shape.first);
         assert(potential_width_ * potential_height_ == colSynPerm_shape.second);
+    }
+
+    // Return the potential synapse tie breaker values.
+    std::vector<float> OverlapCalculator::get_pot_syn_tie_breaker()
+    {
+        return pot_syn_tie_breaker_;
     }
 
     void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)

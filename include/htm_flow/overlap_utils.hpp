@@ -194,6 +194,25 @@ namespace overlap_utils
                                  float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn,
                                  tf::Taskflow &taskflow);
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// get_step_sizes             Get the step sizes for the potential synapses.
+    ///                            The step sizes are the number of rows and columns to step over in the input
+    ///                            when calculating the overlap scores for each "cortical" column.
+    ///                            The step sizes are calculated by taking the number of columns and rows in the input
+    ///                            and dividing by the potential synapse size, column and row wise. 
+    ///                            The step sizes are increased so the input is covered by the potential synapses (or as best as possible).
+    ///                            The step sizes are returned as a pair of ints.
+    /// @param[in] input_width     The width of the input matrix.
+    /// @param[in] input_height    The height of the input matrix.
+    /// @param[in] columns_width   The width of the columns matrix.
+    /// @param[in] columns_height  The height of the columns matrix.
+    /// @param[in] potential_width The width of the potential synapses.
+    /// @param[in] potential_height The height of the potential synapses.
+    /// @return                    A pair of ints representing the step sizes for the potential synapses.
+    inline std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
+                                              int columns_height, int potential_width, int potential_height);
+
     // -----------------------------------------------------------------------------
     // Header only implementations of the functions above.
     // templated functions must be defined in the header file.
@@ -663,6 +682,36 @@ namespace overlap_utils
                                    .name("get_connected_syn_input");
 
         check_conn_task.succeed(load_in1_task, load_in2_task);
+    }
+
+    // Get the step sizes for the potential synapses. This is the optimal step size in the x an dy direction
+    // to use so the potential synapses cover the input as best as possible.
+    inline std::pair<int, int> get_step_sizes(int input_width, int input_height,
+                                              int col_width, int col_height,
+                                              int pot_width, int pot_height)
+    {
+        // Work out how large to make the step sizes so all of the
+        // inputGrid can be covered as best as possible by the columns
+        // potential synapses.
+        int step_x = static_cast<int>(std::round(static_cast<float>(input_width) / static_cast<float>(col_width)));
+        int step_y = static_cast<int>(std::round(static_cast<float>(input_height) / static_cast<float>(col_height)));
+
+        // The step sizes may need to be increased if the potential sizes are too small and don't cover the total input.
+        if (pot_width + (col_width - 1) * step_x < input_width)
+        {
+            // Calculate how many of the input elements cannot be covered with the current step_x value.
+            int uncovered_x = (input_width - (pot_width + (col_width - 1) * step_x));
+            // Use this to update the step_x value so all input elements are covered.
+            step_x = step_x + static_cast<int>(std::ceil(static_cast<float>(uncovered_x) / static_cast<float>(col_width - 1)));
+        }
+
+        if (pot_height + (col_height - 1) * step_y < input_height)
+        {
+            int uncovered_y = (input_height - (pot_height + (col_height - 1) * step_y));
+            step_y = step_y + static_cast<int>(std::ceil(static_cast<float>(uncovered_y) / static_cast<float>(col_height - 1)));
+        }
+
+        return std::make_pair(step_x, step_y);
     }
 
 } // namespace overlap_utils

@@ -54,6 +54,8 @@ namespace gpu_overlap
     /// @param[in] inputGrid    The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
     /// @param[in] inputGrid_shape   The shape of the inputGrid vector height then width as a pair of ints.
     ///
+    /// @return                The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
+
     ///-----------------------------------------------------------------------------
     void calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
@@ -62,7 +64,10 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_shape,
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
-                               bool center_neigh);
+                               bool center_neigh,
+                               const std::vector<float> &pot_syn_tie_breaker,
+                               std::vector<int> overlap_output
+                               );
 
 
     // DOES NOT WORK

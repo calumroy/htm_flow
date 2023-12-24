@@ -106,7 +106,11 @@ install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 option(BUILD_TESTS "Build the tests" ON)
 
 if(BUILD_TESTS)
-  include_directories(src)
+  include_directories(cuda
+                      src
+                      include/htm_flow
+                      include/utilities
+                      )
     
   # Add the Google Test subdirectory  
   add_subdirectory(lib/googletest)

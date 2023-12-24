@@ -264,7 +264,10 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_shape,
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
-                               bool center_neigh)
+                               bool center_neigh,
+                               const std::vector<float> &pot_syn_tie_breaker,
+                               std::vector<int> overlap_output
+                               )
     {
         // The original implementation of the overlap calculation.
         //
@@ -287,8 +290,6 @@ namespace gpu_overlap
         const int rows = inputGrid_shape.first;
         const int cols = inputGrid_shape.second;
 
-        
-
         // Check that the neighbourhood shape is valid.
         if (neib_shape.first > rows || neib_shape.second > cols)
         {
@@ -300,10 +301,16 @@ namespace gpu_overlap
         int O = neib_shape.first;                                               // Number of rows in each patch
         int P = neib_shape.second;                                              // Number of columns in each patch
 
-        // Create the output matrix. A 1D vector simulating a 4D vector with dimensions N x M x O x P.
+        // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
         std::vector<int> output;
 
-        // Allocate memory on the GPU for the input matrix.
+        // Step2 inputs pot_syn_tie_breaker_
+        // Make the pot_syn_tie_breaker_ matrix, this should have be done already and passed in as an input.
+        // TODO
+
+        
+
+        // Allocate memory on the GPU for the input matrix "inputGrid".
         int *d_input, *d_output;
 
         // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
@@ -361,8 +368,6 @@ namespace gpu_overlap
 
         executor.run(taskflow)
             .wait();
-
-        //return output;
 
 
     }

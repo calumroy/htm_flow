@@ -59,7 +59,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow_tests",
             "args": [
-                "--gtest_filter=get_connected_syn_input.test1_small"
+                "--gtest_filter=gpu_overlap.test1_small"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

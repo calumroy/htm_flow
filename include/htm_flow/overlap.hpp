@@ -49,6 +49,13 @@ namespace overlap
                                const std::vector<int> &inputGrid,
                                const std::pair<int, int> &inputGrid_shape);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_pot_syn_tie_breaker - Returns the potential synapse tie breaker matrix.
+        ///
+        /// @return A 1D vector simulating a 2D vector of floats representing the synapse tie breaker matrix.
+        std::vector<float> get_pot_syn_tie_breaker();
+
     private:
         // // Calculate the potential synapses for a given column
         // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,
@@ -60,9 +67,7 @@ namespace overlap
         // int calculate_overlap(const std::vector<float> &pot_overlap,
         //                       const std::vector<std::tuple<int, int>> &pot_syn);
 
-        // Get the step sizes for the potential synapses
-        std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
-                                           int columns_height, int potential_width, int potential_height);
+        
         ///------------------------------------------------------------------------------------
         ///
         /// make_pot_syn_tie_breaker - Create a tie breaker matrix for potential synapses.

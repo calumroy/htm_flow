@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
 // Include the gpu_overlap.hpp header file from the gpu_overlap library
-#include <overlap/gpu_overlap.hpp>
+#include "overlap/gpu_overlap.hpp"
+#include "overlap.hpp"
+#include "overlap_utils.hpp"
+
+#include "logger.hpp"
 
 TEST(gpu_Images2Neibs, test1_wrap)
 {
@@ -126,5 +130,100 @@ TEST(gpu_Images2Neibs, test3_very_large)
     // Assert the output is the correct size
     ASSERT_EQ(flat_output.size(), n_rows * n_cols * neib_shape.first * neib_shape.second);
 }
+
+TEST(gpu_overlap, test1_small)
+{
+    // Test that the total gpu only implementation produces an expected result.
+    // This runs the function calculate_overlap_gpu from the gpu_overlap library.
+    // The function calculates the overlap scores for a given input.
+
+    // Create the required inputs for the function
+    int pot_width = 30;
+    int pot_height = 30;
+    bool center_pot_synapses = false;
+    int num_input_rows = 200;
+    int num_input_cols = 200;
+    int num_column_rows = 100;
+    int num_column_cols = 100;
+    float connected_perm = 0.3;
+    int min_overlap = 3;
+    int num_pot_syn = pot_width * pot_height;
+    int num_columns = num_column_rows * num_column_cols;
+    bool wrap_input = true;
+    bool center_neigh = true;
+
+    // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
+    // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
+    // It is a 1D vector simulating a 2D vector of size num_columns * num_pot_syn.
+    std::vector<float> col_syn_perm(num_columns * num_pot_syn);
+    std::pair<int, int> col_syn_perm_shape = {num_columns, num_pot_syn}; // Store the shape of the simulated col_syn_perm 2D vector.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0, 1);
+    // TODO: remove this.
+    // This is slow and only for testing.
+    for (int i = 0; i < num_columns * num_pot_syn; ++i)
+    {
+        col_syn_perm[i] = dis(gen);
+    }
+    // Create a random input matrix. This is a matrix representing the input to the HTM layer.
+    // It is a boolean input of 1 or 0.
+    // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
+    std::vector<int> new_input_mat(num_input_rows * num_input_cols);
+    std::pair<int, int> new_input_mat_shape = {num_input_rows, num_input_cols}; // Store the shape of the simulated 2D vector input matrix.
+    std::uniform_int_distribution<> dis2(0, 1);
+    for (int i = 0; i < num_input_rows * num_input_cols; ++i)
+    {
+        new_input_mat[i] = dis2(gen);
+    }
+
+    // Get the step sizes. How much to step over the input matrix for each patch connectted to each cortical column.
+    // neib_step_ = {step_x, step_y}
+    const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, num_column_cols, num_column_rows, pot_width, pot_height);
+    
+    const std::pair<int, int> neib_shape = {pot_height, pot_width};
+
+    std::vector<int> flat_overlap_output = {0};
+
+    // Create an instance of the overlap calculation class.
+    // Why? Because I need values from the overlap class that are needed in the GPU only implementation.
+    //      Also to compare the GPU only implementation to the CPU implementation.
+    // TODO: 
+    // This is not ideal. I should not need to create an instance of the overlap class to run the GPU only implementation.
+    overlap::OverlapCalculator overlapCalc(pot_width,
+                                           pot_height,
+                                           num_column_cols,
+                                           num_column_rows,
+                                           num_input_cols,
+                                           num_input_rows,
+                                           center_pot_synapses,
+                                           connected_perm,
+                                           min_overlap,
+                                           wrap_input);
+
+    // Get the tie breaker values from the overlap calculator
+    std::vector<float> pot_syn_tie_breaker = overlapCalc.get_pot_syn_tie_breaker();
+
+    LOG(INFO, "Starting the GPU overlap calculation.");
+
+    // Run the function and save the output
+    gpu_overlap::calculate_overlap_gpu( col_syn_perm,
+                                        col_syn_perm_shape,
+                                        new_input_mat, 
+                                        new_input_mat_shape, 
+                                        neib_shape, 
+                                        neib_step, 
+                                        wrap_input, 
+                                        center_neigh,
+                                        pot_syn_tie_breaker,
+                                        flat_overlap_output
+                                        );
+    
+    LOG(INFO, "FINISHED GPU overlap calculation!");
+    
+}
+
+
+
 
 
