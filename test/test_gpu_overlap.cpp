@@ -48,8 +48,10 @@ TEST(gpu_Images2Neibs, test1_wrap)
         std::cout << flat_output[i] << ", ";
     }
 
-    // Unflatten the output
-    auto output = gpu_overlap::unflattenVector(flat_output, input_shape.first, input_shape.second, neib_shape.first, neib_shape.second);
+    // Unflatten the output. Note if the step size is more then 1 in any direction then the output upp er dimensions will be smaller then the input grid.
+    int N = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));  // Number of rows in output matrix
+    int M = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second)); // Number of columns in output matrix
+    auto output = gpu_overlap::unflattenVector(flat_output, N, M, neib_shape.first, neib_shape.second);
 
     // Create the expected output
     std::vector<std::vector<std::vector<std::vector<int>>>> expected_output = {{{{1, 2}, {4, 5}},
@@ -88,9 +90,11 @@ TEST(gpu_Images2Neibs, test2_large)
     // Run the function and save the output
     std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
 
-    // Unflatten the output
-    auto output = gpu_overlap::unflattenVector(flat_output, input_shape.first, input_shape.second, neib_shape.first, neib_shape.second);
-
+    // Unflatten the output. Note if the step size is more then 1 in any direction then the output upp er dimensions will be smaller then the input grid.
+    int N = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));  // Number of rows in output matrix
+    int M = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second)); // Number of columns in output matrix
+    auto output = gpu_overlap::unflattenVector(flat_output, N, M, neib_shape.first, neib_shape.second);
+    
     // Assert the output is the correct size
     ASSERT_EQ(output.size(), n_rows);
     ASSERT_EQ(output[0].size(), n_cols);
@@ -131,6 +135,40 @@ TEST(gpu_Images2Neibs, test3_very_large)
     ASSERT_EQ(flat_output.size(), n_rows * n_cols * neib_shape.first * neib_shape.second);
 }
 
+TEST(gpu_Images2Neibs, test4_large_2_step)
+{
+    // Check that a 40x40 patch is extracted from a 400x400 matrix
+    // Use a step size of 1 in the column direction and 2 in the row direction.
+    // Create an input matrix for testing (400x400) every element is 1
+    int n_rows = 6;
+    int n_cols = 6;
+    std::vector<std::vector<int>> input = std::vector<std::vector<int>>(n_rows, std::vector<int>(n_cols, 1));
+    std::pair<int, int> input_shape = {input.size(), input[0].size()};
+
+    // Set the neighbourhood shape and step size
+    std::pair<int, int> neib_shape = {3, 3};
+    std::pair<int, int> neib_step = {2, 2};
+    bool wrap_mode = true;
+    bool center_neigh = true;
+
+    // We need to flatten the input matrix
+    std::vector<int> flat_input = gpu_overlap::flattenVector(input);
+
+    // Run the function and save the output
+    std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input, input_shape, neib_shape, neib_step, wrap_mode, center_neigh);
+
+    // Unflatten the output. Note if the step size is more then 1 in any direction then the output upp er dimensions will be smaller then the input grid.
+    int N = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));  // Number of rows in output matrix
+    int M = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second)); // Number of columns in output matrix
+    auto output = gpu_overlap::unflattenVector(flat_output, N, M, neib_shape.first, neib_shape.second);
+    
+    // Assert the output is the correct size
+    ASSERT_EQ(output.size(), N);
+    ASSERT_EQ(output[0].size(), M);
+    ASSERT_EQ(output[0][0].size(), neib_shape.first);
+    ASSERT_EQ(output[0][0][0].size(), neib_shape.second);
+}
+
 TEST(gpu_overlap, test1_small)
 {
     // Test that the total gpu only implementation produces an expected result.
@@ -141,8 +179,8 @@ TEST(gpu_overlap, test1_small)
     int pot_width = 30;
     int pot_height = 30;
     bool center_pot_synapses = false;
-    int num_input_rows = 100;
-    int num_input_cols = 100;
+    int num_input_rows = 200;
+    int num_input_cols = 200;
     int num_column_rows = 100;
     int num_column_cols = 100;
     float connected_perm = 0.3;
@@ -180,7 +218,6 @@ TEST(gpu_overlap, test1_small)
     // Get the step sizes. How much to step over the input matrix for each patch connectted to each cortical column.
     // neib_step_ = {step_x, step_y}
     const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, num_column_cols, num_column_rows, pot_width, pot_height);
-    
     const std::pair<int, int> neib_shape = {pot_height, pot_width};
 
     std::vector<int> flat_overlap_output = {0};
