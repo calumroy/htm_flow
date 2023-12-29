@@ -282,7 +282,7 @@ namespace gpu_overlap
 
         // Create a Taskflow object to manage tasks and their dependencies.
         // There should be one taskflow object for the entire program.
-        tf::Taskflow taskflow;
+        tf::Taskflow taskflow("calculate_overlap_gpu");
         tf::Executor executor;
 
         // Step 1. Get the inputs for each column.
@@ -294,6 +294,13 @@ namespace gpu_overlap
         if (neib_shape.first > rows || neib_shape.second > cols)
         {
             throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
         }
 
         int N = static_cast<int>(ceil(static_cast<float>(rows) / neib_step.first));  // Number of rows in output matrix
@@ -343,7 +350,7 @@ namespace gpu_overlap
                                             }
                                             dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, neib_step.first, neib_step.second, wrap_mode, center_neigh)
+                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
                                                                         .name("sliding_window");
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
@@ -369,7 +376,7 @@ namespace gpu_overlap
         executor.run(taskflow)
             .wait();
 
-
+        
     }
 
     // TODO: Remove this function as it doesn't work!

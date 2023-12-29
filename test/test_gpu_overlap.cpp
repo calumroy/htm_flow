@@ -141,8 +141,8 @@ TEST(gpu_overlap, test1_small)
     int pot_width = 30;
     int pot_height = 30;
     bool center_pot_synapses = false;
-    int num_input_rows = 200;
-    int num_input_cols = 200;
+    int num_input_rows = 100;
+    int num_input_cols = 100;
     int num_column_rows = 100;
     int num_column_cols = 100;
     float connected_perm = 0.3;
@@ -185,26 +185,46 @@ TEST(gpu_overlap, test1_small)
 
     std::vector<int> flat_overlap_output = {0};
 
-    // Create an instance of the overlap calculation class.
-    // Why? Because I need values from the overlap class that are needed in the GPU only implementation.
-    //      Also to compare the GPU only implementation to the CPU implementation.
-    // TODO: 
-    // This is not ideal. I should not need to create an instance of the overlap class to run the GPU only implementation.
-    overlap::OverlapCalculator overlapCalc(pot_width,
-                                           pot_height,
-                                           num_column_cols,
-                                           num_column_rows,
-                                           num_input_cols,
-                                           num_input_rows,
-                                           center_pot_synapses,
-                                           connected_perm,
-                                           min_overlap,
-                                           wrap_input);
+    // // Create an instance of the overlap calculation class.
+    // // Why? Because I need values from the overlap class that are needed in the GPU only implementation.
+    // //      Also to compare the GPU only implementation to the CPU implementation.
+    // // TODO: 
+    // // This is not ideal. I should not need to create an instance of the overlap class to run the GPU only implementation.
+    // overlap::OverlapCalculator overlapCalc(pot_width,
+    //                                        pot_height,
+    //                                        num_column_cols,
+    //                                        num_column_rows,
+    //                                        num_input_cols,
+    //                                        num_input_rows,
+    //                                        center_pot_synapses,
+    //                                        connected_perm,
+    //                                        min_overlap,
+    //                                        wrap_input);
 
     // Get the tie breaker values from the overlap calculator
-    std::vector<float> pot_syn_tie_breaker = overlapCalc.get_pot_syn_tie_breaker();
+    //std::vector<float> pot_syn_tie_breaker = overlapCalc.get_pot_syn_tie_breaker();
+    std::vector<float> pot_syn_tie_breaker = {0.0};
 
     LOG(INFO, "Starting the GPU overlap calculation.");
+
+    // int n_rows2 = 10;
+    // int n_cols2 = 10;
+    // std::vector<std::vector<int>> input2 = std::vector<std::vector<int>>(n_rows2, std::vector<int>(n_cols2, 1));
+    // std::pair<int, int> input_shape2 = {n_rows2, n_cols2};
+
+    // // Set the neighbourhood shape and step size
+    // std::pair<int, int> neib_shape2 = {2, 2};
+    // std::pair<int, int> neib_step2 = {1, 1};
+    // bool wrap_mode2 = true;
+    // bool center_neigh2 = true;
+
+    // // We need to flatten the input matrix
+    // std::vector<int> flat_input2 = gpu_overlap::flattenVector(input2);
+
+    // // Run the function and save the output
+    // std::vector<int> flat_output = gpu_overlap::gpu_Images2Neibs(flat_input2, input_shape2, neib_shape2, neib_step2, wrap_mode2, center_neigh2);
+    // // Print the flat output
+    // overlap_utils::print_1d_vector(flat_output);
 
     // Run the function and save the output
     gpu_overlap::calculate_overlap_gpu( col_syn_perm,
