@@ -73,17 +73,29 @@ namespace gpu_overlap
     /// sliding_window_kernel      A kernel function that performs a sliding window operation on a matrix.
     ///                            This kernel function oerates on a simualted 2D matrix, but the matrix is
     ///                            actually stored as a 1D array. The kernel function is designed to be
-    ///                            launched with a 2D grid of 2D blocks. Each thread in the block will
+    ///                            launched with a 2D grid of 2D blocks on a GPU. Each thread in the block will
     ///                            perform the sliding window operation on a single element in the input
     ///                            matrix. The output matrix will also be a 1D vector simulating a 4D vector with dimensions
-    ///                            rows x cols x neigh_rows x neigh_cols.
+    ///                            rows x cols x neigh_rows x neigh_cols (if the step size is (1,1)).
     ///                            Each element at the output[i * cols + j] will be a 2D matrix (simulated by a flattened 1D vector)
-    ///                            containing the neighbourhood of the input matrix element input[i * cols + j].
+    ///                            containing the neighbourhood of the input matrix element at input[i * cols + j].
+    ///                            Note that the output is actually a 1D vector simulating a 4D vector with dimensions
+    ///                            rows x cols x neigh_rows x neigh_cols (if the step size is 1,1).
+    ///                            If a step size is not 1,1 then the neighbourhood "patch" will be stepped over the input matrix
+    ///                            by the step size in each dimension. E.g a step size of 2,2 will step the neighbourhood
+    ///                            over the input matrix by 2 rows and 2 columns (in the input simulated 2D vector) for each iteration. 
+    ///                            This means the output will have a size of ceil(rows/step_rows) x ceil(cols/step_cols) x neigh_rows x neigh_cols.
+    ///                            The output is a 1D vector simulating a 4D vector where each output[i][j] is a 2D matrix (simulated by a flattened 1D vector)
+    ///                            containing the neighbourhood of the input matrix element at input[i*2][j*2].
     ///
     /// @param[in] input           A pointer to the input matrix on the GPU.
     /// @param[out] output         A pointer to the output matrix on the GPU.
-    /// @param[in] rows            The number of rows in the input matrix.
-    /// @param[in] cols            The number of columns in the input matrix.
+    /// @param[in] in_rows         The number of rows in the input matrix.
+    /// @param[in] in_cols         The number of columns in the input matrix.
+    /// @param[in] out_rows        The number of rows in the output matrix.
+    ///                            Should be equal to ceil(in_rows / step_rows)
+    /// @param[in] out_cols        The number of columns in the output matrix.
+    ///                            Should be equal to ceil(in_cols / step_cols)
     /// @param[in] neib_rows       The number of rows in the neighbourhood.
     /// @param[in] neib_cols       The number of columns in the neighbourhood.
     /// @param[in] step_rows       The number of rows to step the neighbourhood over the input for each iteration.
@@ -91,51 +103,59 @@ namespace gpu_overlap
     /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
     /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
     ///-----------------------------------------------------------------------------
-    __global__ void sliding_window_kernel(int *input, int *output, int rows, int cols, int neib_rows, int neib_cols, int step_rows, int step_cols, bool wrap_mode, bool center_neigh)
+    __global__ void sliding_window_kernel(int *input, int *output, int in_rows, int in_cols, int out_rows, int out_cols, int neib_rows, int neib_cols, int step_rows, int step_cols, bool wrap_mode, bool center_neigh)
     {
-        // The thread index is the index of the element in the input matrix that the current thread will operate on.
+        // The thread index is the index of the element in the output matrix that the current thread will operate on.
+        // Each thread calcualtes the neighbourhood of a single element (i,j) in the ouptut matrix.
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index of the thread index
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index of the thread index
 
-        // The threads in the block that are outside the bounds of the input matrix do nothing.
-        if (i < rows && j < cols)
+        // TODO
+        //int N = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));  // Number of rows in output matrix
+        //int M = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second)); // Number of columns in output matrix
+        // int out_rows = ceil(in_rows / step_rows); // Number of rows in output matrix
+        // int out_cols = ceil(in_cols / step_cols); // Number of columns in output matrix
+        // The threads in the block that are outside the bounds of the output matrix do nothing.
+        if (i < out_rows && j < out_cols)
         {
-            // The output matrix is a 1D vector simulating a 4D vector with dimensions rows x cols x neigh_rows x neigh_cols.
+            // The output matrix is a 1D vector simulating a 4D vector with dimensions:
+            //  ceil(rows/step_rows) x ceil(cols/step_cols) x neigh_rows x neigh_cols.
             // ii and jj are the row and column indices of the current element in the neighbourhood.
             for (int ii = 0; ii < neib_rows; ++ii)
             {
                 for (int jj = 0; jj < neib_cols; ++jj)
                 {
-                    // The indices of the current element in the neighbourhood.
-                    int x = i + ii * step_rows; // Row index of the current element in the neighbourhood.
-                    int y = j + jj * step_cols; // Column index of the current element in the neighbourhood.
+                    // The indices into the input matrix of the current element in the neighbourhood.
+                    int x = i * step_rows + ii; // Row index of the current element in the neighbourhood.
+                    int y = j * step_cols + jj; // Column index of the current element in the neighbourhood.
 
                     // If the "center_neigh" flag is set, center the neighbourhood over the current element in the input matrix.
                     if (center_neigh)
                     {
-                        x = i + (ii - neib_rows / 2) * step_rows;
-                        y = j + (jj - neib_cols / 2) * step_cols;
+                        x = i * step_rows + (ii - neib_rows / 2);
+                        y = j * step_cols + (jj - neib_cols / 2);
                     }
 
                     // Wrap the indices around the bounds of the input matrix if "wrap_mode" is set.
                     if (wrap_mode)
                     {
-                        x = (x + rows) % rows;
-                        y = (y + cols) % cols;
+                        x = (x + in_rows) % in_rows;
+                        y = (y + in_cols) % in_cols;
                     }
 
-                    // Set the element in the output matrix
-                    if (x >= 0 && x < rows && y >= 0 && y < cols)
+                    // Set the element in the output matrix.
+                    // Make sure the indicies x,y are within the bounds of the input matrix.
+                    if (x >= 0 && x < in_rows && y >= 0 && y < in_cols)
                     {
                         // Set output matrix element i,j,ii,jj to the input matrix element x,y.
-                        int temp_idx = (i * cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
-                        int temp_out = input[x * cols + y];
+                        int temp_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        int temp_out = input[x * in_cols + y];
                         output[temp_idx] = temp_out;
                     }
                     else
                     {
                         // Set the element in the output matrix to 0 if the indices are outside the bounds of the input matrix.
-                        int temp_idx = (i * cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        int temp_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
                         output[temp_idx] = 0;
                     }
                 }
@@ -213,7 +233,7 @@ namespace gpu_overlap
                                             }
                                             dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
                                                                         .name("sliding_window");
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
@@ -350,7 +370,7 @@ namespace gpu_overlap
                                             }
                                             dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
                                                                         .name("sliding_window");
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
@@ -438,7 +458,7 @@ namespace gpu_overlap
     //             noOfBlocks++;
     //         }
     //         dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
-    //         sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh); });
+    //         sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh); });
 
     //     // Copy the output matrix from the GPU using taskflow.
     //     auto copy = taskflow.emplace([&]()

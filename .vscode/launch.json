@@ -76,12 +76,12 @@
             // "preLaunchTask": ""
         },
         {
-            "name": "(gdb) gpu_Images2Neibs.test4_large_2_step",
+            "name": "(gdb) gpu_Images2Neibs.test5_large_2_step",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow_tests",
             "args": [
-                "--gtest_filter=gpu_Images2Neibs.test4_large_2_step"
+                "--gtest_filter=gpu_Images2Neibs.test5_large_2_step"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
