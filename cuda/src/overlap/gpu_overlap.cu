@@ -110,9 +110,6 @@ namespace gpu_overlap
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index of the thread index
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index of the thread index
 
-        // TODO
-        //int N = static_cast<int>(ceil(static_cast<float>(input_shape.first) / neib_step.first));  // Number of rows in output matrix
-        //int M = static_cast<int>(ceil(static_cast<float>(input_shape.second) / neib_step.second)); // Number of columns in output matrix
         // int out_rows = ceil(in_rows / step_rows); // Number of rows in output matrix
         // int out_cols = ceil(in_cols / step_cols); // Number of columns in output matrix
         // The threads in the block that are outside the bounds of the output matrix do nothing.
@@ -157,6 +154,97 @@ namespace gpu_overlap
                         // Set the element in the output matrix to 0 if the indices are outside the bounds of the input matrix.
                         int temp_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
                         output[temp_idx] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    
+    ///-----------------------------------------------------------------------------
+    ///
+    /// overlap_kernel      A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
+    ///                     This kernel function oerates on a simualted 2D matrix, but the matrix is
+    ///                     actually stored as a 1D array. The kernel function is designed to be
+    ///                     launched with a 2D grid of 2D blocks on a GPU. Each thread in the block will
+    ///                     perform the overlap calculation on a single element in the input
+    ///                     matrix. The output matrix will also be a 1D vector simulating a 2D vector with dimensions
+    ///                     num_cortical_rows x num_cortical_cols. The num_cortical_rows and num_cortical_cols depend on the
+    ///                     step size and the input_grid size.
+    ///                     Each element at the output[i * cols + j] will be a value that indicates how many "connected" synapses
+    ///                     in the neighboroughood are attached in active inputs in the inputGrid.
+    ///                     If a step size is not 1,1 then the neighbourhood "patch" will be stepped over the input matrix
+    ///                     by the step size in each dimension. E.g a step size of 2,2 will step the neighbourhood
+    ///                     over the input matrix by 2 rows and 2 columns (in the input simulated 2D vector) for each iteration. 
+    ///                     This means the output will have a size of ceil(rows/step_rows) x ceil(cols/step_cols).
+    ///                     The output is a 1D vector simulating a 2D vector where each output[i][j] is a single value the overlap score for the cortical column at i,j.
+    ///
+    /// @param[in] input           A pointer to the input matrix on the GPU.
+    /// @param[out] output         A pointer to the output matrix on the GPU.
+    /// @param[in] in_rows         The number of rows in the input matrix.
+    /// @param[in] in_cols         The number of columns in the input matrix.
+    /// @param[in] out_rows        The number of rows in the output matrix.
+    ///                            Should be equal to ceil(in_rows / step_rows)
+    /// @param[in] out_cols        The number of columns in the output matrix.
+    ///                            Should be equal to ceil(in_cols / step_cols)
+    /// @param[in] neib_rows       The number of rows in the neighbourhood.
+    /// @param[in] neib_cols       The number of columns in the neighbourhood.
+    /// @param[in] step_rows       The number of rows to step the neighbourhood over the input for each iteration.
+    /// @param[in] step_cols       The number of columns to step the neighbourhood over the input for each iteration.
+    /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
+    /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
+    ///-----------------------------------------------------------------------------
+    __global__ void overlap_kernel(int *in_grid, int *in_pot_syn_tie_breaker, int *out_overlap, int in_rows, int in_cols, int out_rows, int out_cols, int neib_rows, int neib_cols, int step_rows, int step_cols, bool wrap_mode, bool center_neigh)
+    {
+        // The thread index is the index of the element in the output matrix that the current thread will operate on.
+        // Each thread calcualtes the neighbourhood of a single element (i,j) in the ouptut matrix.
+        int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index of the thread index
+        int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index of the thread index
+
+        // int out_rows = ceil(in_rows / step_rows); // Number of rows in output matrix
+        // int out_cols = ceil(in_cols / step_cols); // Number of columns in output matrix
+        // The threads in the block that are outside the bounds of the output matrix do nothing.
+        if (i < out_rows && j < out_cols)
+        {
+            // The out_overlap matrix is a 1D vector simulating a 2D vector with dimensions:
+            //  ceil(rows/step_rows) x ceil(cols/step_cols).
+            // ii and jj are the row and column indices of the current element in the neighbourhood.
+            for (int ii = 0; ii < neib_rows; ++ii)
+            {
+                for (int jj = 0; jj < neib_cols; ++jj)
+                {
+                    // The indices into the in_grid matrix of the current element in the neighbourhood.
+                    int x = i * step_rows + ii; // Row index of the current element in the neighbourhood.
+                    int y = j * step_cols + jj; // Column index of the current element in the neighbourhood.
+
+                    // If the "center_neigh" flag is set, center the neighbourhood over the current element in the in_grid matrix.
+                    if (center_neigh)
+                    {
+                        x = i * step_rows + (ii - neib_rows / 2);
+                        y = j * step_cols + (jj - neib_cols / 2);
+                    }
+
+                    // Wrap the indices around the bounds of the in_grid matrix if "wrap_mode" is set.
+                    if (wrap_mode)
+                    {
+                        x = (x + in_rows) % in_rows;
+                        y = (y + in_cols) % in_cols;
+                    }
+
+                    // Set the element in the out_overlap matrix.
+                    // Make sure the indicies x,y are within the bounds of the in_grid matrix.
+                    if (x >= 0 && x < in_rows && y >= 0 && y < in_cols)
+                    {
+                        // Set out_overlap matrix element i,j,ii,jj to the in_grid matrix element x,y.
+                        int temp_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        int temp_out = in_grid[x * in_cols + y];
+                        out_overlap[temp_idx] = temp_out;
+                    }
+                    else
+                    {
+                        // Set the element in the out_overlap matrix to 0 if the indices are outside the bounds of the in_grid matrix.
+                        int temp_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        out_overlap[temp_idx] = 0;
                     }
                 }
             }
@@ -329,7 +417,9 @@ namespace gpu_overlap
         int P = neib_shape.second;                                              // Number of columns in each patch
 
         // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
-        std::vector<int> output;
+        //std::vector<int> output;
+        // The output is a 1D vector simulating a 2D vector with dimensions N x M. This is the overlap score for each cortical column.
+        std::vector<int> out_overlap;
 
         // Step2 inputs pot_syn_tie_breaker_
         // Make the pot_syn_tie_breaker_ matrix, this should have be done already and passed in as an input.
@@ -337,12 +427,15 @@ namespace gpu_overlap
 
         
 
-        // Allocate memory on the GPU for the input matrix "inputGrid".
-        int *d_input, *d_output;
+        // Allocate memory on the GPU for the input matrix "inputGrid" and "pot_syn_tie_breaker_" matrix
+        int *d_in_grid, *d_in_pot_syn_tie_breaker; 
+        // Allocate memory on the GPU for putting the output, the overlap scores for each cortical column.
+        int *d_out_overlap;
 
         // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
         auto allocate_in = taskflow.emplace([&]()
-                                            { TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input"); })
+                                            { TF_CHECK_CUDA(cudaMalloc(&d_in_grid, rows * cols * sizeof(int)), "failed to allocate d_in_grid"); 
+                                              TF_CHECK_CUDA(cudaMalloc(&d_in_pot_syn_tie_breaker, N * M * sizeof(int)), "failed to allocate d_in_pot_syn_tie_breaker"); })
                                .name("allocate_in");
 
         // allocate the host and device storage for the ouput matrix.
@@ -350,15 +443,17 @@ namespace gpu_overlap
                                              {
                                                 // Host storage
                                                 output.resize(N * M * O * P);
-                                                TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output"); })
+                                                TF_CHECK_CUDA(cudaMalloc(&d_out_overlap, N * M * O * P * sizeof(int)), "failed to allocate output"); })
                                 .name("allocate_out");
 
-        // create a cudaFlow to run the sliding_window_kernel.
+        // create a cudaFlow to run the overlap_kernel. This kernel function runs
+        // the overlap calculation on the GPU.
         auto cudaFlow = taskflow.emplace([&]()
                                          {
                                             tf::cudaFlow cf;
                                             // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
-                                            auto copy_in = cf.memcpy(d_input, inputGrid.data(), rows * cols * sizeof(int)).name("copy_in");
+                                            auto copy_in = cf.memcpy(d_in_grid, inputGrid.data(), rows * cols * sizeof(int)).name("copy_in");
+                                            auto copy_pot_syn_tie_breaker = cf.memcpy(d_in_pot_syn_tie_breaker, pot_syn_tie_breaker.data(), N * M * sizeof(int)).name("copy_pot_syn_tie_breaker");
 
                                             // launch the kernel function on the GPU.
                                             int threadsPerBlock = 256;
@@ -370,12 +465,12 @@ namespace gpu_overlap
                                             }
                                             dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto sliding_window = cf.kernel(grid, block, 0, sliding_window_kernel, d_input, d_output, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
-                                                                        .name("sliding_window");
+                                            auto overlap_kernel = cf.kernel(grid, block, 0, overlap_kernel, d_in_grid, d_in_pot_syn_tie_breaker, d_out_overlap, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                                                        .name("overlap_kernel");
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
-                                            auto copy_out = cf.memcpy(output.data(), d_output, N * M * O * P * sizeof(int) ).name("copy_out"); 
-                                            sliding_window.succeed(copy_in)
+                                            auto copy_out = cf.memcpy(output.data(), d_out_overlap, N * M * O * P * sizeof(int) ).name("copy_out"); 
+                                            overlap_kernel.succeed(copy_pot_syn_tie_breaker).succeed(copy_in)
                                                 .precede(copy_out); 
                                                 
                                         tf::cudaStream stream;
@@ -385,8 +480,8 @@ namespace gpu_overlap
 
         auto free = taskflow.emplace([&]()
                                      {
-                                         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
-                                         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); })
+                                         TF_CHECK_CUDA(cudaFree(d_in_grid), "failed to free d_in_grid");
+                                         TF_CHECK_CUDA(cudaFree(d_out_overlap), "failed to free d_out_overlap"); })
                         .name("free");
 
         // create the dependency graph.

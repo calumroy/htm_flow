@@ -45,17 +45,24 @@ namespace gpu_overlap
 
     ///-----------------------------------------------------------------------------
     ///
-    /// calculateOverlap   Calculate the overlap scores for a given input.
-    ///                    This is how well each column connects to the active input.
-    ///                    This is the main function of this class and its purpose.
+    /// calculate_overlap_gpu   Calculate the overlap scores for a given input.
+    ///                         This is how well each column connects to the active input.
+    ///                         This is the main function of this class and its purpose.
     ///
-    /// @param[in] colSynPerm   The synapse permanence values for each column. A 1D vector simulating a 2D vector of floats columns_width_ x columns_height_.
-    /// @param[in] colSynPerm_shape  The shape of the colSynPerm vector height then width as a pair of ints.
-    /// @param[in] inputGrid    The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
-    /// @param[in] inputGrid_shape   The shape of the inputGrid vector height then width as a pair of ints.
+    /// @param[in] colSynPerm           The synapse permanence values for each column. A 1D vector simulating a 2D vector of floats columns_width_ x columns_height_.
+    /// @param[in] colSynPerm_shape     The shape of the colSynPerm vector height then width as a pair of ints.
+    /// @param[in] inputGrid            The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
+    /// @param[in] inputGrid_shape      The shape of the inputGrid vector height then width as a pair of ints.
+    /// @param[in] neib_shape           The shape of the neighbourhood.
+    /// @param[in] neib_step            The step size of the sliding window.
+    /// @param[in] wrap_mode            Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
+    /// @param[in] center_neigh         Whether to center the neighbourhood patch around the input element or not.
+    /// @param[in] pot_syn_tie_breaker  A vector of floats that is used to break ties when the overlap scores are the same.
+    ///                                 This is used to randomly select a column when multiple columns have the same overlap score.
+    ///                                 This is a 1D vector simulating a 2D vector of floats cortical_columns_width_ x cortical_columns_height_
+    ///                                 The number of cortical columns depends on the input size and the parameters of the neib_step.
+    /// @param[out] overlap_output      The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///
-    /// @return                The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
-
     ///-----------------------------------------------------------------------------
     void calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
