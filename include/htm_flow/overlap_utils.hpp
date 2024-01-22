@@ -142,7 +142,7 @@ namespace overlap_utils
     ///                           pattern.
     /// @param[in] grid           The input grid (1D vector) but could be simulating a 2D matrix.
     /// @param[in] tieBreaker     The tie breaker (1D vector must be same size as grid).
-    /// @param[out] output        The output grid (1D vector) but could be simulating a 2D matrix.
+    /// @param[out] output        The output grid (1D parallel_maskTieBreakervector) but could be simulating a 2D matrix.
     /// @param[out] taskflow      The taskflow graph object.
     template <typename T>
     void parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker, std::vector<float> &output, tf::Taskflow &taskflow);

@@ -133,3 +133,14 @@ documentation at https://docs.nvidia.com/nsight-systems/UserGuide/index.html
 For example to profile one the the gpu unit test cases in the nsys-ui gui use the following two commands as the command line arguments and the working directory.
 `htm_flow_tests --gtest_filter=gpu_Images2Neibs.test3_very_large`  
 `/home/calum/Documents/projects/htm_flow/build`  
+
+## Using cuda-gdb to debug GPU code
+To debug the GPU code you can use cuda-gdb tool
+E.g to run the test case gpu_Images2Neibs.test4_large_2_step
+and then set a conditional breakpoint in the kernel code.
+
+```
+cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_large_2_step
+(cuda-gdb) break gpu_overlap.cu:128 if jj==19
+(cuda-gdb) run
+``````

@@ -213,10 +213,10 @@ TEST(gpu_overlap, test1_small)
     int pot_width = 30;
     int pot_height = 30;
     bool center_pot_synapses = false;
-    int num_input_rows = 200;
-    int num_input_cols = 200;
-    int num_column_rows = 100;
-    int num_column_cols = 100;
+    int num_input_rows = 50;
+    int num_input_cols = 50;
+    int num_column_rows = 20;
+    int num_column_cols = 20;
     float connected_perm = 0.3;
     int min_overlap = 3;
     int num_pot_syn = pot_width * pot_height;
