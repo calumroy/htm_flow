@@ -137,7 +137,7 @@ For example to profile one the the gpu unit test cases in the nsys-ui gui use th
 ## Using cuda-gdb to debug GPU code
 To debug the GPU code you can use cuda-gdb tool
 E.g to run the test case gpu_Images2Neibs.test4_large_2_step
-and then set a conditional breakpoint in the kernel code.
+and then set a conditional breakpoint in the kernel code on line 128:  
 
 ```
 cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_large_2_step

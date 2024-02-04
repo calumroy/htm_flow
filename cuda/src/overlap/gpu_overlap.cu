@@ -391,7 +391,7 @@ namespace gpu_overlap
     //               parallel_calcOverlap which is just a sum of each row.
     //        6. Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
     //               This uses the parallel_addVectors which is just a element wise addition.
-    void calculate_overlap_gpu(const std::vector<float> &colSynPerm,
+    std::vector<float> calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
                                const std::pair<int, int> &inputGrid_shape,
@@ -399,8 +399,8 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
                                bool center_neigh,
-                               const std::vector<float> &pot_syn_tie_breaker,
-                               std::vector<int> overlap_output
+                               const std::vector<float> &pot_syn_tie_breaker
+                               //std::vector<int> overlap_output
                                )
     {
         // The original implementation of the overlap calculation.
@@ -445,7 +445,7 @@ namespace gpu_overlap
         // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
         //std::vector<int> output;
         // The output is a 1D vector simulating a 2D vector with dimensions N x M. This is the overlap score for each cortical column.
-        std::vector<int> out_overlap;
+        std::vector<float> out_overlap;
 
         // Step2 inputs pot_syn_tie_breaker_
         // Make the pot_syn_tie_breaker_ matrix, this should have be done already and passed in as an input.
@@ -462,7 +462,7 @@ namespace gpu_overlap
         // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
         auto allocate_in = taskflow.emplace([&]()
                                             { TF_CHECK_CUDA(cudaMalloc(&d_in_grid, rows * cols * sizeof(int)), "failed to allocate d_in_grid"); 
-                                              TF_CHECK_CUDA(cudaMalloc(&d_in_pot_syn_tie_breaker, N * M * sizeof(float)), "failed to allocate d_in_pot_syn_tie_breaker"); })
+                                              TF_CHECK_CUDA(cudaMalloc(&d_in_pot_syn_tie_breaker, N * M * O * P * sizeof(float)), "failed to allocate d_in_pot_syn_tie_breaker"); })
                                .name("allocate_in");
 
         // allocate the host and device storage for the ouput matrix.
@@ -497,7 +497,7 @@ namespace gpu_overlap
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
                                             auto copy_out = cf.memcpy(out_overlap.data(), d_out_overlap, N * M * sizeof(float) ).name("copy_out"); 
-                                            overlap_calc.succeed(copy_pot_syn_tie_breaker).succeed(copy_in)
+                                            overlap_calc.succeed(copy_pot_syn_tie_breaker, copy_in)
                                                 .precede(copy_out); 
                                                 
                                         tf::cudaStream stream;
@@ -518,7 +518,7 @@ namespace gpu_overlap
         executor.run(taskflow)
             .wait();
 
-        
+        return out_overlap;
     }
 
     // TODO: Remove this function as it doesn't work!
