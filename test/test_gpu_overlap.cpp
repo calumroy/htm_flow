@@ -307,7 +307,6 @@ TEST(gpu_overlap, test1_small)
                                         wrap_input, 
                                         center_neigh,
                                         pot_syn_tie_breaker
-                                        //flat_overlap_output
                                         );
     
     LOG(INFO, "FINISHED GPU overlap calculation!");

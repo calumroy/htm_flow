@@ -73,7 +73,6 @@ namespace gpu_overlap
                                bool wrap_mode,
                                bool center_neigh,
                                const std::vector<float> &pot_syn_tie_breaker
-                               //std::vector<int> overlap_output
                                );
 
 
