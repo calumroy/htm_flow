@@ -205,6 +205,13 @@ namespace overlap
         return pot_syn_tie_breaker_;
     }
 
+    // Return the column overlap values.
+    std::vector<int> OverlapCalculator::get_col_overlaps()
+    {
+        // Return a copy of the col_overlaps_ vector.
+        return col_overlaps_;
+    }
+
     void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.

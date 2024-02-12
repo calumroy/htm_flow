@@ -6,6 +6,7 @@
 #include "overlap_utils.hpp"
 
 #include "logger.hpp"
+#include <utilities/stopwatch.hpp>
 
 TEST(gpu_Images2Neibs, test1_wrap)
 {
@@ -210,19 +211,19 @@ TEST(gpu_overlap, test1_small)
     // The function calculates the overlap scores for a given input.
 
     // Create the required inputs for the function
-    int pot_width = 10;
-    int pot_height = 10;
+    int pot_width = 2;
+    int pot_height = 2;
     bool center_pot_synapses = false;
-    int num_input_rows = 40;
-    int num_input_cols = 40;
-    int num_column_rows = 10;
-    int num_column_cols = 10;
+    int num_input_rows = 10;
+    int num_input_cols = 10;
+    int num_column_rows = 5;
+    int num_column_cols = 5;
     float connected_perm = 0.3;
     int min_overlap = 3;
     int num_pot_syn = pot_width * pot_height;
     int num_columns = num_column_rows * num_column_cols;
-    bool wrap_input = true;
-    bool center_neigh = true;
+    bool wrap_input = false;
+    bool center_neigh = false;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -248,6 +249,9 @@ TEST(gpu_overlap, test1_small)
     {
         new_input_mat[i] = dis2(gen);
     }
+    // Print the input matrix
+    LOG(INFO, "Input matrix: ");
+    overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
 
     // Get the step sizes. How much to step over the input matrix for each patch connected to each cortical column.
     // neib_step_ = {step_x, step_y}
@@ -256,11 +260,10 @@ TEST(gpu_overlap, test1_small)
 
     //std::vector<int> flat_overlap_output = {0};
 
-    // Create an instance of the overlap calculation class.
-    // Why? Because I need values from the overlap class that are needed in the GPU only implementation.
-    //      Also to compare the GPU only implementation to the CPU implementation.
-    // TODO: 
-    // This is not ideal. I should not need to create an instance of the overlap class to run the GPU only implementation.
+    LOG(INFO, "Starting the CPU overlap calculation.");
+    START_STOPWATCH();
+    // Create an instance of the overlap calculation class
+    // to compare the GPU only implementation to the CPU implementation.
     overlap::OverlapCalculator overlapCalc(pot_width,
                                            pot_height,
                                            num_column_cols,
@@ -271,12 +274,17 @@ TEST(gpu_overlap, test1_small)
                                            connected_perm,
                                            min_overlap,
                                            wrap_input);
-
-    // Get the tie breaker values from the overlap calculator
-    std::vector<float> pot_syn_tie_breaker = overlapCalc.get_pot_syn_tie_breaker();
-    //std::vector<float> pot_syn_tie_breaker = {0.0};
+    // Run the overlap calculation on the CPU
+    overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
+    STOP_STOPWATCH();
+    LOG(INFO, "FINISHED CPU overlap calculation!");
+    std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
+    // Print the overlap scores
+    overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
+    PRINT_ELAPSED_TIME();
 
     LOG(INFO, "Starting the GPU overlap calculation.");
+    START_STOPWATCH();
 
     // int n_rows2 = 10;
     // int n_cols2 = 10;
@@ -305,14 +313,16 @@ TEST(gpu_overlap, test1_small)
                                         neib_shape, 
                                         neib_step, 
                                         wrap_input, 
-                                        center_neigh,
-                                        pot_syn_tie_breaker
+                                        center_neigh
                                         );
-    
+    STOP_STOPWATCH();
     LOG(INFO, "FINISHED GPU overlap calculation!");
+    PRINT_ELAPSED_TIME();
     
     // Print the flat output
-    overlap_utils::print_1d_vector(flat_overlap_output);
+    overlap_utils::print_2d_vector(flat_overlap_output,  std::pair(num_column_rows, num_column_cols));
+
+
 }
 
 

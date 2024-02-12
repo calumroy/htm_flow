@@ -57,10 +57,6 @@ namespace gpu_overlap
     /// @param[in] neib_step            The step size of the sliding window.
     /// @param[in] wrap_mode            Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
     /// @param[in] center_neigh         Whether to center the neighbourhood patch around the input element or not.
-    /// @param[in] pot_syn_tie_breaker  A vector of floats that is used to break ties when the overlap scores are the same.
-    ///                                 This is used to randomly select a column when multiple columns have the same overlap score.
-    ///                                 This is a 1D vector simulating a 2D vector of floats cortical_columns_width_ x cortical_columns_height_
-    ///                                 The number of cortical columns depends on the input size and the parameters of the neib_step.
     /// @param[out] overlap_output      The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///
     ///-----------------------------------------------------------------------------
@@ -71,8 +67,7 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_shape,
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
-                               bool center_neigh,
-                               const std::vector<float> &pot_syn_tie_breaker
+                               bool center_neigh
                                );
 
 

@@ -56,6 +56,13 @@ namespace overlap
         /// @return A 1D vector simulating a 2D vector of floats representing the synapse tie breaker matrix.
         std::vector<float> get_pot_syn_tie_breaker();
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_overlaps - Returns the overlap scores for each column.
+        ///
+        /// @return A 1D vector of ints representing the overlap scores for each column.
+        std::vector<int> get_col_overlaps();
+
     private:
         // // Calculate the potential synapses for a given column
         // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,
