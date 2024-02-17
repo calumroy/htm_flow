@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
         new_input_mat[i] = dis2(gen);
     }
 
+
     START_STOPWATCH();
     // Create an instance of the overlap calculation class
     OverlapCalculator overlapCalc(pot_width,
@@ -79,5 +80,14 @@ int main(int argc, char *argv[])
     // Run the overlap calculation on the CPU
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
     STOP_STOPWATCH();
+    
+    // // Print the input matrix
+    // LOG(INFO, "Input matrix: ");
+    // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
+
+    // Print the overlap scores
+    std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
+    overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
     PRINT_ELAPSED_TIME();
+    
 }
