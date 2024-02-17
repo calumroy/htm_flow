@@ -224,9 +224,13 @@ namespace gpu_overlap
             // The out_overlap matrix is a 1D vector simulating a 2D vector with dimensions:
             //  size = number of cortical cols = ceil(rows/step_rows) x ceil(cols/step_cols).
 
+            // Get the norm value for the tie breaker used to calcualte a slightly different tie breaker value for each element in the neighbourhood.
+            // THe sum of all these slightly different tie values is less then 0.5.
+            // This is because they are all added together with the actual overlap scores so we don;t wna thte sum of the tie breaker values to be larger then 1 (we chose 0.5)
+            // in order for the tie breaker to only break ties in overlap scores and not affect the actual overlap scores.
             float neib_and_tie_sum = 0.0f;
-            float n = static_cast<float>(neib_cols);
-            float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);
+            float n = static_cast<float>(neib_cols*neib_rows);  // The number of elements in the neighbourhood.
+            float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);  // The sum of the tie breaker values over a complete neighbourhood should be less then 0.5.
 
             // ii and jj are the row and column indices of the current element in the neighbourhood.
             for (int ii = 0; ii < neib_rows; ++ii)
@@ -259,9 +263,13 @@ namespace gpu_overlap
                     {
                         float tie_breaker = (jj + 1) * norm_value; // Calculating the tie breaker value on-the-fly
                         int grid_value = in_grid[x * in_cols + y];
-                        // Add the corresponding tie breaker value to each of the neighbourhood elements.
-                        // then sum the elements in the neighbourhood. 
-                        neib_and_tie_sum += tie_breaker + grid_value;
+                        // Add the corresponding tie breaker value to each of the neighbourhood elements only if the grid input
+                        // for this vlaue is not. THis is so tie breaker values only affect inputs that are active.
+                        // Then sum the elements in the neighbourhood (including the active tie breakers). 
+                        if (grid_value > 0)
+                        {
+                            neib_and_tie_sum += tie_breaker + grid_value;
+                        }
                     }
                     else
                     {
@@ -438,8 +446,8 @@ namespace gpu_overlap
 
         int N = static_cast<int>(ceil(static_cast<float>(rows) / neib_step.first));  // Number of rows in output matrix
         int M = static_cast<int>(ceil(static_cast<float>(cols) / neib_step.second)); // Number of columns in output matrix
-        int O = neib_shape.first;                                               // Number of rows in each patch
-        int P = neib_shape.second;                                              // Number of columns in each patch
+        //int O = neib_shape.first;                                               // Number of rows in each patch
+        //int P = neib_shape.second;                                              // Number of columns in each patch
 
         // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
         //std::vector<int> output;
