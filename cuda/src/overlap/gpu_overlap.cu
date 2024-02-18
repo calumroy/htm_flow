@@ -493,6 +493,8 @@ namespace gpu_overlap
         // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
         // This means the size of the colSynPerm vector should be equal to the size of the output matrix (num cortical columns) times
         // the size of the neighbourhood matrix (neib_shape.first * neib_shape.second). 
+        // TODO
+        // FIX this assert fails sometimes on certain sizes. Fix the actual issue.
         assert(colSynPerm.size() == N * M * O * P);
         assert(colSynPerm_shape.first == N * M);
         assert(colSynPerm_shape.second == O * P);
