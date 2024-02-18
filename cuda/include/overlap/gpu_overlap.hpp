@@ -50,15 +50,16 @@ namespace gpu_overlap
     ///                         This is the main function of this class and its purpose.
     ///
     /// @param[in] colSynPerm           The synapse permanence values for each column. A 1D vector simulating a 2D vector of floats columns_width_ x columns_height_.
-    /// @param[in] colSynPerm_shape     The shape of the colSynPerm vector height then width as a pair of ints.
+    /// @param[in] colSynPerm_shape     The shape of the colSynPerm vector height then width as a pair of ints. Should be (num_columns, num_pot_syn) = (cortical columns_width_ x cortical columns_height_, neib_shape(0) * neib_shape(1) )
     /// @param[in] inputGrid            The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
     /// @param[in] inputGrid_shape      The shape of the inputGrid vector height then width as a pair of ints.
     /// @param[in] neib_shape           The shape of the neighbourhood.
     /// @param[in] neib_step            The step size of the sliding window.
     /// @param[in] wrap_mode            Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
     /// @param[in] center_neigh         Whether to center the neighbourhood patch around the input element or not.
-    /// @param[out] overlap_output      The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
-    ///
+    /// @param[in] connected_perm       The connected permanence value threshold. If the permanence value is above this value then the synapse is connected.
+    ///         
+    /// @return                        The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///-----------------------------------------------------------------------------
     std::vector<float> calculate_overlap_gpu(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
@@ -67,7 +68,8 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_shape,
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
-                               bool center_neigh
+                               bool center_neigh,
+                               float connected_perm
                                );
 
 

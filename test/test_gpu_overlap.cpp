@@ -239,6 +239,9 @@ TEST(gpu_overlap, test1_small)
     {
         col_syn_perm[i] = dis(gen);
     }
+    LOG(INFO, "col_syn_perm: ");
+    std::vector<int> perm_shape = {num_column_rows, num_column_cols, pot_height, pot_width};
+    overlap_utils::print_4d_vector(col_syn_perm, perm_shape);
     // Create a random input matrix. This is a matrix representing the input to the HTM layer.
     // It is a boolean input of 1 or 0.
     // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
@@ -313,7 +316,8 @@ TEST(gpu_overlap, test1_small)
                                         neib_shape, 
                                         neib_step, 
                                         wrap_input, 
-                                        center_neigh
+                                        center_neigh,
+                                        connected_perm
                                         );
     STOP_STOPWATCH();
     LOG(INFO, "FINISHED GPU overlap calculation!");

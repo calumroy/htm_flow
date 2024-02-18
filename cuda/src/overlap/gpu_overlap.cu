@@ -191,7 +191,12 @@ namespace gpu_overlap
     ///                     The potential overlap score for each cortical column does nto care about the synpase permance values where as the actual overlap
     ///                     score does.
     ///
-    /// @param[in] in_grid           A pointer to the input matrix on the GPU. 1D vector simulating a 2D vector size (in_rows * in_cols ).
+    /// @param[in] in_grid        A pointer to the input matrix on the GPU. 1D vector simulating a 2D vector size (in_rows * in_cols ).
+    ///                           This is a binary matrix where 1 indicates an active input and 0 indicates an inactive input.   
+    /// @param[in] in_colSynPerm  A pointer to the input vector on the GPU simulating a 4D vector with dimensions:
+    ///                           size = number of cortical columns = cortical col height x cortical col width = out_rows * out_cols = ceil(in_rows/step_rows) x ceil(in_cols/step_cols) x neib_rows x neib_cols.
+    ///                           This is the permanence value for each synapse connected to each element in the neighbourhood of each cortical column.
+    /// 
     /// @param[out] out_overlap    A pointer to the output matrix on the GPU.
     ///                            The out_overlap matrix is a 1D vector simulating a 2D vector with dimensions:
     ///                            size = number of cortical columns = cortical col height x cortical col width = out_rows * out_cols = ceil(in_rows/step_rows) x ceil(in_cols/step_cols).
@@ -210,14 +215,19 @@ namespace gpu_overlap
     /// @param[in] neib_cols       The number of columns in the neighbourhood.
     /// @param[in] step_rows       The number of rows to step the neighbourhood over the input for each iteration.
     /// @param[in] step_cols       The number of columns to step the neighbourhood over the input for each iteration.
+    /// 
     /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
     /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
+    /// @param[in] connected_perm  A float of the permanence value threshold for a synapse to be considered "connected" to a cortical column.
+    ///                            Synapses with a permanence below this aren't considered connected and don't contribute to the overlap score even when they "end/start" on an active input.
     ///-----------------------------------------------------------------------------
-    __global__ void overlap_kernel(int *in_grid, float *out_overlap, *out_potential_overlap,
+    __global__ void overlap_kernel(int *in_grid, float *in_colSynPerm, 
+                               float *out_overlap, float *out_potential_overlap,
                                int in_rows, int in_cols, int out_rows, int out_cols, 
                                int neib_rows, int neib_cols, 
                                int step_rows, int step_cols, 
-                               bool wrap_mode, bool center_neigh)
+                               bool wrap_mode, bool center_neigh,
+                               float connected_perm)
     {
         // The thread index is the index of the element in the output matrix that the current thread will operate on.
         // Each thread calculates the neighbourhood of a single element (i,j) and then calcualtes the overlap score in 
@@ -232,12 +242,15 @@ namespace gpu_overlap
         {
             // The out_overlap matrix is a 1D vector simulating a 2D vector with dimensions:
             //  size = number of cortical cols = ceil(rows/step_rows) x ceil(cols/step_cols).
+            // The out_potential_overlap matrix is a 1D vector simulating a 2D vector with dimensions:
+            //  size = number of cortical cols = ceil(rows/step_rows) x ceil(cols/step_cols).
 
             // Get the norm value for the tie breaker used to calcualte a slightly different tie breaker value for each element in the neighbourhood.
             // THe sum of all these slightly different tie values is less then 0.5.
-            // This is because they are all added together with the actual overlap scores so we don;t wna thte sum of the tie breaker values to be larger then 1 (we chose 0.5)
+            // This is because they are all added together with the actual overlap scores so we don't want thte sum of the tie breaker values to be larger then 1 (we chose 0.5)
             // in order for the tie breaker to only break ties in overlap scores and not affect the actual overlap scores.
             float neib_and_tie_sum = 0.0f;
+            float con_neib_and_tie_sum = 0.0f;  // THe sum of the neibourhood elements and tie breaker values for only the connected cortical "proxmial" synapses.
             float n = static_cast<float>(neib_cols*neib_rows);  // The number of elements in the neighbourhood.
             float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);  // The sum of the tie breaker values over a complete neighbourhood should be less then 0.5.
 
@@ -287,7 +300,13 @@ namespace gpu_overlap
                         if (grid_value > 0)
                         {
                             neib_and_tie_sum += tie_breaker + grid_value;
+                            // Check if the proximal cortical column synapse is connected (its permanence value is above the threshold).
+                            if (in_colSynPerm[(i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj] > connected_perm)
+                            {
+                                con_neib_and_tie_sum += tie_breaker + grid_value;
+                            }
                         }
+                        
                     }
                     else
                     {
@@ -298,9 +317,10 @@ namespace gpu_overlap
                 }
             }
             // Now that we have the sum of the neighbourhood and the corresponding tie breaker values for each neighbourhood element,
-            // set the output = "overlap score" at each cortical column to this value.
-            int cort_col_id = i * out_cols + j;
-            out_overlap[cort_col_id] = neib_and_tie_sum;
+            // set the output at each corresponding cortical column element to this calcualted value.
+            int cort_col_id = i * out_cols + j;  // The index of the current cortical column.
+            out_potential_overlap[cort_col_id] = neib_and_tie_sum;  // Potential overlap score.
+            out_overlap[cort_col_id] = con_neib_and_tie_sum;   
         }
     }
 
@@ -425,7 +445,8 @@ namespace gpu_overlap
                                const std::pair<int, int> &neib_shape,
                                const std::pair<int, int> &neib_step,
                                bool wrap_mode,
-                               bool center_neigh
+                               bool center_neigh,
+                               float connected_perm
                                )
     {
         // The original implementation of the overlap calculation.
@@ -462,42 +483,42 @@ namespace gpu_overlap
             step = neib_shape;
         }
 
-        int N = static_cast<int>(ceil(static_cast<float>(rows) / neib_step.first));  // Number of rows in output matrix
-        int M = static_cast<int>(ceil(static_cast<float>(cols) / neib_step.second)); // Number of columns in output matrix
-        //int O = neib_shape.first;                                               // Number of rows in each patch
-        //int P = neib_shape.second;                                              // Number of columns in each patch
+        // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
+        int N = static_cast<int>(ceil(static_cast<float>(rows) / neib_step.first));  // Number of rows in output matrix. This is the height of the "cortical columns".
+        int M = static_cast<int>(ceil(static_cast<float>(cols) / neib_step.second)); // Number of columns in output matrix. This is the width of the "cortical columns".
+        // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
+        int O = neib_shape.first;                                               // Number of rows in each patch conneted to a cortical column.
+        int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
+
+        // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
+        // This means the size of the colSynPerm vector should be equal to the size of the output matrix (num cortical columns) times
+        // the size of the neighbourhood matrix (neib_shape.first * neib_shape.second). 
+        assert(colSynPerm.size() == N * M * O * P);
+        assert(colSynPerm_shape.first == N * M);
+        assert(colSynPerm_shape.second == O * P);
 
         // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
         //std::vector<int> output;
         // The output is a 1D vector simulating a 2D vector with dimensions N x M. This is the overlap score for each cortical column.
         std::vector<float> out_overlap;
 
-        // Step2 inputs pot_syn_tie_breaker_
-        // Make the pot_syn_tie_breaker_ matrix, this should have be done already and passed in as an input.
-        // TODO
-
-        
-
-        // Allocate memory on the GPU for the input matrix "inputGrid" and "pot_syn_tie_breaker_" matrix
+        // Allocate memory on the GPU for the input matrix "inputGrid" and "colSynPerm" matrix.
         int *d_in_grid;
+        float *d_colSynPerm;
 
-        // TODO:
-        // Remove this
-        //float *d_in_pot_syn_tie_breaker;  
         // Allocate memory on the GPU for putting the output, the overlap scores for each cortical column.
         // Also allocate memory for the potential overlap scores for each cortical column.
         float *d_out_overlap;      // Overlap scores for each cortical column.
-        float *d_out_pot_overlap   // Potnetial overlap scores for each cortical column.
+        float *d_out_pot_overlap;   // Potnetial overlap scores for each cortical column.
 
         // allocate device storage for the input matrix. The host (CPU) already has storage for the input.
         auto allocate_in = taskflow.emplace([&]()
                                             { TF_CHECK_CUDA(cudaMalloc(&d_in_grid, rows * cols * sizeof(int)), "failed to allocate d_in_grid"); 
-                                              // TODO: remove this
-                                              //TF_CHECK_CUDA(cudaMalloc(&d_in_pot_syn_tie_breaker, N * M * O * P * sizeof(float)), "failed to allocate d_in_pot_syn_tie_breaker"); 
+                                              TF_CHECK_CUDA(cudaMalloc(&d_colSynPerm, N * M * O * P * sizeof(float)), "failed to allocate d_colSynPerm"); 
                                             })
                                .name("allocate_in");
 
-        // allocate the host and device storage for the ouput matrix.
+        // allocate the host and device storage for the ouput matrix(s).
         auto allocate_out = taskflow.emplace([&]()
                                              {
                                                 // Host storage
@@ -513,9 +534,7 @@ namespace gpu_overlap
                                             tf::cudaFlow cf;
                                             // copy the input matrix to the GPU. Copy from the first element in the multi dim vector.
                                             auto copy_in = cf.memcpy(d_in_grid, inputGrid.data(), rows * cols * sizeof(int)).name("copy_in");
-                                            
-                                            // TODO: remove this
-                                            //auto copy_pot_syn_tie_breaker = cf.memcpy(d_in_pot_syn_tie_breaker, pot_syn_tie_breaker.data(), N * M * O * P * sizeof(float)).name("copy_pot_syn_tie_breaker");
+                                            auto copy_colSynPerm = cf.memcpy(d_colSynPerm, colSynPerm.data(), N * M * O * P * sizeof(float)).name("copy_colSynPerm");
 
                                             // launch the kernel function on the GPU.
                                             int threadsPerBlock = 256;
@@ -527,15 +546,16 @@ namespace gpu_overlap
                                             }
                                             dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
                                             
-                                            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel, d_in_grid, d_out_overlap, d_out_pot_overlap, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh)
+                                            // Setup the GPU kernel function to run the overlap calculation.
+                                            // Pass in all the parameters needed for the kernel function including the input and output vector memory locations.
+                                            // overlap_kernel = name of the kernel function to run, all paraemters after this are the paraemters required for this function.
+                                            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel, d_in_grid, d_colSynPerm, d_out_overlap, d_out_pot_overlap, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh, connected_perm)
                                                                         .name("overlap_calc");
 
                                             // copy the output matrix back to the host. Copy to the pointer of the first element in the multi dim vector.
                                             auto copy_out = cf.memcpy(out_overlap.data(), d_out_overlap, N * M * sizeof(float) ).name("copy_out"); 
-                                            // TODO remove this
-                                            //overlap_calc.succeed(copy_pot_syn_tie_breaker, copy_in)
-                                            //    .precede(copy_out); 
-                                            overlap_calc.succeed(copy_in)
+                                            // Set the order of the flow tasks.
+                                            overlap_calc.succeed(copy_colSynPerm, copy_in)
                                                 .precede(copy_out); 
                                                 
                                         tf::cudaStream stream;
