@@ -439,7 +439,7 @@ namespace gpu_overlap
     //        6. Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
     //               This uses the parallel_addVectors which is just a element wise addition.
     std::vector<float> calculate_overlap_gpu(
-                               const int columns_width, const int columns_height,
+                               const int width_cortical_cols, const int height_cortical_cols,
                                const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
@@ -487,8 +487,8 @@ namespace gpu_overlap
 
 
         // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
-        int N = columns_height;  // Number of rows in output matrix. This is the height of the "cortical columns".
-        int M = columns_width; // Number of columns in output matrix. This is the width of the "cortical columns".
+        int N = height_cortical_cols;  // Number of rows in output matrix. This is the height of the "cortical columns".
+        int M = width_cortical_cols; // Number of columns in output matrix. This is the width of the "cortical columns".
         // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
         int O = neib_shape.first;                                               // Number of rows in each patch connected to a cortical column.
         int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
