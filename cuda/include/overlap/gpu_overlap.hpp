@@ -49,6 +49,8 @@ namespace gpu_overlap
     ///                         This is how well each column connects to the active input.
     ///                         This is the main function of this class and its purpose.
     ///
+    /// @param[in] columns_width        The width of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
+    /// @param[in] columns_height       The height of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
     /// @param[in] colSynPerm           The synapse permanence values for each column. A 1D vector simulating a 2D vector of floats columns_width_ x columns_height_.
     /// @param[in] colSynPerm_shape     The shape of the colSynPerm vector height then width as a pair of ints. Should be (num_columns, num_pot_syn) = (cortical columns_width_ x cortical columns_height_, neib_shape(0) * neib_shape(1) )
     /// @param[in] inputGrid            The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
@@ -61,7 +63,9 @@ namespace gpu_overlap
     ///         
     /// @return                        The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///-----------------------------------------------------------------------------
-    std::vector<float> calculate_overlap_gpu(const std::vector<float> &colSynPerm,
+    std::vector<float> calculate_overlap_gpu(
+                               const int columns_width, const int columns_height,
+                               const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
                                const std::pair<int, int> &inputGrid_shape,

@@ -309,7 +309,9 @@ TEST(gpu_overlap, test1_small)
     // overlap_utils::print_1d_vector(flat_output);
 
     // Run the function and save the output
-    auto flat_overlap_output = gpu_overlap::calculate_overlap_gpu( col_syn_perm,
+    auto flat_overlap_output = gpu_overlap::calculate_overlap_gpu(
+                                        num_column_cols, num_column_rows,
+                                        col_syn_perm,
                                         col_syn_perm_shape,
                                         new_input_mat, 
                                         new_input_mat_shape, 

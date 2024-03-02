@@ -438,7 +438,9 @@ namespace gpu_overlap
     //               parallel_calcOverlap which is just a sum of each row.
     //        6. Add a small tie breaker value to each cortical column's actual overlap score so draws in overlap scores can be resolved.
     //               This uses the parallel_addVectors which is just a element wise addition.
-    std::vector<float> calculate_overlap_gpu(const std::vector<float> &colSynPerm,
+    std::vector<float> calculate_overlap_gpu(
+                               const int columns_width, const int columns_height,
+                               const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
                                const std::pair<int, int> &inputGrid_shape,
@@ -483,11 +485,12 @@ namespace gpu_overlap
             step = neib_shape;
         }
 
+
         // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
-        int N = static_cast<int>(ceil(static_cast<float>(rows) / neib_step.first));  // Number of rows in output matrix. This is the height of the "cortical columns".
-        int M = static_cast<int>(ceil(static_cast<float>(cols) / neib_step.second)); // Number of columns in output matrix. This is the width of the "cortical columns".
+        int N = columns_height;  // Number of rows in output matrix. This is the height of the "cortical columns".
+        int M = columns_width; // Number of columns in output matrix. This is the width of the "cortical columns".
         // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
-        int O = neib_shape.first;                                               // Number of rows in each patch conneted to a cortical column.
+        int O = neib_shape.first;                                               // Number of rows in each patch connected to a cortical column.
         int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
 
         // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
