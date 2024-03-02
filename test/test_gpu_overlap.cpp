@@ -217,8 +217,8 @@ TEST(gpu_overlap, test1_small)
     int pot_width = 2;
     int pot_height = 2;
     bool center_pot_synapses = false;
-    int num_input_rows = 100;
-    int num_input_cols = 100;
+    int num_input_rows = 5;
+    int num_input_cols = 5;
     int height_cortical_cols = 5;
     int width_cortical_cols = 5;
     float connected_perm = 0.3;
@@ -256,8 +256,8 @@ TEST(gpu_overlap, test1_small)
         new_input_mat[i] = dis2(gen);
     }
     // Print the input matrix
-    // LOG(INFO, "Input matrix: ");
-    // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
+    LOG(INFO, "Input matrix: ");
+    overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
 
     // Get the step sizes. How much to step over the input matrix for each patch connected to each cortical column.
     // neib_step_ = {step_x, step_y}
