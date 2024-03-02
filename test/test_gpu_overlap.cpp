@@ -319,7 +319,7 @@ TEST(gpu_overlap, test1_small)
     ASSERT_EQ(col_overlap_scores, flat_overlap_output_int);
 }
 
-TEST(gpu_overlap, test1_large)
+TEST(gpu_overlap, test2_large)
 {
     // Test that the total gpu only implementation produces an expected result.
     // This runs the function calculate_overlap_gpu from the gpu_overlap library.
@@ -329,13 +329,13 @@ TEST(gpu_overlap, test1_large)
     // This is so we can compare the results of the GPU only implementation to the CPU only implementation.
 
     // Create the required inputs for the function
-    int pot_width = 80;
-    int pot_height = 40;
+    int pot_width = 50;
+    int pot_height = 50;
     bool center_pot_synapses = false;
-    int num_input_rows = 1200;
-    int num_input_cols = 800;
-    int height_cortical_cols = 800;
-    int width_cortical_cols = 400;
+    int num_input_rows = 1000;
+    int num_input_cols = 1000;
+    int height_cortical_cols = 500;
+    int width_cortical_cols = 500;
     float connected_perm = 0.3;
     int min_overlap = 3;
     int num_pot_syn = pot_width * pot_height;
@@ -351,15 +351,14 @@ TEST(gpu_overlap, test1_large)
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0, 1);
-    // TODO: remove this.
+    // NOTE:
     // This is slow and only for testing.
+    LOG(INFO, "Creating random col_syn_perm array for test case. Normally this is only done once. This is slow and only for testing.");
     for (int i = 0; i < num_columns * num_pot_syn; ++i)
     {
         col_syn_perm[i] = dis(gen);
     }
-    // LOG(INFO, "col_syn_perm: ");
-    // std::vector<int> perm_shape = {height_cortical_cols, width_cortical_cols, pot_height, pot_width};
-    // overlap_utils::print_4d_vector(col_syn_perm, perm_shape);
+
     // Create a random input matrix. This is a matrix representing the input to the HTM layer.
     // It is a boolean input of 1 or 0.
     // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
@@ -370,16 +369,11 @@ TEST(gpu_overlap, test1_large)
     {
         new_input_mat[i] = dis2(gen);
     }
-    // Print the input matrix
-    // LOG(INFO, "Input matrix: ");
-    // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
 
     // Get the step sizes. How much to step over the input matrix for each patch connected to each cortical column.
     // neib_step_ = {step_x, step_y}
     const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, width_cortical_cols, height_cortical_cols, pot_width, pot_height);
     const std::pair<int, int> neib_shape = {pot_height, pot_width};
-
-    //std::vector<int> flat_overlap_output = {0};
 
     LOG(INFO, "Setting up CPU overlap calculator.");
     // Create an instance of the overlap calculation class
@@ -401,8 +395,6 @@ TEST(gpu_overlap, test1_large)
     STOP_STOPWATCH();
     LOG(INFO, "FINISHED CPU overlap calculation!");
     std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
-    // Print the overlap scores
-    // overlap_utils::print_2d_vector(col_overlap_scores, std::pair(height_cortical_cols, width_cortical_cols));
     PRINT_ELAPSED_TIME();
 
     LOG(INFO, "Starting the GPU overlap calculation.");
@@ -435,6 +427,145 @@ TEST(gpu_overlap, test1_large)
     ASSERT_EQ(col_overlap_scores, flat_overlap_output_int);
 }
 
+TEST(gpu_overlap, test3_run_time_avg)
+{
+    // Compare the run times of the CPU only and GPU only overlap calculations.
+    // Run multiple times and get the average run time for each.
+    // The GPU only implementation should be faster once run initially as the GPU is warmed up.
+    int num_test_run = 5;
 
+    // Create the required inputs for the function
+    int pot_width = 30;
+    int pot_height = 30;
+    bool center_pot_synapses = false;
+    int num_input_rows = 500;
+    int num_input_cols = 500;
+    int height_cortical_cols = 400;
+    int width_cortical_cols = 400;
+    float connected_perm = 0.3;
+    int min_overlap = 3;
+    int num_pot_syn = pot_width * pot_height;
+    int num_columns = height_cortical_cols * width_cortical_cols;
+    bool wrap_input = false;
+    bool center_neigh = false;
+
+    // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
+    // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
+    // It is a 1D vector simulating a 2D vector of size num_columns * num_pot_syn.
+    std::vector<float> col_syn_perm(num_columns * num_pot_syn);
+    std::pair<int, int> col_syn_perm_shape = {num_columns, num_pot_syn}; // Store the shape of the simulated col_syn_perm 2D vector.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0, 1);
+    // NOTE:
+    // This is slow and only for testing.
+    LOG(INFO, "Creating random col_syn_perm array for test case. Normally this is only done once. This is slow and only for testing.");
+    for (int i = 0; i < num_columns * num_pot_syn; ++i)
+    {
+        col_syn_perm[i] = dis(gen);
+    }
+
+    // Create a random input matrix. This is a matrix representing the input to the HTM layer.
+    // It is a boolean input of 1 or 0.
+    // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
+    std::vector<int> new_input_mat(num_input_rows * num_input_cols);
+    std::pair<int, int> new_input_mat_shape = {num_input_rows, num_input_cols}; // Store the shape of the simulated 2D vector input matrix.
+    std::uniform_int_distribution<> dis2(0, 1);
+    for (int i = 0; i < num_input_rows * num_input_cols; ++i)
+    {
+        new_input_mat[i] = dis2(gen);
+    }
+
+    // Get the step sizes. How much to step over the input matrix for each patch connected to each cortical column.
+    // neib_step_ = {step_x, step_y}
+    const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, width_cortical_cols, height_cortical_cols, pot_width, pot_height);
+    const std::pair<int, int> neib_shape = {pot_height, pot_width};
+
+    LOG(INFO, "Setting up CPU overlap calculator.");
+    // Create an instance of the overlap calculation class
+    // to compare the GPU only implementation to the CPU implementation.
+    overlap::OverlapCalculator overlapCalc(pot_width,
+                                           pot_height,
+                                           width_cortical_cols,
+                                           height_cortical_cols,
+                                           num_input_cols,
+                                           num_input_rows,
+                                           center_pot_synapses,
+                                           connected_perm,
+                                           min_overlap,
+                                           wrap_input);
+
+    // RUn the CPU only overlap calculation three times and get the average run time.
+    float avg_cpu_run_time = 0;
+    for (int i = 0; i < num_test_run; i++)
+    {
+        LOG(INFO, "Starting the CPU overlap calculation.");
+        START_STOPWATCH();
+        // Run the overlap calculation on the CPU
+        overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
+        STOP_STOPWATCH();
+        LOG(INFO, "FINISHED CPU overlap calculation!");
+        std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
+        PRINT_ELAPSED_TIME();
+        avg_cpu_run_time += GET_ELAPSED_TIME();
+    }
+    avg_cpu_run_time /= num_test_run;
+    LOG(INFO, "Average CPU run time: " + std::to_string(avg_cpu_run_time));
+
+    // Run the GPU only overlap calculation three times and get the average run time.
+    float avg_gpu_run_time = 0;
+    for (int i = 0; i < num_test_run; i++)
+    {
+        LOG(INFO, "Starting the GPU overlap calculation.");
+        START_STOPWATCH();
+        // Run the function and save the output
+        auto flat_overlap_output = gpu_overlap::calculate_overlap_gpu(
+                                        width_cortical_cols, height_cortical_cols,
+                                        col_syn_perm,
+                                        col_syn_perm_shape,
+                                        new_input_mat, 
+                                        new_input_mat_shape, 
+                                        neib_shape, 
+                                        neib_step, 
+                                        wrap_input, 
+                                        center_neigh,
+                                        connected_perm
+                                        );
+        STOP_STOPWATCH();
+        LOG(INFO, "FINISHED GPU overlap calculation!");
+        PRINT_ELAPSED_TIME();
+        avg_gpu_run_time += GET_ELAPSED_TIME();
+    }
+    avg_gpu_run_time /= num_test_run;
+    LOG(INFO, "Average GPU run time: " + std::to_string(avg_gpu_run_time));
+
+    // LOG(INFO, "Starting the GPU overlap calculation.");
+    // START_STOPWATCH();
+    // // Run the function and save the output
+    // auto flat_overlap_output = gpu_overlap::calculate_overlap_gpu(
+    //                                     width_cortical_cols, height_cortical_cols,
+    //                                     col_syn_perm,
+    //                                     col_syn_perm_shape,
+    //                                     new_input_mat, 
+    //                                     new_input_mat_shape, 
+    //                                     neib_shape, 
+    //                                     neib_step, 
+    //                                     wrap_input, 
+    //                                     center_neigh,
+    //                                     connected_perm
+    //                                     );
+    // STOP_STOPWATCH();
+    // LOG(INFO, "FINISHED GPU overlap calculation!");
+    // PRINT_ELAPSED_TIME();
+    
+    // // COnvert the flat_overlap_output to a vector of ints instead of floats (we don;t care about the small tiebreaker values on the output).
+    // std::vector<int> flat_overlap_output_int(flat_overlap_output.begin(), flat_overlap_output.end());
+
+    // // Print the flat output
+    // // overlap_utils::print_2d_vector(flat_overlap_output_int,  std::pair(height_cortical_cols, width_cortical_cols));
+
+    // // Compare the CPU and GPU outputs
+    // ASSERT_EQ(col_overlap_scores, flat_overlap_output_int);
+}
 
 

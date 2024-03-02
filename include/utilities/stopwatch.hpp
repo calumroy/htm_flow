@@ -7,6 +7,7 @@
 #define START_STOPWATCH() Stopwatch::start()
 #define STOP_STOPWATCH() Stopwatch::stop()
 #define PRINT_ELAPSED_TIME() Stopwatch::printElapsed()
+#define GET_ELAPSED_TIME() Stopwatch::getElapsed()
 
 class Stopwatch
 {
@@ -25,6 +26,12 @@ public:
     {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stopTime - startTime);
         std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
+    }
+
+    static long long getElapsed()
+    {
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stopTime - startTime);
+        return duration.count();
     }
 
 private:
