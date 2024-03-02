@@ -264,10 +264,7 @@ TEST(gpu_overlap, test1_small)
     const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, width_cortical_cols, height_cortical_cols, pot_width, pot_height);
     const std::pair<int, int> neib_shape = {pot_height, pot_width};
 
-    //std::vector<int> flat_overlap_output = {0};
-
-    LOG(INFO, "Starting the CPU overlap calculation.");
-    START_STOPWATCH();
+    LOG(INFO, "Setting up the CPU overlap calculation.");
     // Create an instance of the overlap calculation class
     // to compare the GPU only implementation to the CPU implementation.
     overlap::OverlapCalculator overlapCalc(pot_width,
@@ -280,6 +277,8 @@ TEST(gpu_overlap, test1_small)
                                            connected_perm,
                                            min_overlap,
                                            wrap_input);
+    LOG(INFO, "Starting the CPU overlap calculation.");
+    START_STOPWATCH();
     // Run the overlap calculation on the CPU
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
     STOP_STOPWATCH();
