@@ -664,8 +664,8 @@ TEST(gpu_overlap, test5_different_sizes)
     // and compare the results.
 
     // Define the input sizes and potential sizes to test
-    std::vector<int> in_sizes_width = {10, 20, 30, 40, 50};
-    std::vector<int> in_sizes_height = {10, 20, 30, 40, 50};
+    std::vector<int> in_sizes_width = {10, 11, 12, 13, 14, 15, 20, 30, 40, 50};
+    std::vector<int> in_sizes_height = {10, 11, 12, 13, 14, 15, 20, 30, 40, 50};
     std::vector<int> pot_sizes_width = {1, 2, 3, 4, 5};
     std::vector<int> pot_sizes_height = {1, 2, 3, 4, 5};
 
