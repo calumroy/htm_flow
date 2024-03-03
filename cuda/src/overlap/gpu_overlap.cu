@@ -213,8 +213,8 @@ namespace gpu_overlap
     ///                            Should be equal to ceil(in_cols / step_cols)
     /// @param[in] neib_rows       The number of rows in the neighbourhood.
     /// @param[in] neib_cols       The number of columns in the neighbourhood.
-    /// @param[in] step_rows       The number of rows to step the neighbourhood over the input for each iteration.
-    /// @param[in] step_cols       The number of columns to step the neighbourhood over the input for each iteration.
+    /// @param[in] step_cols       The step size in the x direction, the number of columns to step the neighbourhood over the input for each iteration.
+    /// @param[in] step_rows       The step size in the y direction, the number of rows to step the neighbourhood over the input for each iteration.
     /// 
     /// @param[in] wrap_mode       A flag indicating whether the neighbourhood should wrap around the input matrix.
     /// @param[in] center_neigh    A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
@@ -225,7 +225,7 @@ namespace gpu_overlap
                                float *out_overlap, float *out_potential_overlap,
                                int in_rows, int in_cols, int out_rows, int out_cols, 
                                int neib_rows, int neib_cols, 
-                               int step_rows, int step_cols, 
+                               int step_cols, int step_rows, 
                                bool wrap_mode, bool center_neigh,
                                float connected_perm)
     {
