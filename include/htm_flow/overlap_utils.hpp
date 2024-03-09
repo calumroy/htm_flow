@@ -684,7 +684,7 @@ namespace overlap_utils
         check_conn_task.succeed(load_in1_task, load_in2_task);
     }
 
-    // Get the step sizes for the potential synapses. This is the optimal step size in the x an dy direction
+    // Get the step sizes for the potential synapses. This is the optimal step size in the x and y direction
     // to use so the potential synapses cover the input as best as possible.
     inline std::pair<int, int> get_step_sizes(int input_width, int input_height,
                                               int col_width, int col_height,

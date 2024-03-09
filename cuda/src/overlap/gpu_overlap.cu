@@ -503,8 +503,7 @@ namespace gpu_overlap
         assert(colSynPerm_shape.second == O * P);
 
         // The output is a 1D vector simulating a 4D vector with dimensions N x M x O x P.
-        //std::vector<int> output;
-        // The output is a 1D vector simulating a 2D vector with dimensions N x M. This is the overlap score for each cortical column.
+        //std::vector<int> output;calculate_overlap_gpu a 2D vector with dimensions N x M. This is the overlap score for each cortical column.
         std::vector<float> out_overlap;
 
         // Allocate memory on the GPU for the input matrix "inputGrid" and "colSynPerm" matrix.
@@ -584,87 +583,134 @@ namespace gpu_overlap
         return out_overlap;
     }
 
-    // TODO: Remove this function as it doesn't work!
-    // Same function as above but different input and output parameters.
-    // NOTE: passing in the tasflow and trying to run it outside of the function doesn't work
-    // since many other vars in this function will go out of scope.
-    // void gpu_Images2Neibs(
-    //     std::vector<int> &output,
-    //     std::vector<int> &output_shape,
-    //     const std::vector<int> &input,
-    //     const std::pair<int, int> &input_shape,
-    //     const std::pair<int, int> &neib_shape,
-    //     const std::pair<int, int> &neib_step,
-    //     bool wrap_mode,
-    //     bool center_neigh,
-    //     tf::Taskflow &taskflow)
-    // {
-    //     // Determine the dimensions of the input matrix.
-    //     const int rows = input_shape.first;
-    //     const int cols = input_shape.second;
+    //-----------------------------------------------------------------------------
+    // STREAMING VERSION OF THE OVERLAP CALCULATION
+    // Create a streaming version of the calculate_overlap_gpu funciton above.
+    // We don't want to be allocating memory each call but efficiently use the same memory for multiple calls to this function
+    // so we can process new inputs (of the same size) using the same allocated memory as the last call. 
+    // Define GPU memory pointers globally or as class members to persist across multiple calls
+    int *strm_d_in_grid = nullptr;
+    float *strm_d_colSynPerm = nullptr;
+    float *strm_d_out_overlap = nullptr;
+    float *strm_d_out_pot_overlap = nullptr;
 
-    //     // Check that the neighbourhood shape is valid.
-    //     if (neib_shape.first > rows || neib_shape.second > cols)
-    //     {
-    //         throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
-    //     }
+    // Initialization function to allocate GPU memory, call this once before the first call to calculate_overlap_gpu
+    void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P) {
+        if (!strm_d_in_grid) {
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_in_grid, in_rows * in_cols * sizeof(int)), "failed to allocate strm_d_in_grid");
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_colSynPerm, N * M * O * P * sizeof(float)), "failed to allocate strm_d_colSynPerm");
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
+        }
+    }
+    // Cleanup function to free GPU memory, call this after all calls to calculate_overlap_gpu are done
+    void cleanup_gpu_memory() {
+        TF_CHECK_CUDA(cudaFree(strm_d_in_grid), "failed to free strm_d_in_grid");
+        TF_CHECK_CUDA(cudaFree(strm_d_colSynPerm), "failed to free strm_d_colSynPerm");
+        TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_colSynPerm");
+        TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_colSynPerm");
+        strm_d_in_grid = nullptr;
+        strm_d_colSynPerm = nullptr;
+        strm_d_out_overlap = nullptr;
+        strm_d_out_pot_overlap = nullptr;
+    }
 
-    //     // Set the default step size to the neighbourhood shape.
-    //     std::pair<int, int> step = neib_step;
-    //     if (step.first == 0 && step.second == 0)
-    //     {
-    //         step = neib_shape;
-    //     }
+    void calculate_overlap_gpu_stream(
+                            const int width_cortical_cols, const int height_cortical_cols,
+                            const std::vector<float> &colSynPerm,
+                            const std::pair<int, int> &colSynPerm_shape,
+                            const std::vector<int> &inputGrid,
+                            const std::pair<int, int> &inputGrid_shape,
+                            const std::pair<int, int> &neib_shape,
+                            const std::pair<int, int> &neib_step,
+                            bool wrap_mode,
+                            bool center_neigh,
+                            float connected_perm,
+                            std::vector<float> &out_overlap // Function output passed by reference to avoid allocating the output on each call
+                            ) 
+    {
+        // Assume GPU memory is already allocated and pointers (strm_d_in_grid, etc.) are initialized
 
-    //     int N = static_cast<int>(ceil(static_cast<float>(rows) / step.first));  // Number of rows in output matrix
-    //     int M = static_cast<int>(ceil(static_cast<float>(cols) / step.second)); // Number of columns in output matrix
-    //     int O = neib_shape.first;                                               // Number of rows in each patch
-    //     int P = neib_shape.second;                                              // Number of columns in each patch
+        // Step 1. Get the inputs for each column.
+        // Determine the dimensions of the input matrix.
+        const int rows = inputGrid_shape.first;
+        const int cols = inputGrid_shape.second;
 
-    //     // Assert that the output matrix has the correct size.
-    //     assert(output.size() == N * M * O * P);
+        // Check that the neighbourhood shape is valid.
+        if (neib_shape.first > rows || neib_shape.second > cols)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
 
-    //     // Allocate memory on the GPU for the input and output matrices.
-    //     int *d_input, *d_output;
-    //     TF_CHECK_CUDA(cudaMalloc(&d_input, rows * cols * sizeof(int)), "failed to allocate input");
-    //     TF_CHECK_CUDA(cudaMalloc(&d_output, N * M * O * P * sizeof(int)), "failed to allocate output");
+        // Set the default step size to the neighbourhood shape.
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0)
+        {
+            step = neib_shape;
+        }
 
-    //     // Copy the input matrix to the GPU.
-    //     TF_CHECK_CUDA(cudaMemcpy(d_input, input.data(), rows * cols * sizeof(int), cudaMemcpyHostToDevice), "failed to copy input to device");
+        // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
+        int N = height_cortical_cols;  // Number of rows in output matrix. This is the height of the "cortical columns".
+        int M = width_cortical_cols; // Number of columns in output matrix. This is the width of the "cortical columns".
+        // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
+        int O = neib_shape.first;                                               // Number of rows in each patch connected to a cortical column.
+        int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
 
-    //     // Launch the kernel function on the GPU using taskflow.
-    //     auto kernel = taskflow.emplace([&]()
-    //                                    {
-    //         int threadsPerBlock = 256;
-    //         dim3 block(16, 16);
-    //         int noOfBlocks = cols * rows / 256;
-    //         if ((cols * rows) % threadsPerBlock)
-    //         {
-    //             noOfBlocks++;
-    //         }
-    //         dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
-    //         sliding_window_kernel<<<grid, block>>>(d_input, d_output, rows, cols, N, M, neib_shape.first, neib_shape.second, step.first, step.second, wrap_mode, center_neigh); });
+        // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
+        // This means the size of the colSynPerm vector should be equal to the size of the output matrix (num cortical columns) times
+        // the size of the neighbourhood matrix (neib_shape.first * neib_shape.second). 
+        // TODO
+        // FIX this assert fails sometimes on certain sizes. Fix the actual issue.
+        assert(colSynPerm.size() == N * M * O * P);
+        assert(colSynPerm_shape.first == N * M);
+        assert(colSynPerm_shape.second == O * P);
 
-    //     // Copy the output matrix from the GPU using taskflow.
-    //     auto copy = taskflow.emplace([&]()
-    //                                  {
-    //         output.resize(N * M * O * P);
-    //         TF_CHECK_CUDA(cudaMemcpy(output.data(), d_output, N * M * O * P * sizeof(int), cudaMemcpyDeviceToHost), "failed to copy output to host"); });
+        // Ensure out_overlap is of the correct size to hold the output of this funciton.
+        if (out_overlap.size() != N * M) {
+            out_overlap.resize(N * M);
+        }
 
-    //     // Free memory on the GPU using taskflow.
-    //     auto free_memory = taskflow.emplace([&]()
-    //                                         {
-    //         TF_CHECK_CUDA(cudaFree(d_input), "failed to free d_input");
-    //         TF_CHECK_CUDA(cudaFree(d_output), "failed to free d_output"); });
+        // Create a Taskflow object to manage tasks and their dependencies.
+        // There should be one taskflow object for the entire program.
+        tf::Taskflow taskflow("calculate_overlap_gpu_steam");
+        tf::Executor executor;
 
-    //     // Set task dependencies and run the taskflow.
-    //     kernel.precede(copy);
-    //     copy.precede(free_memory);
+        // Emplace tasks for GPU operations
+        auto cudaFlow = taskflow.emplace([&]() {
+            tf::cudaFlow cf;
 
-    //     output_shape = {N,  // output_rows
-    //                     M,  // output_cols
-    //                     O,  // neib_shape.first
-    //                     P}; // neib_shape.second
-    // }
+            // Copy input data to GPU
+            auto copy_in = cf.memcpy(strm_d_in_grid, inputGrid.data(), rows * cols * sizeof(int)).name("copy_in");
+            auto copy_colSynPerm = cf.memcpy(strm_d_colSynPerm, colSynPerm.data(), N * M * O * P * sizeof(float)).name("copy_colSynPerm");
+
+            // Launch kernel
+            int threadsPerBlock = 256;
+            dim3 block(16, 16);
+            int noOfBlocks = (cols * rows + threadsPerBlock - 1) / threadsPerBlock;
+            if ( (cols * rows) % threadsPerBlock) 
+            {
+                noOfBlocks++;
+            }
+            dim3 grid((cols + 16 - 1) / 16, (rows + 16 - 1) / 16);
+            // Setup the GPU kernel function to run the overlap calculation.
+            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel, strm_d_in_grid, strm_d_colSynPerm, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh, connected_perm);
+            // Copy output data back to host
+            auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float));
+            // Set the order of the flow tasks.
+            overlap_calc.succeed(copy_colSynPerm, copy_in)
+                .precede(copy_out);
+            tf::cudaStream stream;
+            cf.run(stream);
+            stream.synchronize(); 
+        }).name("cudaFlow");
+
+        // Execute the taskflow
+        executor.run(taskflow).wait();
+
+    }
+    // END OF STREAMING VERSION OF THE OVERLAP CALCULATION
+    //-----------------------------------------------------------------------------
+
+
 
 } // namespace gpu_overlap

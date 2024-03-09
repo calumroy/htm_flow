@@ -28,6 +28,7 @@ public:
         std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
     }
 
+    // Returns the elapsed time in milliseconds
     static long long getElapsed()
     {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stopTime - startTime);
