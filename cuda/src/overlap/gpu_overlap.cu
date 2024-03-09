@@ -164,18 +164,18 @@ namespace gpu_overlap
     ///-----------------------------------------------------------------------------
     ///
     /// overlap_kernel      A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
-    ///                     This kernel function oerates on a simualted 2D matrix, but the matrix is
+    ///                     This kernel function operates on a simualted 2D matrix, but the matrix is
     ///                     actually stored as a 1D array. The kernel function is designed to be
     ///                     launched with a 2D grid of 2D blocks on a GPU. Each thread in the block will
     ///                     perform the overlap calculation on a single element in the input
     ///                     matrix. The output matrix will also be a 1D vector simulating a 2D vector with dimensions
-    ///                     num_cortical_rows x num_cortical_cols. The num_cortical_rows and num_cortical_cols depend on the
-    ///                     step size and the input_grid size.
+    ///                     num_cortical_rows x num_cortical_cols. "Cortical columns" are the elements in the output matrix.
+    ///                     These cortical columns have a group of synapses that connect to a neighbourhood of elements in the input matrix.
     ///                     Each element at the output[i * cols + j] will be a value that indicates how many "connected" synapses
     ///                     in the neighboroughood are attached in active inputs in the inputGrid.
     ///                     If a step size is not 1,1 then the neighbourhood "patch" will be stepped over the input matrix
     ///                     by the step size in each dimension. E.g a step size of 2,2 will step the neighbourhood
-    ///                     over the input matrix by 2 rows and 2 columns (in the input simulated 2D vector) for each iteration. 
+    ///                     over the input matrix by 2 columns and 2 rows (in the input simulated 2D vector) for each iteration. 
     ///                     This means the output will have a size of ceil(rows/step_rows) x ceil(cols/step_cols).
     ///                     The output is a 1D vector simulating a 2D vector where each output[i][j] is a single value of the overlap score 
     ///                     for the cortical column at i,j position in the 2d grid of cortical columns.
@@ -183,12 +183,12 @@ namespace gpu_overlap
     ///                     The function calculates as needed a tiebreaker value for each element in the neighbourhood.
     ///                     These tie breaker values are used to resolve any ties in the overlap scores for each cortical column.
     ///                     The tie breaker values are added to the overlap scores so that the overlap scores are slightly different.
-    ///                     The total of the sum of the the tie breaker values for a neighbourhood is less then 0.5 so as to not affect the
+    ///                     The total of the sum of the tie breaker values for a neighbourhood is less then 0.5 so as to not affect the
     ///                     actual overlap scores (whole numbers) but only to break ties in the overlap scores.
     ///
     ///                     The function also calculates the potential overlap score for each cortical column.
     ///                     This is the sum of the elements in the neighbourhood connectted to a active input plus the tiebreaker values.
-    ///                     The potential overlap score for each cortical column does nto care about the synpase permance values where as the actual overlap
+    ///                     The potential overlap score for each cortical column does not care about the synpase permance values where as the actual overlap
     ///                     score does.
     ///
     /// @param[in] in_grid        A pointer to the input matrix on the GPU. 1D vector simulating a 2D vector size (in_rows * in_cols ).
