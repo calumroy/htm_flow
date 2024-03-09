@@ -1055,5 +1055,9 @@ TEST(gpu_overlap_stream, test2_run_time_avg)
         ASSERT_EQ(flat_overlap_outputs[i], flat_overlap_stream_outputs[i]);
     }
 
+    // COmapre run times
+    LOG(INFO, "Average GPU run time ms: " + std::to_string(avg_gpu_run_time));
+    LOG(INFO, "Average GPU stream run time ms: " + std::to_string(avg_gpu_stream_run_time));
+
 }
 
