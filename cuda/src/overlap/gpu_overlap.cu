@@ -496,8 +496,6 @@ namespace gpu_overlap
         // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
         // This means the size of the colSynPerm vector should be equal to the size of the output matrix (num cortical columns) times
         // the size of the neighbourhood matrix (neib_shape.first * neib_shape.second). 
-        // TODO
-        // FIX this assert fails sometimes on certain sizes. Fix the actual issue.
         assert(colSynPerm.size() == N * M * O * P);
         assert(colSynPerm_shape.first == N * M);
         assert(colSynPerm_shape.second == O * P);
@@ -585,7 +583,8 @@ namespace gpu_overlap
 
     //-----------------------------------------------------------------------------
     // STREAMING VERSION OF THE OVERLAP CALCULATION
-    // Create a streaming version of the calculate_overlap_gpu funciton above.
+    // 
+    // A streaming version of the calculate_overlap_gpu funciton above.
     // We don't want to be allocating memory each call but efficiently use the same memory for multiple calls to this function
     // so we can process new inputs (of the same size) using the same allocated memory as the last call. 
     // Define GPU memory pointers globally or as class members to persist across multiple calls
@@ -659,8 +658,6 @@ namespace gpu_overlap
         // Their should be one permance value for every synapse connectted to a neighbourhood element in a cortical column.
         // This means the size of the colSynPerm vector should be equal to the size of the output matrix (num cortical columns) times
         // the size of the neighbourhood matrix (neib_shape.first * neib_shape.second). 
-        // TODO
-        // FIX this assert fails sometimes on certain sizes. Fix the actual issue.
         assert(colSynPerm.size() == N * M * O * P);
         assert(colSynPerm_shape.first == N * M);
         assert(colSynPerm_shape.second == O * P);
