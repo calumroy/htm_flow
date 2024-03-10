@@ -1169,17 +1169,15 @@ TEST(gpu_overlap_stream_opt, test1_small)
     bool optimised = true;  // Set to true to use the optimised version of the function to allocate less GPU memory
     gpu_overlap::initialize_gpu_memory(num_input_rows, num_input_cols, height_cortical_cols, width_cortical_cols, neib_shape.first, neib_shape.second, optimised);
     // Run the function and save the output
-    gpu_overlap::calculate_overlap_gpu_stream(
+    gpu_overlap::calculate_overlap_gpu_stream_opt(
                                     width_cortical_cols, height_cortical_cols,
-                                    col_syn_perm,
-                                    col_syn_perm_shape,
+                                    colConBits,
                                     new_input_mat, 
                                     new_input_mat_shape, 
                                     neib_shape, 
                                     neib_step, 
                                     wrap_input, 
                                     center_neigh,
-                                    connected_perm,
                                     flat_overlap_output,
                                     flat_pot_overlap_output
                                     );
