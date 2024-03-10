@@ -86,13 +86,15 @@ namespace gpu_overlap
     /// @param[in] M                The number of rows in the cortical columns.
     /// @param[in] O                The number of rows in the neighbourhood patch.
     /// @param[in] P                The number of columns in the neighbourhood patch.
-    void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P);
+    /// @param[in] optimised        Optional param, whether to use the optimised version of the kernel function or not.
+    void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P, bool optimised = false);
     
     ///-----------------------------------------------------------------------------
     ///
     /// cleanup_gpu_memory           Free the GPU memory for the input and output data for the calculate_overlap_gpu_steam function.
     ///
-    void cleanup_gpu_memory();
+    /// @param[in] optimised          Optional param, whether to use the optimised version of the kernel function or not.
+    void cleanup_gpu_memory(bool optimised = false);
 
     ///-----------------------------------------------------------------------------
     ///
@@ -119,7 +121,7 @@ namespace gpu_overlap
     ///                                 This is the output of the function and is passed by reference to avoid allocating the output on each call.
     ///                                 The potential overlap scores are the overlap scores before the connected_perm threshold is applied.
     ///         
-    /// @return                        The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
+    /// @return                         Void as the outputs (out_overlap and out_pot_overlap) are passed by reference.
     ///-----------------------------------------------------------------------------
     void calculate_overlap_gpu_stream(
                                const int columns_width, const int columns_height,
@@ -135,5 +137,32 @@ namespace gpu_overlap
                                std::vector<float> &out_overlap, // Function output passed by reference to avoid allocating the output on each call
                                std::vector<float> &out_pot_overlap // Function output passed by reference to avoid allocating the output on each call
                                );
+    
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calculate_overlap_gpu_stream_opt   Calculate the overlap scores for a given input.
+    ///                                    Similar to the calculate_overlap_gpu_stream function but this function replaces
+    ///                                    the input parameter colSynPerm with colConBits. This is a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+    ///                                    This function is optimised for streaming data through it and this modification is designed to reduce the memory footprint of the input data.
+    ///
+    /// params                             The same as the calculate_overlap_gpu_stream function except for the colConBits parameter and
+    ///                                    the removal of the colSynPerm parameter and the connected_perm parameter.
+    /// @param[in] colConBits              This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+    ///
+    /// @return                            Void as the outputs (out_overlap and out_pot_overlap) are passed by reference.
+    ///-----------------------------------------------------------------------------
+    void calculate_overlap_gpu_stream_opt(
+                                const int width_cortical_cols, const int height_cortical_cols,
+                                const std::vector<uint32_t> &colConBits,  // This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+                                const std::vector<int> &inputGrid,
+                                const std::pair<int, int> &inputGrid_shape,
+                                const std::pair<int, int> &neib_shape,
+                                const std::pair<int, int> &neib_step,
+                                bool wrap_mode,
+                                bool center_neigh,
+                                std::vector<float> &out_overlap,
+                                std::vector<float> &out_pot_overlap
+                            );
+
 
 } // namespace gpu_overlap
