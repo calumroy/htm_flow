@@ -788,7 +788,7 @@ TEST(gpu_overlap_stream, test1_small)
     // This runs the function calculate_overlap_gpu_stream from the gpu_overlap library.
     // The function calculates the overlap scores for a given input.
 
-    // It first runs the CPU only overlap calulation and then the GPU only overlap calculation.
+    // It first runs the CPU only overlap calculation and then the GPU only overlap calculation.
     // This is so we can compare the results of the GPU only implementation to the CPU only implementation.
 
     // Create the required inputs for the function
