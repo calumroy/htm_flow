@@ -16,6 +16,7 @@
 #include <cmath>
 #include <vector>
 #include <tuple>
+#include <bitset>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>
 namespace overlap_utils
@@ -47,6 +48,19 @@ namespace overlap_utils
     // vec4D_shape is a vector of size 4 that contains the shape of the 4D vector.
     template <typename T>
     void print_4d_vector(const std::vector<T> &vec1D, std::vector<int> &vec4D_shape);
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// 
+    /// print_4d_bit_vector         Prints out a 1D vector of uint32_t, where each bit in the uint32_t elements 
+    ///                             represents a boolean value, simulating a 4D boolean vector. This function is 
+    ///                             used to visualize the bit-packed synapse connection states in a format that 
+    ///                             resembles a 4D vector, where each bit corresponds to the connected state of a synapse.
+    /// 
+    /// @param vec1D The 1D vector of uint32_t representing the packed boolean values.
+    /// @param vec4D_shape A vector of size 4 that contains the shape of the 4D vector that vec1D is simulating.
+    /// 
+    void print_4d_bit_vector(const std::vector<uint32_t> &vec1D, const std::vector<int> &vec4D_shape);
 
     // Take a 1D vector and convert it to a 2D vector.
     template <typename T>

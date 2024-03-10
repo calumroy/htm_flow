@@ -869,7 +869,7 @@ namespace gpu_overlap
 
             dim3 block(16, 16);
             dim3 grid((cols + block.x - 1) / block.x, (rows + block.y - 1) / block.y);
-            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel, strm_d_in_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
+            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel_opt, strm_d_in_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
 
             auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float)).name("copy_out");
             auto copy_out_pot = cf.memcpy(out_pot_overlap.data(), strm_d_out_pot_overlap, N * M * sizeof(float)).name("copy_out_pot");
