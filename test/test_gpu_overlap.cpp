@@ -864,7 +864,8 @@ TEST(gpu_overlap_stream, test1_small)
     PRINT_ELAPSED_TIME();
 
     // We need to setup the output vector for the first run of the GPU stream overlap calculation.
-    std::vector<float> flat_overlap_output(height_cortical_cols * width_cortical_cols);
+    std::vector<float> flat_overlap_output(height_cortical_cols * width_cortical_cols);  // Overlap output scores will be stored here.
+    std::vector<float> flat_pot_overlap_output(height_cortical_cols * width_cortical_cols); // Overlap potential output scores will be stored here.
     LOG(INFO, "Starting the GPU overlap stream calculation.");
     START_STOPWATCH();
     // Run the function and save the output
@@ -885,7 +886,8 @@ TEST(gpu_overlap_stream, test1_small)
                                     wrap_input, 
                                     center_neigh,
                                     connected_perm,
-                                    flat_overlap_output
+                                    flat_overlap_output,
+                                    flat_pot_overlap_output
                                     );
     // Free the GPU memory
     gpu_overlap::cleanup_gpu_memory();
@@ -896,8 +898,10 @@ TEST(gpu_overlap_stream, test1_small)
     // COnvert the flat_overlap_output to a vector of ints instead of floats (we don;t care about the small tiebreaker values on the output).
     std::vector<int> flat_overlap_output_int(flat_overlap_output.begin(), flat_overlap_output.end());
 
-    // Print the flat output
+    // Print the flat output overlap scores from GPU stream
     overlap_utils::print_2d_vector(flat_overlap_output_int,  std::pair(height_cortical_cols, width_cortical_cols));
+    // Also print the flat output overlap potential scores from GPU stream
+    overlap_utils::print_2d_vector(flat_pot_overlap_output,  std::pair(height_cortical_cols, width_cortical_cols));
 
     // Compare the CPU and GPU outputs
     ASSERT_EQ(col_overlap_scores, flat_overlap_output_int);
@@ -1014,6 +1018,7 @@ TEST(gpu_overlap_stream, test2_run_time_avg)
     float avg_gpu_stream_run_time = 0;
     // We need to setup the output vector for the first run of the GPU stream overlap calculation.
     std::vector<float> flat_overlap_output(height_cortical_cols * width_cortical_cols);
+    std::vector<float> flat_pot_overlap_output(height_cortical_cols * width_cortical_cols);
     for (int i = 0; i < num_test_run; i++)
     {
         LOG(INFO, "Starting the GPU stream overlap calculation.");
@@ -1035,7 +1040,8 @@ TEST(gpu_overlap_stream, test2_run_time_avg)
                                         wrap_input, 
                                         center_neigh,
                                         connected_perm,
-                                        flat_overlap_output
+                                        flat_overlap_output,
+                                        flat_pot_overlap_output
                                         );
         // Free the GPU memory
         gpu_overlap::cleanup_gpu_memory();

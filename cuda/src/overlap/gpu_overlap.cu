@@ -625,7 +625,8 @@ namespace gpu_overlap
                             bool wrap_mode,
                             bool center_neigh,
                             float connected_perm,
-                            std::vector<float> &out_overlap // Function output passed by reference to avoid allocating the output on each call
+                            std::vector<float> &out_overlap, // Function output passed by reference to avoid allocating the output on each call
+                            std::vector<float> &out_pot_overlap // Function output passed by reference to avoid allocating the output on each call
                             ) 
     {
         // Assume GPU memory is already allocated and pointers (strm_d_in_grid, etc.) are initialized
@@ -666,6 +667,10 @@ namespace gpu_overlap
         if (out_overlap.size() != N * M) {
             out_overlap.resize(N * M);
         }
+        // Ensure out_pot_overlap is of the correct size to hold the output of this funciton.
+        if (out_pot_overlap.size() != N * M) {
+            out_pot_overlap.resize(N * M);
+        }
 
         // Create a Taskflow object to manage tasks and their dependencies.
         // There should be one taskflow object for the entire program.
@@ -693,9 +698,10 @@ namespace gpu_overlap
             auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel, strm_d_in_grid, strm_d_colSynPerm, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh, connected_perm);
             // Copy output data back to host
             auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float));
+            auto copy_out_pot = cf.memcpy(out_pot_overlap.data(), strm_d_out_pot_overlap, N * M * sizeof(float));
             // Set the order of the flow tasks.
             overlap_calc.succeed(copy_colSynPerm, copy_in)
-                .precede(copy_out);
+                .precede(copy_out, copy_out_pot);
             tf::cudaStream stream;
             cf.run(stream);
             stream.synchronize(); 

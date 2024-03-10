@@ -115,6 +115,9 @@ namespace gpu_overlap
     /// @param[in] connected_perm       The connected permanence value threshold. If the permanence value is above this value then the synapse is connected.
     /// @param[out] out_overlap         The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///                                 This is the output of the function and is passed by reference to avoid allocating the output on each call.
+    /// @param[out] out_pot_overlap     The potential overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
+    ///                                 This is the output of the function and is passed by reference to avoid allocating the output on each call.
+    ///                                 The potential overlap scores are the overlap scores before the connected_perm threshold is applied.
     ///         
     /// @return                        The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
     ///-----------------------------------------------------------------------------
@@ -129,7 +132,8 @@ namespace gpu_overlap
                                bool wrap_mode,
                                bool center_neigh,
                                float connected_perm,
-                               std::vector<float> &out_overlap // Function output passed by reference to avoid allocating the output on each call
+                               std::vector<float> &out_overlap, // Function output passed by reference to avoid allocating the output on each call
+                               std::vector<float> &out_pot_overlap // Function output passed by reference to avoid allocating the output on each call
                                );
 
 } // namespace gpu_overlap
