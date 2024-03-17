@@ -345,59 +345,61 @@ namespace gpu_overlap
     /// ...
     ///
     ///-----------------------------------------------------------------------------
-    __global__ void overlap_kernel_opt(int *in_grid, uint32_t *in_colConBits,
-                                       float *out_overlap, float *out_potential_overlap,
-                                       int in_rows, int in_cols, int out_rows, int out_cols, 
-                                       int neib_rows, int neib_cols, 
-                                       int step_cols, int step_rows, 
-                                       bool wrap_mode, bool center_neigh)
+    __global__ void overlap_kernel_opt(uint32_t *in_grid, uint32_t *in_colConBits,
+                                   float *out_overlap, float *out_potential_overlap,
+                                   int in_rows, int in_cols, int out_rows, int out_cols, 
+                                   int neib_rows, int neib_cols, 
+                                   int step_cols, int step_rows, 
+                                   bool wrap_mode, bool center_neigh) 
     {
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index
 
-        if (i < out_rows && j < out_cols)
+        if (i < out_rows && j < out_cols) 
         {
             float neib_and_tie_sum = 0.0f;
             float con_neib_and_tie_sum = 0.0f;
             float norm_value = 0.5f / (neib_cols * neib_rows * (neib_cols * neib_rows + 1.0f) / 2.0f);
 
-            for (int ii = 0; ii < neib_rows; ++ii)
+            for (int ii = 0; ii < neib_rows; ++ii) 
             {
-                for (int jj = 0; jj < neib_cols; ++jj)
+                for (int jj = 0; jj < neib_cols; ++jj) 
                 {
                     int x = i * step_rows + ii;
                     int y = j * step_cols + jj;
 
-                    if (center_neigh)
+                    if (center_neigh) 
                     {
                         x = i * step_rows + (ii - neib_rows / 2);
                         y = j * step_cols + (jj - neib_cols / 2);
                     }
 
-                    if (wrap_mode)
+                    if (wrap_mode) 
                     {
                         x = (x + in_rows) % in_rows;
                         y = (y + in_cols) % in_cols;
                     }
 
-                    if (x >= 0 && x < in_rows && y >= 0 && y < in_cols)
+                    if (x >= 0 && x < in_rows && y >= 0 && y < in_cols) 
                     {
                         float tie_breaker = (jj + 1) * norm_value;
-                        int grid_value = in_grid[x * in_cols + y];
-                        
-                        // Get the corresponding bit out of the in_colConBits array which indicates if this synapse has a permanence value above the threshold.
-                        // If it does then add the tie breaker value and the grid value to the sum of the neighbourhood elements.
-                        int bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;  // Get the index of the bit in the in_colConBits array.
-                        unsigned int bit_mask = 1u << (bit_idx % 32); // Compute bit mask for the specific synapse
-                        unsigned int con_bit = in_colConBits[bit_idx / 32] & bit_mask; // Extract the connection bit for the current synapse
 
-                        if (grid_value > 0)
-                        {
-                            neib_and_tie_sum += tie_breaker + grid_value;
+                        // Calculate bit index for input grid. This is the index of the bit in the input grid array.
+                        int grid_bit_idx = x * in_cols + y;
+                        unsigned int grid_bit_mask = 1u << (grid_bit_idx % 32);
+                        unsigned int grid_value = in_grid[grid_bit_idx / 32] & grid_bit_mask;
 
-                            if (con_bit)
+                        // Calculate bit index for column connections. This is the index of the bit in the column connections array.
+                        int col_bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        unsigned int col_bit_mask = 1u << (col_bit_idx % 32);
+                        unsigned int con_bit = in_colConBits[col_bit_idx / 32] & col_bit_mask;
+
+                        if (grid_value) {
+                            neib_and_tie_sum += tie_breaker + 1;  // Increment by 1 for active input
+
+                            if (con_bit) 
                             {
-                                con_neib_and_tie_sum += tie_breaker + grid_value;
+                                con_neib_and_tie_sum += tie_breaker + 1;  // Increment by 1 for active input
                             }
                         }
                     }
@@ -674,7 +676,7 @@ namespace gpu_overlap
     // We don't want to be allocating memory each call but efficiently use the same memory for multiple calls to this function
     // so we can process new inputs (of the same size) using the same allocated memory as the last call. 
     // Define GPU memory pointers globally or as class members to persist across multiple calls
-    int *strm_d_in_grid = nullptr;
+    void *strm_d_in_grid = nullptr;  // Use void pointer to allow for different data types e.g the optimised veriosn uses uint32_t to stuff bits efficiently. The unoptimtised version just uses a single int per input.
     float *strm_d_colSynPerm = nullptr;
     uint32_t *strm_d_colConBits = nullptr;  // Alternative to strm_d_colSynPerm uses an uint32_t to store a single bit for each synapses indicating if the syn is connected (has a permanence value above the threshold)
     float *strm_d_out_overlap = nullptr;
@@ -684,7 +686,16 @@ namespace gpu_overlap
     void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P, bool optimised) 
     {
         if (!strm_d_in_grid) {
-            TF_CHECK_CUDA(cudaMalloc(&strm_d_in_grid, in_rows * in_cols * sizeof(int)), "failed to allocate strm_d_in_grid");
+            int grid_size = in_rows * in_cols;
+            if (optimised) {
+                // Allocate as uint32_t for optimised version
+                int grid_size_bytes = (grid_size + 31) / 32 * sizeof(uint32_t);  // Calculate size for uint32_t
+                TF_CHECK_CUDA(cudaMalloc(&strm_d_in_grid, grid_size_bytes), "failed to allocate strm_d_in_grid (uint32_t)");
+            } else {
+                // Allocate as int for non-optimised version
+                TF_CHECK_CUDA(cudaMalloc(&strm_d_in_grid, grid_size * sizeof(int)), "failed to allocate strm_d_in_grid (int)");
+            }
+
             TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
             TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
             // Use either strm_d_colSynPerm or strm_d_colConBits depending on the optimised flag
@@ -705,17 +716,18 @@ namespace gpu_overlap
         TF_CHECK_CUDA(cudaFree(strm_d_in_grid), "failed to free strm_d_in_grid");
         TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_out_overlap");
         TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_out_pot_overlap");
+
         if (optimised) {
             TF_CHECK_CUDA(cudaFree(strm_d_colConBits), "failed to free strm_d_colConBits");
         } else {
             TF_CHECK_CUDA(cudaFree(strm_d_colSynPerm), "failed to free strm_d_colSynPerm");
         }
+
         strm_d_in_grid = nullptr;
         strm_d_colSynPerm = nullptr;
         strm_d_out_overlap = nullptr;
         strm_d_out_pot_overlap = nullptr;
     }
-
     void calculate_overlap_gpu_stream(
                             const int width_cortical_cols, const int height_cortical_cols,
                             const std::vector<float> &colSynPerm,
@@ -819,8 +831,8 @@ namespace gpu_overlap
     void calculate_overlap_gpu_stream_opt(
         const int width_cortical_cols, const int height_cortical_cols,
         const std::vector<uint32_t> &colConBits,  // This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
-        const std::vector<int> &inputGrid,
-        const std::pair<int, int> &inputGrid_shape,
+        const std::vector<uint32_t> &inputGrid,   // This should be a vector of uint32_t where each bit in the array represents if that input is active or not (bitwise operations). Note this vector of bits is simulating a 2D matrix of inputs of size inputGrid_shape.first x inputGrid_shape.second.
+        const std::pair<int, int> &inputGrid_shape,  // The shape of the input matrix (2D grid).
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
@@ -866,7 +878,7 @@ namespace gpu_overlap
         auto cudaFlow = taskflow.emplace([&]() {
             tf::cudaFlow cf;
             // Copy input data to GPU
-            auto copy_in = cf.memcpy(strm_d_in_grid, inputGrid.data(), rows * cols * sizeof(int)).name("copy_in");
+            auto copy_in = cf.memcpy(strm_d_in_grid, inputGrid.data(), inputGrid.size() * sizeof(uint32_t)).name("copy_in");
             auto copy_colConBits = cf.memcpy(strm_d_colConBits, colConBits.data(), expected_colConBits_size * sizeof(uint32_t)).name("copy_colConBits");
             // Launch kernel
             dim3 block(16, 16);

@@ -79,6 +79,7 @@
         "*.expression": "cpp",
         "fft": "cpp",
         "numbers": "cpp",
-        "semaphore": "cpp"
+        "semaphore": "cpp",
+        "tensor": "cpp"
     }
 }

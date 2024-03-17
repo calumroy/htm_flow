@@ -154,7 +154,7 @@ namespace gpu_overlap
     /// @param[in] colConBits              This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
     /// @param[in] columns_width        The width of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
     /// @param[in] columns_height       The height of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
-    /// @param[in] inputGrid            The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
+    /// @param[in] inputGrid            The input grid as a 1D vector of bits but packed into uint32_t, simulating a 2D vector of bits. These bits are simulating an input of size  input_width_ x input_height_.
     /// @param[in] inputGrid_shape      The shape of the inputGrid vector height then width as a pair of ints.
     /// @param[in] neib_shape           The shape of the neighbourhood.
     /// @param[in] neib_step            The step size of the sliding window.
@@ -169,17 +169,16 @@ namespace gpu_overlap
     /// @return                         Void as the outputs (out_overlap and out_pot_overlap) are passed by reference.
     ///-----------------------------------------------------------------------------
     void calculate_overlap_gpu_stream_opt(
-                                const int width_cortical_cols, const int height_cortical_cols,
-                                const std::vector<uint32_t> &colConBits,  // This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
-                                const std::vector<int> &inputGrid,
-                                const std::pair<int, int> &inputGrid_shape,
-                                const std::pair<int, int> &neib_shape,
-                                const std::pair<int, int> &neib_step,
-                                bool wrap_mode,
-                                bool center_neigh,
-                                std::vector<float> &out_overlap,
-                                std::vector<float> &out_pot_overlap
-                            );
-
+                                        const int width_cortical_cols, const int height_cortical_cols,
+                                        const std::vector<uint32_t> &colConBits,  // vector of uint32_t where each bit represents the connection bit for a synapse
+                                        const std::vector<uint32_t> &inputGrid,   // This should be a vector of uint32_t where each bit in the array represents if that input is active or not (bitwise operations). Note this vector of bits is simulating a 2D matrix of inputs of size inputGrid_shape.first x inputGrid_shape.second.
+                                        const std::pair<int, int> &inputGrid_shape,  // The shape of the input matrix (2D grid).
+                                        const std::pair<int, int> &neib_shape,
+                                        const std::pair<int, int> &neib_step,
+                                        bool wrap_mode,
+                                        bool center_neigh,
+                                        std::vector<float> &out_overlap,
+                                        std::vector<float> &out_pot_overlap
+                                    );
 
 } // namespace gpu_overlap
