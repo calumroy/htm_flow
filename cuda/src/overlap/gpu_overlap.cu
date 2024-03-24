@@ -412,6 +412,59 @@ namespace gpu_overlap
         }
     }
 
+    __global__ void overlap_kernel_sparse(int2 *active_grid, float *in_colSynPerm, 
+                                float *out_overlap, float *out_potential_overlap,
+                                int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
+                                int neib_rows, int neib_cols, 
+                                int step_cols, int step_rows, 
+                                bool wrap_mode, bool center_neigh,
+                                float connected_perm)
+    {
+        int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index in the output matrix
+        int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index in the output matrix
+
+        if (i >= out_rows || j >= out_cols)
+            return;
+
+        float neib_and_tie_sum = 0.0f;
+        float con_neib_and_tie_sum = 0.0f;
+        float norm_value = 0.5f / (neib_cols * neib_rows);
+
+        // Define the starting point of the neighborhood. 
+        int start_x = center_neigh ? (i * step_rows - neib_rows / 2) : (i * step_rows);
+        int start_y = center_neigh ? (j * step_cols - neib_cols / 2) : (j * step_cols);
+
+        for (int idx = 0; idx < num_active; ++idx)
+        {
+            int2 active_pos = active_grid[idx];
+
+            // Apply wrap mode if needed
+            int wrapped_x = wrap_mode ? (active_pos.x + in_rows) % in_rows : active_pos.x;
+            int wrapped_y = wrap_mode ? (active_pos.y + in_cols) % in_cols : active_pos.y;
+
+            // Check if the active element falls within the neighborhood
+            int nx = wrapped_x - start_x;
+            int ny = wrapped_y - start_y;
+            
+            if (nx >= 0 && nx < neib_rows && ny >= 0 && ny < neib_cols)
+            {
+                float tie_breaker = ((ny * neib_cols + nx) + 1) * norm_value;
+                int perm_index = (i * out_cols + j) * neib_rows * neib_cols + nx * neib_cols + ny;
+
+                neib_and_tie_sum += 1 + tie_breaker; // Active element contributes 1
+
+                if (in_colSynPerm[perm_index] > connected_perm)
+                    con_neib_and_tie_sum += 1 + tie_breaker;
+            }
+        }
+
+        int cort_col_id = i * out_cols + j;
+        out_potential_overlap[cort_col_id] = neib_and_tie_sum;
+        out_overlap[cort_col_id] = con_neib_and_tie_sum;
+    }
+
+
+
     // A function that performs a sliding window operation on an input 2D simulated matrix using a 1D input vector..
     std::vector<int> gpu_Images2Neibs(
         const std::vector<int> &input,
