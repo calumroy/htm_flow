@@ -412,13 +412,43 @@ namespace gpu_overlap
         }
     }
 
-    __global__ void overlap_kernel_sparse(int2 *active_grid, float *in_colSynPerm, 
-                                float *out_overlap, float *out_potential_overlap,
-                                int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
-                                int neib_rows, int neib_cols, 
-                                int step_cols, int step_rows, 
-                                bool wrap_mode, bool center_neigh,
-                                float connected_perm)
+    ///-----------------------------------------------------------------------------
+    ///
+    /// overlap_kernel_opt_sparse    A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
+    ///                              This kernel function is designed to efficiently handle sparse input matrices where only a small percentage
+    ///                              of elements are active. It operates on a list of active elements, represented as (x, y) coordinates in
+    ///                              a 2D grid, rather than iterating over the entire grid. This approach reduces unnecessary computations
+    ///                              on inactive elements and improves parallel efficiency. The kernel uses a 1D array of 32-bit integers
+    ///                              to store the connection bits for each synapse in the neighbourhood of each cortical column, minimizing
+    ///                              the memory footprint and efficiently utilizing the bitwise operations for determining the connectivity
+    ///                              and contribution of synapses to the overlap score.
+    ///
+    /// @param[in] active_grid       A pointer to an array of int2 elements (a struct storing two int x,y) representing the coordinates of active elements in the input grid.
+    /// @param[in] in_colConBits     A pointer to the input vector on the GPU where each 32-bit integer represents the connection state
+    ///                              of synapses in the neighbourhood of a cortical column. Each bit in the integer corresponds to a synapse,
+    ///                              with a set bit indicating a connection (permanence above threshold) and thus contributing to the overlap score.
+    /// @param[out] out_overlap      A pointer to the output matrix on the GPU, where each element represents the overlap score of a cortical column.
+    /// @param[out] out_potential_overlap A pointer to the output matrix on the GPU, where each element represents the potential overlap score
+    ///                                   of a cortical column, calculated without considering the synapse permanence values.
+    /// @param[in] num_active        The number of active elements in the input grid.
+    /// @param[in] in_rows           The number of rows in the input matrix.
+    /// @param[in] in_cols           The number of columns in the input matrix.
+    /// @param[in] out_rows          The number of rows in the output matrix, equal to ceil(in_rows / step_rows).
+    /// @param[in] out_cols          The number of columns in the output matrix, equal to ceil(in_cols / step_cols).
+    /// @param[in] neib_rows         The number of rows in the neighbourhood of each cortical column.
+    /// @param[in] neib_cols         The number of columns in the neighbourhood of each cortical column.
+    /// @param[in] step_rows         The step size in the y direction, the number of rows to step the neighbourhood over the input for each iteration.
+    /// @param[in] step_cols         The step size in the x direction, the number of columns to step the neighbourhood over the input for each iteration.
+    /// @param[in] wrap_mode         A flag indicating whether the neighbourhood should wrap around the input matrix, enabling toroidal topology.
+    /// @param[in] center_neigh      A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
+    ///
+    ///-----------------------------------------------------------------------------
+    __global__ void overlap_kernel_opt_sparse(int2 *active_grid, uint32_t *in_colConBits,
+                                        float *out_overlap, float *out_potential_overlap,
+                                        int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
+                                        int neib_rows, int neib_cols, 
+                                        int step_cols, int step_rows, 
+                                        bool wrap_mode, bool center_neigh)
     {
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index in the output matrix
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index in the output matrix
@@ -430,31 +460,50 @@ namespace gpu_overlap
         float con_neib_and_tie_sum = 0.0f;
         float norm_value = 0.5f / (neib_cols * neib_rows);
 
-        // Define the starting point of the neighborhood. 
-        int start_x = center_neigh ? (i * step_rows - neib_rows / 2) : (i * step_rows);
-        int start_y = center_neigh ? (j * step_cols - neib_cols / 2) : (j * step_cols);
-
         for (int idx = 0; idx < num_active; ++idx)
         {
             int2 active_pos = active_grid[idx];
+            int active_x = active_pos.x;
+            int active_y = active_pos.y;
 
-            // Apply wrap mode if needed
-            int wrapped_x = wrap_mode ? (active_pos.x + in_rows) % in_rows : active_pos.x;
-            int wrapped_y = wrap_mode ? (active_pos.y + in_cols) % in_cols : active_pos.y;
+            // Adjust active position based on neighborhood centering
+            if (center_neigh) {
+                active_x -= neib_rows / 2;
+                active_y -= neib_cols / 2;
+            }
 
-            // Check if the active element falls within the neighborhood
-            int nx = wrapped_x - start_x;
-            int ny = wrapped_y - start_y;
-            
-            if (nx >= 0 && nx < neib_rows && ny >= 0 && ny < neib_cols)
+            // Calculate neighborhood position relative to active element
+            for (int ii = 0; ii < neib_rows; ++ii)
             {
-                float tie_breaker = ((ny * neib_cols + nx) + 1) * norm_value;
-                int perm_index = (i * out_cols + j) * neib_rows * neib_cols + nx * neib_cols + ny;
+                for (int jj = 0; jj < neib_cols; ++jj)
+                {
+                    int nx = i * step_rows + ii;
+                    int ny = j * step_cols + jj;
 
-                neib_and_tie_sum += 1 + tie_breaker; // Active element contributes 1
+                    if (center_neigh) {
+                        nx -= neib_rows / 2;
+                        ny -= neib_cols / 2;
+                    }
 
-                if (in_colSynPerm[perm_index] > connected_perm)
-                    con_neib_and_tie_sum += 1 + tie_breaker;
+                    if (wrap_mode) {
+                        nx = (nx + in_rows) % in_rows;
+                        ny = (ny + in_cols) % in_cols;
+                    }
+
+                    if (nx == active_x && ny == active_y)
+                    {
+                        float tie_breaker = (jj * neib_cols + ii + 1) * norm_value;
+                        int bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        uint32_t mask = 1u << (bit_idx % 32);
+                        uint32_t connected = in_colConBits[bit_idx / 32] & mask;
+
+                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input
+
+                        if (connected) {
+                            con_neib_and_tie_sum += 1 + tie_breaker;
+                        }
+                    }
+                }
             }
         }
 
@@ -462,7 +511,6 @@ namespace gpu_overlap
         out_potential_overlap[cort_col_id] = neib_and_tie_sum;
         out_overlap[cort_col_id] = con_neib_and_tie_sum;
     }
-
 
 
     // A function that performs a sliding window operation on an input 2D simulated matrix using a 1D input vector..
