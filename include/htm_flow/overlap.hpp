@@ -49,6 +49,20 @@ namespace overlap
                                const std::vector<int> &inputGrid,
                                const std::pair<int, int> &inputGrid_shape);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_pot_syn_tie_breaker - Returns the potential synapse tie breaker matrix.
+        ///
+        /// @return A 1D vector simulating a 2D vector of floats representing the synapse tie breaker matrix.
+        std::vector<float> get_pot_syn_tie_breaker();
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_overlaps - Returns the overlap scores for each column.
+        ///
+        /// @return A 1D vector of ints representing the overlap scores for each column.
+        std::vector<int> get_col_overlaps();
+
     private:
         // // Calculate the potential synapses for a given column
         // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,
@@ -60,9 +74,7 @@ namespace overlap
         // int calculate_overlap(const std::vector<float> &pot_overlap,
         //                       const std::vector<std::tuple<int, int>> &pot_syn);
 
-        // Get the step sizes for the potential synapses
-        std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
-                                           int columns_height, int potential_width, int potential_height);
+        
         ///------------------------------------------------------------------------------------
         ///
         /// make_pot_syn_tie_breaker - Create a tie breaker matrix for potential synapses.
@@ -143,7 +155,7 @@ namespace overlap
         int columns_height_;       // Height of the cortical columns
         int num_columns_;          // Number of columns making up this htm layer
         // Store the potential inputs to every column. Each row represents the inputs a columns potential synapses cover.
-        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses. columns_height_ x columns_width_ x potential_height_ x potential_width_
+        std::vector<int> col_input_pot_syn_; // This is a 1D vector simulating a 2D vector with the size number of columns x number of potential synapses = columns_height_ x columns_width_ x potential_height_ x potential_width_
         std::vector<int> col_inputs_shape_;  // Equal to {columns_height_, columns_width_, potential_height_, potential_width_}, the shape of the col_input_pot_syn_ vector. A more convenient way to pass the shape of the col_input_pot_syn_ vector around.
         // Store the potential overlap value for every column
         std::vector<float> col_pot_overlaps_;      // This is a 1D vector with the size number of columns.

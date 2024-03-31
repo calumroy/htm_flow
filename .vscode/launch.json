@@ -59,13 +59,66 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow_tests",
             "args": [
-                "--gtest_filter=get_connected_syn_input.test1_small"
+                "--gtest_filter=gpu_overlap.test1_small"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": ""
+        },
+        {
+            "name": "(gdb) gpu_Images2Neibs.test1_wrap",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/htm_flow_tests",
+            "args": [
+                "--gtest_filter=gpu_Images2Neibs.test1_wrap"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            // "MIMode": "gdb",
+            // "launchCompleteCommand": "exec-run",
+            // "linux": {
+            //   "MIMode": "gdb",
+            //   "miDebuggerPath": "/usr/bin/gdb"
+            // },
+            "setupCommands": [
+                // {
+                //     "description": "Enable pretty-printing for gdb",
+                //     "text": "python import sys;sys.path.insert(0, '/usr/share/gcc/python');from libstdcxx.v6.printers import register_libstdcxx_printers;register_libstdcxx_printers(None)",
+                //     "ignoreFailures": false
+                // },
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": ""
+        },
+        {
+            "name": "(gdb) gpu_overlap_stream.test1_run_time_avg",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/htm_flow_tests",
+            "args": [
+                "--gtest_filter=gpu_overlap_stream.test1_run_time_avg"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",

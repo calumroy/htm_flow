@@ -14,6 +14,38 @@
 namespace overlap_utils
 {
 
+    // Define a function to print out a 1D vector of uint32_t, where each bit in the uint32_t elements
+    // represents a boolean value, simulating a 4D boolean vector. This function is used to visualize the bit-packed synapse connection states in a format that resembles a 4D vector, where each bit corresponds to the connected state of a synapse.
+    void print_4d_bit_vector(const std::vector<uint32_t> &vec1D, const std::vector<int> &vec4D_shape) {
+        int num_columns = vec4D_shape[0];
+        int num_rows = vec4D_shape[1];
+        int num_depth = vec4D_shape[2];
+        int num_width = vec4D_shape[3];
+
+        int bits_per_uint32 = 32;
+        int total_bits = num_columns * num_rows * num_depth * num_width;
+
+        for (int i = 0; i < num_columns; ++i) {
+            for (int j = 0; j < num_rows; ++j) {
+                for (int k = 0; k < num_depth; ++k) {
+                    for (int l = 0; l < num_width; ++l) {
+                        int bit_pos = ((i * num_rows + j) * num_depth + k) * num_width + l;
+                        int vec_index = bit_pos / bits_per_uint32;
+                        int bit_index = bit_pos % bits_per_uint32;
+
+                        if (vec_index < vec1D.size()) {
+                            bool bit_value = (vec1D[vec_index] & (1u << bit_index)) != 0;
+                            std::cout << bit_value << " ";
+                        }
+                    }
+                    std::cout << std::endl; // New line for each width layer
+                }
+                std::cout << std::endl; // New line for each depth layer
+            }
+            std::cout << std::endl; // New line for each row
+        }
+    }
+
     // Define a function to convert 2D indices to 1D indices
     int flatten_index(int x, int y, int width)
     {
@@ -76,5 +108,7 @@ namespace overlap_utils
 
         return result;
     }
+
+    
 
 } // namespace overlap_utils

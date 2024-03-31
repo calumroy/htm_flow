@@ -10,9 +10,9 @@ build.sh
 ```  
 builds the project using cmake and gcc > 10.2.1 
 Creates the executable in a out of source build directory.
-It also builds all the unit tests including the cuda GPU tests.
+It also builds all the unit tests (include GPU option for including the cuda GPU tests, see below).
 
-You can build a debug or release version of the project.
+You can build a debug or release CPU only version of the project.
 ```
 build.sh Debug
 ```
@@ -39,6 +39,10 @@ once you have CUDA installed, you can build the project with GPU support using t
 ```
 build.sh Release GPU
 ```
+or
+```
+./build.sh Debug GPU
+```
 This will build the project with GPU support and also build the GPU unit tests.
 
 To build a gpu example using nvcc e.g
@@ -57,9 +61,16 @@ This is done automatically by the setup.sh script.
 setup.sh 
 ```  
 
-To run the unit tests, use the executable `./build/htm_flow_tests`  
-To list all unit tests use googletest flags `./build/htm_flow_tests --gtest_list_tests`  
-To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags `./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+To run the unit tests, use the executable   
+`./build/htm_flow_tests`  
+To list all unit tests use googletest flags   
+`./build/htm_flow_tests --gtest_list_tests`  
+To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags  
+`./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+
+To run the GPU unit tests you must build with the GPU option `build.sh Debug GPU`
+Then run specific GPU unit tests with e.g  
+`./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test1_wrap`
 
 # Visualize Taskflow Graphs
 You can dump a taskflow graph to a DOT format and visualize it using a number of free GraphViz tools such as [GraphViz Online](https://dreampuf.github.io/GraphvizOnline/).
@@ -122,3 +133,14 @@ documentation at https://docs.nvidia.com/nsight-systems/UserGuide/index.html
 For example to profile one the the gpu unit test cases in the nsys-ui gui use the following two commands as the command line arguments and the working directory.
 `htm_flow_tests --gtest_filter=gpu_Images2Neibs.test3_very_large`  
 `/home/calum/Documents/projects/htm_flow/build`  
+
+## Using cuda-gdb to debug GPU code
+To debug the GPU code you can use cuda-gdb tool
+E.g to run the test case gpu_Images2Neibs.test4_large_2_step
+and then set a conditional breakpoint in the kernel code on line 128:  
+
+```
+cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_large_2_step
+(cuda-gdb) break gpu_overlap.cu:128 if jj==19
+(cuda-gdb) run
+``````

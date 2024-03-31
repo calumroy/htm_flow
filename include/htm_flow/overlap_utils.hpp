@@ -16,6 +16,7 @@
 #include <cmath>
 #include <vector>
 #include <tuple>
+#include <bitset>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>
 namespace overlap_utils
@@ -47,6 +48,19 @@ namespace overlap_utils
     // vec4D_shape is a vector of size 4 that contains the shape of the 4D vector.
     template <typename T>
     void print_4d_vector(const std::vector<T> &vec1D, std::vector<int> &vec4D_shape);
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// 
+    /// print_4d_bit_vector         Prints out a 1D vector of uint32_t, where each bit in the uint32_t elements 
+    ///                             represents a boolean value, simulating a 4D boolean vector. This function is 
+    ///                             used to visualize the bit-packed synapse connection states in a format that 
+    ///                             resembles a 4D vector, where each bit corresponds to the connected state of a synapse.
+    /// 
+    /// @param vec1D The 1D vector of uint32_t representing the packed boolean values.
+    /// @param vec4D_shape A vector of size 4 that contains the shape of the 4D vector that vec1D is simulating.
+    /// 
+    void print_4d_bit_vector(const std::vector<uint32_t> &vec1D, const std::vector<int> &vec4D_shape);
 
     // Take a 1D vector and convert it to a 2D vector.
     template <typename T>
@@ -142,7 +156,7 @@ namespace overlap_utils
     ///                           pattern.
     /// @param[in] grid           The input grid (1D vector) but could be simulating a 2D matrix.
     /// @param[in] tieBreaker     The tie breaker (1D vector must be same size as grid).
-    /// @param[out] output        The output grid (1D vector) but could be simulating a 2D matrix.
+    /// @param[out] output        The output grid (1D parallel_maskTieBreakervector) but could be simulating a 2D matrix.
     /// @param[out] taskflow      The taskflow graph object.
     template <typename T>
     void parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker, std::vector<float> &output, tf::Taskflow &taskflow);
@@ -193,6 +207,25 @@ namespace overlap_utils
     void get_connected_syn_input(const std::vector<float> &col_syn_perm, const std::vector<T> &col_input_pot_syn,
                                  float connected_perm, int n_rows, int n_cols, std::vector<T> &check_conn,
                                  tf::Taskflow &taskflow);
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// get_step_sizes             Get the step sizes for the potential synapses.
+    ///                            The step sizes are the number of rows and columns to step over in the input
+    ///                            when calculating the overlap scores for each "cortical" column.
+    ///                            The step sizes are calculated by taking the number of columns and rows in the input
+    ///                            and dividing by the potential synapse size, column and row wise. 
+    ///                            The step sizes are increased so the input is covered by the potential synapses (or as best as possible).
+    ///                            The step sizes are returned as a pair of ints.
+    /// @param[in] input_width     The width of the input matrix.
+    /// @param[in] input_height    The height of the input matrix.
+    /// @param[in] columns_width   The width of the columns matrix.
+    /// @param[in] columns_height  The height of the columns matrix.
+    /// @param[in] potential_width The width of the potential synapses.
+    /// @param[in] potential_height The height of the potential synapses.
+    /// @return                    A pair of ints representing the step sizes for the potential synapses.
+    inline std::pair<int, int> get_step_sizes(int input_width, int input_height, int columns_width,
+                                              int columns_height, int potential_width, int potential_height);
 
     // -----------------------------------------------------------------------------
     // Header only implementations of the functions above.
@@ -663,6 +696,36 @@ namespace overlap_utils
                                    .name("get_connected_syn_input");
 
         check_conn_task.succeed(load_in1_task, load_in2_task);
+    }
+
+    // Get the step sizes for the potential synapses. This is the optimal step size in the x and y direction
+    // to use so the potential synapses cover the input as best as possible.
+    inline std::pair<int, int> get_step_sizes(int input_width, int input_height,
+                                              int col_width, int col_height,
+                                              int pot_width, int pot_height)
+    {
+        // Work out how large to make the step sizes so all of the
+        // inputGrid can be covered as best as possible by the columns
+        // potential synapses.
+        int step_x = static_cast<int>(std::round(static_cast<float>(input_width) / static_cast<float>(col_width)));
+        int step_y = static_cast<int>(std::round(static_cast<float>(input_height) / static_cast<float>(col_height)));
+
+        // The step sizes may need to be increased if the potential sizes are too small and don't cover the total input.
+        if (pot_width + (col_width - 1) * step_x < input_width)
+        {
+            // Calculate how many of the input elements cannot be covered with the current step_x value.
+            int uncovered_x = (input_width - (pot_width + (col_width - 1) * step_x));
+            // Use this to update the step_x value so all input elements are covered.
+            step_x = step_x + static_cast<int>(std::ceil(static_cast<float>(uncovered_x) / static_cast<float>(col_width - 1)));
+        }
+
+        if (pot_height + (col_height - 1) * step_y < input_height)
+        {
+            int uncovered_y = (input_height - (pot_height + (col_height - 1) * step_y));
+            step_y = step_y + static_cast<int>(std::ceil(static_cast<float>(uncovered_y) / static_cast<float>(col_height - 1)));
+        }
+
+        return std::make_pair(step_x, step_y);
     }
 
 } // namespace overlap_utils
