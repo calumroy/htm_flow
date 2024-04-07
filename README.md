@@ -143,7 +143,7 @@ and then set a conditional breakpoint in the kernel code on line 128:
 cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_large_2_step
 (cuda-gdb) break gpu_overlap.cu:128 if jj==19
 (cuda-gdb) run
-``````
+```
 
 # Generate Doxygen code documentation
 To generate the code documentation, you need to have doxygen installed.

@@ -423,7 +423,7 @@ namespace gpu_overlap
     ///                              the memory footprint and efficiently utilizing the bitwise operations for determining the connectivity
     ///                              and contribution of synapses to the overlap score.
     ///
-    /// @param[in] active_grid       A pointer to an array of int2 elements (a struct storing two int x,y) representing the coordinates of active elements in the input grid.
+    /// @param[in] active_grid       A pointer to an array of Int2 elements (a struct storing two int x,y) representing the coordinates of active elements in the input grid.
     /// @param[in] in_colConBits     A pointer to the input vector on the GPU where each 32-bit integer represents the connection state
     ///                              of synapses in the neighbourhood of a cortical column. Each bit in the integer corresponds to a synapse,
     ///                              with a set bit indicating a connection (permanence above threshold) and thus contributing to the overlap score.
@@ -443,7 +443,7 @@ namespace gpu_overlap
     /// @param[in] center_neigh      A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
     ///
     ///-----------------------------------------------------------------------------
-    __global__ void overlap_kernel_opt_sparse(int2 *active_grid, uint32_t *in_colConBits,
+    __global__ void overlap_kernel_opt_sparse(Int2 *active_grid, uint32_t *in_colConBits,
                                         float *out_overlap, float *out_potential_overlap,
                                         int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
                                         int neib_rows, int neib_cols, 
@@ -462,7 +462,7 @@ namespace gpu_overlap
 
         for (int idx = 0; idx < num_active; ++idx)
         {
-            int2 active_pos = active_grid[idx];
+            Int2 active_pos = active_grid[idx];
             int active_x = active_pos.x;
             int active_y = active_pos.y;
 
@@ -778,10 +778,12 @@ namespace gpu_overlap
     // so we can process new inputs (of the same size) using the same allocated memory as the last call. 
     // Define GPU memory pointers globally or as class members to persist across multiple calls
     void *strm_d_in_grid = nullptr;  // Use void pointer to allow for different data types e.g the optimised veriosn uses uint32_t to stuff bits efficiently. The unoptimtised version just uses a single int per input.
+    Int2 *strm_d_active_grid = nullptr;  // Add a pointer for the sparse active grid
     float *strm_d_colSynPerm = nullptr;
     uint32_t *strm_d_colConBits = nullptr;  // Alternative to strm_d_colSynPerm uses an uint32_t to store a single bit for each synapses indicating if the syn is connected (has a permanence value above the threshold)
     float *strm_d_out_overlap = nullptr;
     float *strm_d_out_pot_overlap = nullptr;
+
 
     // Initialization function to allocate GPU memory
     void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P, bool optimised) 
@@ -829,6 +831,63 @@ namespace gpu_overlap
         strm_d_out_overlap = nullptr;
         strm_d_out_pot_overlap = nullptr;
     }
+
+    // Setup the GPU memory for the sparse version of the overlap calculation
+    void initialize_gpu_memory_sparse(int num_active, int N, int M, int O, int P) 
+    {
+        if (!strm_d_active_grid) 
+        {
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_active_grid, num_active * sizeof(Int2)), "failed to allocate strm_d_active_grid");
+        }
+
+        if (!strm_d_out_overlap) 
+        {
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
+        }
+
+        if (!strm_d_out_pot_overlap) 
+        {
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
+        }
+
+        if (!strm_d_colConBits) 
+        {
+            // Calculate the required size for colConBits considering each uint32_t can hold 32 synapses' states
+            int total_synapses = N * M * O * P;
+            int colConBits_size = (total_synapses + 31) / 32;  // Ensure enough space for all synapses
+            TF_CHECK_CUDA(cudaMalloc(&strm_d_colConBits, colConBits_size * sizeof(uint32_t)), "failed to allocate strm_d_colConBits");
+        }
+    }
+    // Tear down the GPU memory for the sparse version of the overlap calculation
+    void cleanup_gpu_memory_sparse() 
+    {
+        if (strm_d_active_grid) 
+        {
+            TF_CHECK_CUDA(cudaFree(strm_d_active_grid), "failed to free strm_d_active_grid");
+            strm_d_active_grid = nullptr;
+        }
+
+        if (strm_d_out_overlap) 
+        {
+            TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_out_overlap");
+            strm_d_out_overlap = nullptr;
+        }
+
+        if (strm_d_out_pot_overlap) 
+        {
+            TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_out_pot_overlap");
+            strm_d_out_pot_overlap = nullptr;
+        }
+
+        if (strm_d_colConBits) 
+        {
+            TF_CHECK_CUDA(cudaFree(strm_d_colConBits), "failed to free strm_d_colConBits");
+            strm_d_colConBits = nullptr;
+        }
+    }
+
+
+
     void calculate_overlap_gpu_stream(
                             const int width_cortical_cols, const int height_cortical_cols,
                             const std::vector<float> &colSynPerm,
@@ -927,19 +986,20 @@ namespace gpu_overlap
 
     }
 
-    // A different version of the calculate_overlap_gpu_stream function that uses a 1D array of 
-    // unsigned integers to store the connection bits for each synapse in the neighbourhood of each cortical column.
-    void calculate_overlap_gpu_stream_opt(
+    // A version of the calculate_overlap_gpu_stream function that uses a sparse representation of the active input bits.
+    // It also uses only a single bit to represent the connection state of each synapse (as the colConBits vector input parameter). 
+    void calculate_overlap_gpu_stream_opt_sparse(
         const int width_cortical_cols, const int height_cortical_cols,
-        const std::vector<uint32_t> &colConBits,  // This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
-        const std::vector<uint32_t> &inputGrid,   // This should be a vector of uint32_t where each bit in the array represents if that input is active or not (bitwise operations). Note this vector of bits is simulating a 2D matrix of inputs of size inputGrid_shape.first x inputGrid_shape.second.
-        const std::pair<int, int> &inputGrid_shape,  // The shape of the input matrix (2D grid).
+        const std::vector<uint32_t> &colConBits,  // Connection bits for each synapse in the neighbourhood of each cortical column.
+        const std::vector<Int2> &active_grid,     // List of active elements represented as Int2 structures (two uint32_t stored in a struct).
+        int num_active,                           // Number of active elements in the active_grid.
+        const std::pair<int, int> &inputGrid_shape, // The shape of the input matrix (2D grid).
         const std::pair<int, int> &neib_shape,
         const std::pair<int, int> &neib_step,
         bool wrap_mode,
         bool center_neigh,
-        std::vector<float> &out_overlap,         // Function output passed by reference to avoid allocating the output on each call
-        std::vector<float> &out_pot_overlap)     // Function output passed by reference to avoid allocating the output on each call
+        std::vector<float> &out_overlap,          // Function output passed by reference to avoid allocating the output on each call
+        std::vector<float> &out_pot_overlap)      // Function output passed by reference to avoid allocating the output on each call
     {
         // Assume GPU memory is already allocated and pointers (strm_d_in_grid, etc.) are initialized
         // Determine the dimensions of the input matrix.
@@ -973,30 +1033,30 @@ namespace gpu_overlap
             out_pot_overlap.resize(N * M);
         }
 
-        tf::Taskflow taskflow("calculate_overlap_gpu_steam");
+        tf::Taskflow taskflow("calculate_overlap_gpu_steam_sparse");
         tf::Executor executor;
 
         auto cudaFlow = taskflow.emplace([&]() {
             tf::cudaFlow cf;
             // Copy input data to GPU
-            auto copy_in = cf.memcpy(strm_d_in_grid, inputGrid.data(), inputGrid.size() * sizeof(uint32_t)).name("copy_in");
+            auto copy_active = cf.memcpy(strm_d_active_grid, active_grid.data(), num_active * sizeof(Int2)).name("copy_active");
             auto copy_colConBits = cf.memcpy(strm_d_colConBits, colConBits.data(), expected_colConBits_size * sizeof(uint32_t)).name("copy_colConBits");
             // Launch kernel
             dim3 block(16, 16);
-            dim3 grid((cols + block.x - 1) / block.x, (rows + block.y - 1) / block.y);
+            dim3 grid((M + block.x - 1) / block.x, (N + block.y - 1) / block.y);
             // Setup the GPU kernel function to run the overlap calculation.
-            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel_opt, strm_d_in_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
+            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel_opt_sparse, strm_d_active_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, num_active, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
             // Copy output data back to host
             auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float)).name("copy_out");
             auto copy_out_pot = cf.memcpy(out_pot_overlap.data(), strm_d_out_pot_overlap, N * M * sizeof(float)).name("copy_out_pot");
             // Set the order of the flow tasks.
-            overlap_calc.succeed(copy_in, copy_colConBits)
+            overlap_calc.succeed(copy_active, copy_colConBits)
                         .precede(copy_out, copy_out_pot);
 
             tf::cudaStream stream;
             cf.run(stream);
             stream.synchronize();
-        }).name("cudaFlow");
+        }).name("cudaFlow_sparse");
         // Execute the taskflow, starting the cuda kernel task.
         executor.run(taskflow).wait();
     }
