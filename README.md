@@ -144,3 +144,15 @@ cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_lar
 (cuda-gdb) break gpu_overlap.cu:128 if jj==19
 (cuda-gdb) run
 ``````
+
+# Generate Doxygen code documentation
+To generate the code documentation, you need to have doxygen installed.
+```
+sudo apt install doxygen
+```
+Then run the doxygen command in the root directory of the project.
+```
+doxygen Doxyfile
+```
+This will generate the documentation in the `htm_flow/docs` directory.
+Open the `htm_flow/docs/html/index.html` file in a web browser to view the documentation.
