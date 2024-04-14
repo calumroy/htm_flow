@@ -172,3 +172,8 @@ Then build the docker image with the following command:
 ./build_container.sh
 ```
 This will build the docker image with the name `htm_flow:latest`.
+
+Enter the docker container with the following command:
+```
+docker run -it --gpus all htm_flow:latest
+```
