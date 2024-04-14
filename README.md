@@ -156,3 +156,19 @@ doxygen Doxyfile
 ```
 This will generate the documentation in the `htm_flow/docs` directory.
 Open the `htm_flow/docs/html/index.html` file in a web browser to view the documentation.
+
+# Run in a docker container
+To run the project in a docker container, you need to have docker installed with nvidia container toolkit.
+Install dockler with the following command:
+```
+ sudo apt-get update
+ sudo apt-get install ./docker-desktop-<version>-<arch>.deb
+```
+See here for installing the nvidia container toolkit:
+https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#installing-with-apt
+
+Then build the docker image with the following command:
+```
+./build_container.sh
+```
+This will build the docker image with the name `htm_flow:latest`.
