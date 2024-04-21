@@ -444,11 +444,11 @@ namespace gpu_overlap
     ///
     ///-----------------------------------------------------------------------------
     __global__ void overlap_kernel_opt_sparse(Int2 *active_grid, uint32_t *in_colConBits,
-                                        float *out_overlap, float *out_potential_overlap,
-                                        int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
-                                        int neib_rows, int neib_cols, 
-                                        int step_cols, int step_rows, 
-                                        bool wrap_mode, bool center_neigh)
+                                            float *out_overlap, float *out_potential_overlap,
+                                            int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
+                                            int neib_rows, int neib_cols, 
+                                            int step_cols, int step_rows, 
+                                            bool wrap_mode, bool center_neigh)
     {
         int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index in the output matrix
         int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index in the output matrix
@@ -460,6 +460,7 @@ namespace gpu_overlap
         float con_neib_and_tie_sum = 0.0f;
         float norm_value = 0.5f / (neib_cols * neib_rows);
 
+        // Iterate over all active elements in the input grid
         for (int idx = 0; idx < num_active; ++idx)
         {
             Int2 active_pos = active_grid[idx];
@@ -472,10 +473,10 @@ namespace gpu_overlap
                 active_y -= neib_cols / 2;
             }
 
-            // Calculate neighborhood position relative to active element
-            for (int ii = 0; ii < neib_rows; ++ii)
+            // Calculate neighborhood position relative to each active element
+            for (int ii = 0; ii < neib_rows; ++ii) // Iterate over the rows of the neighborhood
             {
-                for (int jj = 0; jj < neib_cols; ++jj)
+                for (int jj = 0; jj < neib_cols; ++jj) // Iterate over the columns of the neighborhood
                 {
                     int nx = i * step_rows + ii;
                     int ny = j * step_cols + jj;
@@ -486,10 +487,11 @@ namespace gpu_overlap
                     }
 
                     if (wrap_mode) {
-                        nx = (nx + in_rows) % in_rows;
-                        ny = (ny + in_cols) % in_cols;
+                        nx = (nx + in_rows) % in_rows; // Handle row wrapping
+                        ny = (ny + in_cols) % in_cols; // Handle column wrapping
                     }
 
+                    // Check if the current neighborhood cell corresponds to the position of an active cell
                     if (nx == active_x && ny == active_y)
                     {
                         float tie_breaker = (jj * neib_cols + ii + 1) * norm_value;
@@ -497,10 +499,10 @@ namespace gpu_overlap
                         uint32_t mask = 1u << (bit_idx % 32);
                         uint32_t connected = in_colConBits[bit_idx / 32] & mask;
 
-                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input
+                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input, add tie breaker
 
                         if (connected) {
-                            con_neib_and_tie_sum += 1 + tie_breaker;
+                            con_neib_and_tie_sum += 1 + tie_breaker; // Only add tie breaker if connected
                         }
                     }
                 }
@@ -511,6 +513,7 @@ namespace gpu_overlap
         out_potential_overlap[cort_col_id] = neib_and_tie_sum;
         out_overlap[cort_col_id] = con_neib_and_tie_sum;
     }
+
 
 
     // A function that performs a sliding window operation on an input 2D simulated matrix using a 1D input vector..
