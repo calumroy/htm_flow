@@ -494,21 +494,27 @@ namespace gpu_overlap
                     // Check if the current neighborhood cell corresponds to the position of an active cell
                     if (nx == active_x && ny == active_y)
                     {
-                        float tie_breaker = (jj * neib_cols + ii + 1) * norm_value;
+                        // Calculate the tie breaker value based on the position within the neighborhood
+                        // This fractional value ensures each potential connection within the neighborhood
+                        // contributes uniquely to the overall overlap score, based on its relative position.
+                        float tie_breaker = (jj * neib_cols + ii) * norm_value;
                         int bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
                         uint32_t mask = 1u << (bit_idx % 32);
                         uint32_t connected = in_colConBits[bit_idx / 32] & mask;
 
-                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input, add tie breaker
+                        // For the potential overlap score (not considering the synapse permanence values)
+                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input, add tie breaker to differentiate contributions from different positions within the neighborhood.
 
-                        if (connected) {
-                            con_neib_and_tie_sum += 1 + tie_breaker; // Only add tie breaker if connected
+                        // Calculate the overlap score for connected synapses
+                        if (connected) {    
+                            con_neib_and_tie_sum += 1 + tie_breaker;  
                         }
                     }
                 }
             }
-        }
-
+        } 
+es
+        // Update the output matrices (potential overlap and overlap scores) with the final calculated values for each cortical column.
         int cort_col_id = i * out_cols + j;
         out_potential_overlap[cort_col_id] = neib_and_tie_sum;
         out_overlap[cort_col_id] = con_neib_and_tie_sum;
