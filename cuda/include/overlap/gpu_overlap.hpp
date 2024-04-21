@@ -154,6 +154,49 @@ namespace gpu_overlap
                                std::vector<float> &out_overlap, // Function output passed by reference to avoid allocating the output on each call
                                std::vector<float> &out_pot_overlap // Function output passed by reference to avoid allocating the output on each call
                                );
+
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calculate_overlap_gpu_stream_opt   Calculate the overlap scores for a given input.
+    ///                                    This is how well each column connects to the active input.
+    ///                                    This is the main function of this class and its purpose.
+    ///                                    This function is optimised for streaming data through it. 
+    ///                                    The input and output sizes should stay the same for each call.
+    ///                                    Similar to the calculate_overlap_gpu_stream function but this function replaces
+    ///                                    the input parameter colSynPerm with colConBits. This is a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+    ///                                    This function is optimised for streaming data through it and this modification is designed to reduce the memory footprint of the input data.
+    ///
+    /// params                             The same as the calculate_overlap_gpu_stream function except for the colConBits parameter and
+    ///                                    the removal of the colSynPerm parameter and the connected_perm parameter.
+    /// @param[in] colConBits              This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+    /// @param[in] columns_width        The width of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
+    /// @param[in] columns_height       The height of the cortical columns (2D vector where each element is a cortical column that has a potential connection to a "neighbourhood" in the input 2D vector.).
+    /// @param[in] inputGrid            The input grid as a 1D vector of bits but packed into uint32_t, simulating a 2D vector of bits. These bits are simulating an input of size  input_width_ x input_height_.
+    /// @param[in] inputGrid_shape      The shape of the inputGrid vector height then width as a pair of ints.
+    /// @param[in] neib_shape           The shape of the neighbourhood.
+    /// @param[in] neib_step            The step size of the sliding window.
+    /// @param[in] wrap_mode            Whether to wrap the patches around the edges if true or if false use padding of zero on the edges.
+    /// @param[in] center_neigh         Whether to center the neighbourhood patch around the input element or not.
+    /// @param[out] out_overlap         The overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
+    ///                                 This is the output of the function and is passed by reference to avoid allocating the output on each call.
+    /// @param[out] out_pot_overlap     The potential overlap scores for each column as a 1D vector simulating a 2D vector of ints columns_width_ x columns_height_.
+    ///                                 This is the output of the function and is passed by reference to avoid allocating the output on each call.
+    ///                                 The potential overlap scores are the overlap scores before the connected_perm threshold is applied.
+    ///         
+    /// @return                         Void as the outputs (out_overlap and out_pot_overlap) are passed by reference.
+    ///-----------------------------------------------------------------------------
+    void calculate_overlap_gpu_stream_opt(
+                                        const int width_cortical_cols, const int height_cortical_cols,
+                                        const std::vector<uint32_t> &colConBits,  // vector of uint32_t where each bit represents the connection bit for a synapse
+                                        const std::vector<uint32_t> &inputGrid,   // This should be a vector of uint32_t where each bit in the array represents if that input is active or not (bitwise operations). Note this vector of bits is simulating a 2D matrix of inputs of size inputGrid_shape.first x inputGrid_shape.second.
+                                        const std::pair<int, int> &inputGrid_shape,  // The shape of the input matrix (2D grid).
+                                        const std::pair<int, int> &neib_shape,
+                                        const std::pair<int, int> &neib_step,
+                                        bool wrap_mode,
+                                        bool center_neigh,
+                                        std::vector<float> &out_overlap,
+                                        std::vector<float> &out_pot_overlap
+                                    );
     
     // Struct to represent a 2D integer coordinate. 
     // Used as an input type in the calculate_overlap_gpu_stream_opt_sparse function.

@@ -513,7 +513,7 @@ namespace gpu_overlap
                 }
             }
         } 
-es
+
         // Update the output matrices (potential overlap and overlap scores) with the final calculated values for each cortical column.
         int cort_col_id = i * out_cols + j;
         out_potential_overlap[cort_col_id] = neib_and_tie_sum;
@@ -993,6 +993,80 @@ es
         // Execute the taskflow
         executor.run(taskflow).wait();
 
+    }
+
+    // A different version of the calculate_overlap_gpu_stream function that uses a 1D array of 
+    // unsigned integers to store the connection bits for each synapse in the neighbourhood of each cortical column.
+    void calculate_overlap_gpu_stream_opt(
+        const int width_cortical_cols, const int height_cortical_cols,
+        const std::vector<uint32_t> &colConBits,  // This should be a vector of uint32_t where each bit in the array represents the connection bit for a synapse in the neighbourhood.
+        const std::vector<uint32_t> &inputGrid,   // This should be a vector of uint32_t where each bit in the array represents if that input is active or not (bitwise operations). Note this vector of bits is simulating a 2D matrix of inputs of size inputGrid_shape.first x inputGrid_shape.second.
+        const std::pair<int, int> &inputGrid_shape,  // The shape of the input matrix (2D grid).
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool wrap_mode,
+        bool center_neigh,
+        std::vector<float> &out_overlap,         // Function output passed by reference to avoid allocating the output on each call
+        std::vector<float> &out_pot_overlap)     // Function output passed by reference to avoid allocating the output on each call
+    {
+        // Assume GPU memory is already allocated and pointers (strm_d_in_grid, etc.) are initialized
+        // Determine the dimensions of the input matrix.
+        const int rows = inputGrid_shape.first;
+        const int cols = inputGrid_shape.second;
+
+        if (neib_shape.first > rows || neib_shape.second > cols) {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        std::pair<int, int> step = neib_step;
+        if (step.first == 0 && step.second == 0) {
+            step = neib_shape;
+        }
+
+        // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
+        int N = height_cortical_cols;  // Number of rows in output matrix. This is the height of the "cortical columns".
+        int M = width_cortical_cols; // Number of columns in output matrix. This is the width of the "cortical columns".
+        // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
+        int O = neib_shape.first;                                               // Number of rows in each patch connected to a cortical column.
+        int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
+
+        // Check size of colConBits to ensure it's correct
+        int expected_colConBits_size = (N * M * O * P + 31) / 32;
+        assert(colConBits.size() == expected_colConBits_size);
+
+        if (out_overlap.size() != N * M) {
+            out_overlap.resize(N * M);
+        }
+        if (out_pot_overlap.size() != N * M) {
+            out_pot_overlap.resize(N * M);
+        }
+
+        tf::Taskflow taskflow("calculate_overlap_gpu_steam");
+        tf::Executor executor;
+
+        auto cudaFlow = taskflow.emplace([&]() {
+            tf::cudaFlow cf;
+            // Copy input data to GPU
+            auto copy_in = cf.memcpy(strm_d_in_grid, inputGrid.data(), inputGrid.size() * sizeof(uint32_t)).name("copy_in");
+            auto copy_colConBits = cf.memcpy(strm_d_colConBits, colConBits.data(), expected_colConBits_size * sizeof(uint32_t)).name("copy_colConBits");
+            // Launch kernel
+            dim3 block(16, 16);
+            dim3 grid((cols + block.x - 1) / block.x, (rows + block.y - 1) / block.y);
+            // Setup the GPU kernel function to run the overlap calculation.
+            auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel_opt, strm_d_in_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
+            // Copy output data back to host
+            auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float)).name("copy_out");
+            auto copy_out_pot = cf.memcpy(out_pot_overlap.data(), strm_d_out_pot_overlap, N * M * sizeof(float)).name("copy_out_pot");
+            // Set the order of the flow tasks.
+            overlap_calc.succeed(copy_in, copy_colConBits)
+                        .precede(copy_out, copy_out_pot);
+
+            tf::cudaStream stream;
+            cf.run(stream);
+            stream.synchronize();
+        }).name("cudaFlow");
+        // Execute the taskflow, starting the cuda kernel task.
+        executor.run(taskflow).wait();
     }
 
     // A version of the calculate_overlap_gpu_stream function that uses a sparse representation of the active input bits.
