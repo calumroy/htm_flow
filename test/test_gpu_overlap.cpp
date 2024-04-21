@@ -1218,6 +1218,148 @@ TEST(gpu_overlap_stream_opt_sparse, test1_small)
 
 }
 
+TEST(gpu_overlap_stream_opt, test1_small)
+{
+    // Test that the total gpu only overlap calculations using streams and optimised for reduced GPU memory produces an expected result.
+    // This runs the function calculate_overlap_gpu_stream_opt from the gpu_overlap library.
+    // The function calculates the overlap scores for a given input.
+
+    // It first runs the CPU only overlap calculation and then the GPU only overlap calculation.
+    // This is so we can compare the results of the GPU only implementation to the CPU only implementation.
+
+    // Create the required inputs for the function
+    int pot_width = 2;
+    int pot_height = 2;
+    bool center_pot_synapses = false;
+    int num_input_rows = 5;
+    int num_input_cols = 5;
+    int height_cortical_cols = 5;
+    int width_cortical_cols = 5;
+    float connected_perm = 0.3;
+    int min_overlap = 3;
+    int num_pot_syn = pot_width * pot_height;
+    int num_columns = height_cortical_cols * width_cortical_cols;
+    bool wrap_input = false;
+    bool center_neigh = false;
+
+    std::vector<float> col_syn_perm(num_columns * num_pot_syn);
+    std::vector<uint32_t> colConBits((num_columns * num_pot_syn + 31) / 32, 0);  // Initialize with 0s, sized to fit all bits
+    std::pair<int, int> col_syn_perm_shape = {num_columns, num_pot_syn}; // Store the shape of the simulated col_syn_perm 2D vector.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0, 1);
+
+    LOG(INFO, "Creating random col_syn_perm and colConBits arrays for test case. Normally this is only done once. This is slow and only for testing.");
+
+    for (int i = 0; i < num_columns * num_pot_syn; ++i)
+    {
+        col_syn_perm[i] = dis(gen);  // Generate random permanence value
+
+        // Calculate the index in the colConBits array and the bit position within the uint32_t element
+        int bitIndex = i / 32;  // Index in the colConBits array
+        int bitOffset = i % 32; // Bit position within the uint32_t element
+
+        // Set the bit in colConBits if the synapse's permanence is above the connected_perm threshold
+        if (col_syn_perm[i] > connected_perm)
+        {
+            colConBits[bitIndex] |= (1u << bitOffset);
+        }
+    }
+    // Print the colConBits array
+    LOG(INFO, "Printing the colConBits array.");
+    const std::vector<int> colConBits_size = {height_cortical_cols, width_cortical_cols, pot_height, pot_width};
+    overlap_utils::print_4d_bit_vector(colConBits, colConBits_size);
+    
+    // Modify new_input_mat to use uint32_t for the optimised version
+    // It is a 1D vector of bits (stored in groups of 32 bits as uitn32_t) simulating a 2D vector of size num_input_rows * num_input_cols;
+    // Change new_input_mat to std::vector<uint32_t> and adjust its setup
+
+    int input_size = num_input_rows * num_input_cols;
+    std::vector<uint32_t> new_input_mat((input_size + 31) / 32, 0);
+    std::pair<int, int> new_input_mat_shape = {num_input_rows, num_input_cols};
+    std::uniform_int_distribution<> dis2(0, 1);
+    // Another version of the input matrix used for the CPU overlap calculation.
+    std::vector<int> new_input_mat_CPU(num_input_rows * num_input_cols);
+
+    for (int i = 0; i < input_size; ++i)
+    {
+        if (dis2(gen) == 1)
+        {
+            new_input_mat[i / 32] |= (1u << (i % 32));
+            new_input_mat_CPU[i] = 1;
+        }
+    }
+
+    const std::pair<int, int> neib_step = overlap_utils::get_step_sizes(num_input_cols, num_input_rows, width_cortical_cols, height_cortical_cols, pot_width, pot_height);
+    const std::pair<int, int> neib_shape = {pot_height, pot_width};
+
+    LOG(INFO, "Setting up the CPU overlap calculation.");
+    // Create an instance of the overlap calculation class
+    // to compare the GPU only implementation to the CPU implementation.
+    overlap::OverlapCalculator overlapCalc(pot_width,
+                                           pot_height,
+                                           width_cortical_cols,
+                                           height_cortical_cols,
+                                           num_input_cols,
+                                           num_input_rows,
+                                           center_pot_synapses,
+                                           connected_perm,
+                                           min_overlap,
+                                           wrap_input);
+    LOG(INFO, "Starting the CPU overlap calculation.");
+    START_STOPWATCH();
+    // Run the overlap calculation on the CPU
+    overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat_CPU, new_input_mat_shape);
+    STOP_STOPWATCH();
+    LOG(INFO, "FINISHED CPU overlap calculation!");
+    std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
+    // Print the overlap scores
+    overlap_utils::print_2d_vector(col_overlap_scores, std::pair(height_cortical_cols, width_cortical_cols));
+    PRINT_ELAPSED_TIME();
+
+    // We need to setup the output vector for the first run of the GPU stream overlap calculation.
+    std::vector<float> flat_overlap_output(height_cortical_cols * width_cortical_cols);  // Overlap output scores will be stored here.
+    std::vector<float> flat_pot_overlap_output(height_cortical_cols * width_cortical_cols); // Overlap potential output scores will be stored here.
+    LOG(INFO, "Starting the GPU overlap stream calculation.");
+    START_STOPWATCH();
+    // Run the function and save the output
+    // Usage:
+    // 1. Call initialize_gpu_memory() with the appropriate sizes
+    // 2. Call calculate_overlap_gpu() as needed
+    // 3. Call cleanup_gpu_memory() to free resources
+    bool optimised = true;  // Set to true to use the optimised version of the function to allocate less GPU memory
+    gpu_overlap::initialize_gpu_memory(num_input_rows, num_input_cols, height_cortical_cols, width_cortical_cols, neib_shape.first, neib_shape.second, optimised);
+    // Run the function and save the output
+    gpu_overlap::calculate_overlap_gpu_stream_opt(
+                                    width_cortical_cols, height_cortical_cols,
+                                    colConBits,
+                                    new_input_mat, 
+                                    new_input_mat_shape, 
+                                    neib_shape, 
+                                    neib_step, 
+                                    wrap_input, 
+                                    center_neigh,
+                                    flat_overlap_output,
+                                    flat_pot_overlap_output
+                                    );
+    // Free the GPU memory
+    gpu_overlap::cleanup_gpu_memory(optimised);
+    STOP_STOPWATCH();
+    LOG(INFO, "FINISHED GPU overlap stream calculation!");
+    PRINT_ELAPSED_TIME();
+
+    // COnvert the flat_overlap_output to a vector of ints instead of floats (we don;t care about the small tiebreaker values on the output).
+    std::vector<int> flat_overlap_output_int(flat_overlap_output.begin(), flat_overlap_output.end());
+
+    // Print the flat output overlap scores from GPU stream
+    overlap_utils::print_2d_vector(flat_overlap_output_int,  std::pair(height_cortical_cols, width_cortical_cols));
+    // Also print the flat output overlap potential scores from GPU stream
+    overlap_utils::print_2d_vector(flat_pot_overlap_output,  std::pair(height_cortical_cols, width_cortical_cols));
+
+    // Compare the CPU and GPU outputs
+    ASSERT_EQ(col_overlap_scores, flat_overlap_output_int);
+}
+
 TEST(gpu_overlap_stream_opt, test2_very_large)
 {
     // Test that the total gpu only overlap calculations using streams and optimised for reduced GPU memory produces an expected result.
