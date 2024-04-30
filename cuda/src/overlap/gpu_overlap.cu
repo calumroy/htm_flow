@@ -414,6 +414,27 @@ namespace gpu_overlap
 
     ///-----------------------------------------------------------------------------
     ///
+    /// hash    A hash function that generates a unique hash value for an input integer.
+    ///         Provide a simple yet effective means of scrambling or "hashing" indices to produce pseudo-random outputs. 
+    ///         The goal is to distribute tie breaker values across a neighborhood in a way that appears random but is actually 
+    ///         deterministic and reproducible.
+    ///         __device__ qualifier is used to indicate that a function is to be compiled and executed on the NVIDIA GPU device and
+    ///         callable only from another __device__ or __global__ function.
+    ///         The bit shuft and XOR step starts the process of entropy increase in the bits of x, spreading out the influence of higher and
+    ///         lower bits across the entire 32-bit number. The result is then multiplied by a prime number 0x45d9f3b. The choice of a prime number 
+    ///         as a multiplier is significant because prime numbers help in maintaining the hashed values' distribution properties, reducing the 
+    ///         chances of generating colliding hashes from different inputs. The same process is repeated twice to further increase entropy.
+    __device__ unsigned int hash(unsigned int x) 
+    {
+        x = ((x >> 16) ^ x) * 0x45d9f3b;
+        x = ((x >> 16) ^ x) * 0x45d9f3b;
+        x = (x >> 16) ^ x;
+        return x;
+    }
+
+
+    ///-----------------------------------------------------------------------------
+    ///
     /// overlap_kernel_opt_sparse    A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
     ///                              This kernel function is designed to efficiently handle sparse input matrices where only a small percentage
     ///                              of elements are active. It operates on a list of active elements, represented as (x, y) coordinates in
@@ -456,13 +477,14 @@ namespace gpu_overlap
         if (i >= out_rows || j >= out_cols)
             return;
 
+        // Calcualte the total number of elements in the neighbourhood. 
+        int total_num_neib = neib_cols * neib_rows;
+        float norm_value = 0.5f / (total_num_neib * (total_num_neib + 1) / 2.0f);
         float neib_and_tie_sum = 0.0f;
         float con_neib_and_tie_sum = 0.0f;
-        float norm_value = 0.5f / (neib_cols * neib_rows);
-
         // Iterate over all active elements in the input grid
-        for (int idx = 0; idx < num_active; ++idx)
-        {
+
+        for (int idx = 0; idx < num_active; ++idx) {
             Int2 active_pos = active_grid[idx];
             int active_x = active_pos.x;
             int active_y = active_pos.y;
@@ -472,7 +494,6 @@ namespace gpu_overlap
                 active_x -= neib_rows / 2;
                 active_y -= neib_cols / 2;
             }
-
             // Calculate neighborhood position relative to each active element
             for (int ii = 0; ii < neib_rows; ++ii) // Iterate over the rows of the neighborhood
             {
@@ -484,36 +505,34 @@ namespace gpu_overlap
                     if (center_neigh) {
                         nx -= neib_rows / 2;
                         ny -= neib_cols / 2;
-                    }
-
+                    }       
+                                 
                     if (wrap_mode) {
                         nx = (nx + in_rows) % in_rows; // Handle row wrapping
                         ny = (ny + in_cols) % in_cols; // Handle column wrapping
                     }
-
                     // Check if the current neighborhood cell corresponds to the position of an active cell
-                    if (nx == active_x && ny == active_y)
+                    if (nx == active_x && ny == active_y) 
                     {
                         // Calculate the tie breaker value based on the position within the neighborhood
                         // This fractional value ensures each potential connection within the neighborhood
                         // contributes uniquely to the overall overlap score, based on its relative position.
-                        float tie_breaker = (jj * neib_cols + ii) * norm_value;
-                        int bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
+                        int hashed_index = hash(i * out_cols + j) % total_num_neib;  // Get unique index per column
+                        float tie_breaker = ((hashed_index + 1) * norm_value);  // Calculate tie breaker using hashed index
+                        int bit_idx = (i * out_cols + j) * total_num_neib + ii * neib_cols + jj;
                         uint32_t mask = 1u << (bit_idx % 32);
                         uint32_t connected = in_colConBits[bit_idx / 32] & mask;
-
                         // For the potential overlap score (not considering the synapse permanence values)
-                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input, add tie breaker to differentiate contributions from different positions within the neighborhood.
-
+                        neib_and_tie_sum += 1 + tie_breaker;
+                        
                         // Calculate the overlap score for connected synapses
-                        if (connected) {    
-                            con_neib_and_tie_sum += 1 + tie_breaker;  
+                        if (connected) {
+                            con_neib_and_tie_sum += 1 + tie_breaker;
                         }
                     }
                 }
             }
-        } 
-
+        }
         // Update the output matrices (potential overlap and overlap scores) with the final calculated values for each cortical column.
         int cort_col_id = i * out_cols + j;
         out_potential_overlap[cort_col_id] = neib_and_tie_sum;
