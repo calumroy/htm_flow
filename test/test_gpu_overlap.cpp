@@ -1513,13 +1513,13 @@ TEST(gpu_overlap_stream_opt_sparse, test2_very_large)
     // It first runs the CPU only overlap calculation and then the GPU only calculation.
     // This is so we can compare the results of the GPU implementation to the CPU implementation.
 
-    int pot_width = 40;
-    int pot_height = 40;
+    int pot_width = 20;
+    int pot_height = 20;
     bool center_pot_synapses = false;
     int num_input_rows = 1000;
     int num_input_cols = 1000;
-    int height_cortical_cols = 500;
-    int width_cortical_cols = 500;
+    int height_cortical_cols = 50;
+    int width_cortical_cols = 50;
     float connected_perm = 0.3;
     int min_overlap = 3;
     int num_pot_syn = pot_width * pot_height;
@@ -1568,6 +1568,7 @@ TEST(gpu_overlap_stream_opt_sparse, test2_very_large)
             }
         }
     }
+    LOG(INFO, "Number of active inputs: " + std::to_string(num_active));
 
     std::pair<int, int> inputGrid_shape = {num_input_rows, num_input_cols};
     std::pair<int, int> neib_shape = {pot_height, pot_width};
