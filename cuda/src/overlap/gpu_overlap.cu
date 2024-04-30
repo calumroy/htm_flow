@@ -414,27 +414,6 @@ namespace gpu_overlap
 
     ///-----------------------------------------------------------------------------
     ///
-    /// hash    A hash function that generates a unique hash value for an input integer.
-    ///         Provide a simple yet effective means of scrambling or "hashing" indices to produce pseudo-random outputs. 
-    ///         The goal is to distribute tie breaker values across a neighborhood in a way that appears random but is actually 
-    ///         deterministic and reproducible.
-    ///         __device__ qualifier is used to indicate that a function is to be compiled and executed on the NVIDIA GPU device and
-    ///         callable only from another __device__ or __global__ function.
-    ///         The bit shuft and XOR step starts the process of entropy increase in the bits of x, spreading out the influence of higher and
-    ///         lower bits across the entire 32-bit number. The result is then multiplied by a prime number 0x45d9f3b. The choice of a prime number 
-    ///         as a multiplier is significant because prime numbers help in maintaining the hashed values' distribution properties, reducing the 
-    ///         chances of generating colliding hashes from different inputs. The same process is repeated twice to further increase entropy.
-    __device__ unsigned int hash(unsigned int x) 
-    {
-        x = ((x >> 16) ^ x) * 0x45d9f3b;
-        x = ((x >> 16) ^ x) * 0x45d9f3b;
-        x = (x >> 16) ^ x;
-        return x;
-    }
-
-
-    ///-----------------------------------------------------------------------------
-    ///
     /// overlap_kernel_opt_sparse    A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
     ///                              This kernel function is designed to efficiently handle sparse input matrices where only a small percentage
     ///                              of elements are active. It operates on a list of active elements, represented as (x, y) coordinates in
@@ -506,7 +485,7 @@ namespace gpu_overlap
                         nx -= neib_rows / 2;
                         ny -= neib_cols / 2;
                     }       
-                                 
+
                     if (wrap_mode) {
                         nx = (nx + in_rows) % in_rows; // Handle row wrapping
                         ny = (ny + in_cols) % in_cols; // Handle column wrapping
@@ -517,8 +496,8 @@ namespace gpu_overlap
                         // Calculate the tie breaker value based on the position within the neighborhood
                         // This fractional value ensures each potential connection within the neighborhood
                         // contributes uniquely to the overall overlap score, based on its relative position.
-                        int hashed_index = hash(i * out_cols + j) % total_num_neib;  // Get unique index per column
-                        float tie_breaker = ((hashed_index + 1) * norm_value);  // Calculate tie breaker using hashed index
+                        int cycle_index = (j + i * out_cols + ii * neib_cols + jj) % total_num_neib; // Get unique index per column
+                        float tie_breaker = ((cycle_index + 1) * norm_value);  // Calculate tie breaker using cyclic index
                         int bit_idx = (i * out_cols + j) * total_num_neib + ii * neib_cols + jj;
                         uint32_t mask = 1u << (bit_idx % 32);
                         uint32_t connected = in_colConBits[bit_idx / 32] & mask;

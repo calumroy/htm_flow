@@ -1451,10 +1451,10 @@ TEST(gpu_overlap_stream_opt_sparse, test1_small)
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat_CPU, new_input_mat_shape);
     STOP_STOPWATCH();
     LOG(INFO, "FINISHED CPU overlap calculation!");
+    PRINT_ELAPSED_TIME();
     std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
     // Print the overlap scores
     overlap_utils::print_2d_vector(col_overlap_scores, std::pair(height_cortical_cols, width_cortical_cols));
-    PRINT_ELAPSED_TIME();
 
     // Setup for GPU calculation
     // We need to setup the output vector for the first run of the GPU stream overlap calculation.
