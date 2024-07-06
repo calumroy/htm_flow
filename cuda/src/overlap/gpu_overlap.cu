@@ -846,59 +846,59 @@ namespace gpu_overlap
         strm_d_out_pot_overlap = nullptr;
     }
 
-    // Setup the GPU memory for the sparse version of the overlap calculation
-    void initialize_gpu_memory_sparse(int num_active, int N, int M, int O, int P) 
-    {
-        if (!strm_d_active_grid) 
-        {
-            TF_CHECK_CUDA(cudaMalloc(&strm_d_active_grid, num_active * sizeof(Int2)), "failed to allocate strm_d_active_grid");
-        }
+    // // Setup the GPU memory for the sparse version of the overlap calculation
+    // void initialize_gpu_memory_sparse(int num_active, int N, int M, int O, int P) 
+    // {
+    //     if (!strm_d_active_grid) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_active_grid, num_active * sizeof(Int2)), "failed to allocate strm_d_active_grid");
+    //     }
 
-        if (!strm_d_out_overlap) 
-        {
-            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
-        }
+    //     if (!strm_d_out_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
+    //     }
 
-        if (!strm_d_out_pot_overlap) 
-        {
-            TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
-        }
+    //     if (!strm_d_out_pot_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
+    //     }
 
-        if (!strm_d_colConBits) 
-        {
-            // Calculate the required size for colConBits considering each uint32_t can hold 32 synapses' states
-            int total_synapses = N * M * O * P;
-            int colConBits_size = (total_synapses + 31) / 32;  // Ensure enough space for all synapses
-            TF_CHECK_CUDA(cudaMalloc(&strm_d_colConBits, colConBits_size * sizeof(uint32_t)), "failed to allocate strm_d_colConBits");
-        }
-    }
-    // Tear down the GPU memory for the sparse version of the overlap calculation
-    void cleanup_gpu_memory_sparse() 
-    {
-        if (strm_d_active_grid) 
-        {
-            TF_CHECK_CUDA(cudaFree(strm_d_active_grid), "failed to free strm_d_active_grid");
-            strm_d_active_grid = nullptr;
-        }
+    //     if (!strm_d_colConBits) 
+    //     {
+    //         // Calculate the required size for colConBits considering each uint32_t can hold 32 synapses' states
+    //         int total_synapses = N * M * O * P;
+    //         int colConBits_size = (total_synapses + 31) / 32;  // Ensure enough space for all synapses
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_colConBits, colConBits_size * sizeof(uint32_t)), "failed to allocate strm_d_colConBits");
+    //     }
+    // }
+    // // Tear down the GPU memory for the sparse version of the overlap calculation
+    // void cleanup_gpu_memory_sparse() 
+    // {
+    //     if (strm_d_active_grid) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_active_grid), "failed to free strm_d_active_grid");
+    //         strm_d_active_grid = nullptr;
+    //     }
 
-        if (strm_d_out_overlap) 
-        {
-            TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_out_overlap");
-            strm_d_out_overlap = nullptr;
-        }
+    //     if (strm_d_out_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_out_overlap");
+    //         strm_d_out_overlap = nullptr;
+    //     }
 
-        if (strm_d_out_pot_overlap) 
-        {
-            TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_out_pot_overlap");
-            strm_d_out_pot_overlap = nullptr;
-        }
+    //     if (strm_d_out_pot_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_out_pot_overlap");
+    //         strm_d_out_pot_overlap = nullptr;
+    //     }
 
-        if (strm_d_colConBits) 
-        {
-            TF_CHECK_CUDA(cudaFree(strm_d_colConBits), "failed to free strm_d_colConBits");
-            strm_d_colConBits = nullptr;
-        }
-    }
+    //     if (strm_d_colConBits) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_colConBits), "failed to free strm_d_colConBits");
+    //         strm_d_colConBits = nullptr;
+    //     }
+    // }
 
 
 

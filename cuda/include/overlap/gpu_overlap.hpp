@@ -198,13 +198,13 @@ namespace gpu_overlap
                                         std::vector<float> &out_pot_overlap
                                     );
     
-    // // Struct to represent a 2D integer coordinate. 
-    // // Used as an input type in the calculate_overlap_gpu_stream_opt_sparse function.
-    // // This struct is equivalent to cuda::int2 struct and is converted to cuda::int2 in the function calculate_overlap_gpu_stream_opt_sparse.
-    // struct Int2 {
-    //     int x;
-    //     int y;
-    // };
+    // Struct to represent a 2D integer coordinate. 
+    // Used as an input type in the calculate_overlap_gpu_stream_opt_sparse function.
+    // This struct is equivalent to cuda::int2 struct and is converted to cuda::int2 in the function calculate_overlap_gpu_stream_opt_sparse.
+    struct Int2 {
+        int x;
+        int y;
+    };
     // //-----------------------------------------------------------------------------
     // ///
     // /// calculate_overlap_gpu_stream_opt_sparse   Calculate the overlap scores for a given sparse input.
