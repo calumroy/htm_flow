@@ -12,6 +12,28 @@
 # A bash script to create a build dir if it doesn't exist and then move into it.
 # If the build dir exists, it will be deleted and recreated.
 
+# Function to display help information
+display_help() {
+    echo "Usage: ./build.sh [RELEASE_TYPE] [GPU_OPTION]"
+    echo
+    echo "RELEASE_TYPE:"
+    echo "  Release        - Build with optimization (default)."
+    echo "  Debug          - Build with debugging symbols."
+    echo "  RelWithDebInfo - Build with optimization and debugging symbols."
+    echo
+    echo "GPU_OPTION:"
+    echo "  GPU            - Enable GPU support."
+    echo
+    echo "Example:"
+    echo "  ./build.sh Debug GPU"
+    exit 0
+}
+
+# Check if -h parameter is provided
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    display_help
+fi
+
 # Make the build dir if it doesn't exist.
 mkdir -p build
 # Move into the build dir.
