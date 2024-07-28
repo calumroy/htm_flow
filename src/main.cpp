@@ -1,17 +1,12 @@
 #include <taskflow/taskflow.hpp>
-
 #include <htm_flow/overlap.hpp>
-
 // // Include the gpu_overlap.hpp header file form the gpu_overlap library
-// #include <overlap/gpu_overlap.hpp>
-
+// #include <overlap/gpu_overlap.hpp>#include <inhibition/inhibition.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
 
-// Function: main
 int main(int argc, char *argv[])
 {
-
     if (argc != 1)
     {
         std::cerr << "Usage: ./htm_flow" << std::endl;
@@ -22,10 +17,11 @@ int main(int argc, char *argv[])
     tf::Taskflow taskflow;
 
     using overlap::OverlapCalculator;
+    using inhibition::InhibitionCalculator;
 
+    // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
     int pot_height = 30;
-    bool center_pot_synapses = false;
     int num_input_rows = 1200;
     int num_input_cols = 1200;
     int num_column_rows = 800;
@@ -35,6 +31,11 @@ int main(int argc, char *argv[])
     int num_pot_syn = pot_width * pot_height;
     int num_columns = num_column_rows * num_column_cols;
     bool wrap_input = true;
+
+    // Inhibition calculation parameters
+    int inhibition_width = 30;
+    int inhibition_height = 30;
+    int desired_local_activity = 10;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -60,8 +61,14 @@ int main(int argc, char *argv[])
     {
         new_input_mat[i] = dis2(gen);
     }
+    // Random data initialization for testing
+    std::vector<int> colOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for overlap grid
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
+    std::vector<int> potColOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for potential overlap grid
+    std::pair<int, int> potColOverlapGridShape = {num_column_rows, num_column_cols};
 
+    // Start overlap calculation
     START_STOPWATCH();
     // Create an instance of the overlap calculation class
     OverlapCalculator overlapCalc(pot_width,
@@ -80,14 +87,25 @@ int main(int argc, char *argv[])
     // Run the overlap calculation on the CPU
     overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
     STOP_STOPWATCH();
-    
+   
     // // Print the input matrix
     // LOG(INFO, "Input matrix: ");
     // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
-
     // Print the overlap scores
     std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
     overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
     PRINT_ELAPSED_TIME();
-    
+    // Start inhibition calculation
+    START_STOPWATCH();
+    InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
+                                        desired_local_activity, min_overlap, center_pot_synapses);
+    LOG(INFO, "Starting the inhibition calculation.");
+    inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
+    STOP_STOPWATCH();
+
+    // Get and print the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+    overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
+    PRINT_ELAPSED_TIME();
+    return 0;
 }
