@@ -412,105 +412,119 @@ namespace gpu_overlap
         }
     }
 
-    ///-----------------------------------------------------------------------------
-    ///
-    /// overlap_kernel_opt_sparse    A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
-    ///                              This kernel function is designed to efficiently handle sparse input matrices where only a small percentage
-    ///                              of elements are active. It operates on a list of active elements, represented as (x, y) coordinates in
-    ///                              a 2D grid, rather than iterating over the entire grid. This approach reduces unnecessary computations
-    ///                              on inactive elements and improves parallel efficiency. The kernel uses a 1D array of 32-bit integers
-    ///                              to store the connection bits for each synapse in the neighbourhood of each cortical column, minimizing
-    ///                              the memory footprint and efficiently utilizing the bitwise operations for determining the connectivity
-    ///                              and contribution of synapses to the overlap score.
-    ///
-    /// @param[in] active_grid       A pointer to an array of int2 elements (a struct storing two int x,y) representing the coordinates of active elements in the input grid.
-    /// @param[in] in_colConBits     A pointer to the input vector on the GPU where each 32-bit integer represents the connection state
-    ///                              of synapses in the neighbourhood of a cortical column. Each bit in the integer corresponds to a synapse,
-    ///                              with a set bit indicating a connection (permanence above threshold) and thus contributing to the overlap score.
-    /// @param[out] out_overlap      A pointer to the output matrix on the GPU, where each element represents the overlap score of a cortical column.
-    /// @param[out] out_potential_overlap A pointer to the output matrix on the GPU, where each element represents the potential overlap score
-    ///                                   of a cortical column, calculated without considering the synapse permanence values.
-    /// @param[in] num_active        The number of active elements in the input grid.
-    /// @param[in] in_rows           The number of rows in the input matrix.
-    /// @param[in] in_cols           The number of columns in the input matrix.
-    /// @param[in] out_rows          The number of rows in the output matrix, equal to ceil(in_rows / step_rows).
-    /// @param[in] out_cols          The number of columns in the output matrix, equal to ceil(in_cols / step_cols).
-    /// @param[in] neib_rows         The number of rows in the neighbourhood of each cortical column.
-    /// @param[in] neib_cols         The number of columns in the neighbourhood of each cortical column.
-    /// @param[in] step_rows         The step size in the y direction, the number of rows to step the neighbourhood over the input for each iteration.
-    /// @param[in] step_cols         The step size in the x direction, the number of columns to step the neighbourhood over the input for each iteration.
-    /// @param[in] wrap_mode         A flag indicating whether the neighbourhood should wrap around the input matrix, enabling toroidal topology.
-    /// @param[in] center_neigh      A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
-    ///
-    ///-----------------------------------------------------------------------------
-    __global__ void overlap_kernel_opt_sparse(int2 *active_grid, uint32_t *in_colConBits,
-                                        float *out_overlap, float *out_potential_overlap,
-                                        int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
-                                        int neib_rows, int neib_cols, 
-                                        int step_cols, int step_rows, 
-                                        bool wrap_mode, bool center_neigh)
-    {
-        int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index in the output matrix
-        int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index in the output matrix
+    // ///-----------------------------------------------------------------------------
+    // ///
+    // /// overlap_kernel_opt_sparse    A kernel function that performs the cortical overlap score calculation on an input matrix (2D grid).
+    // ///                              This kernel function is designed to efficiently handle sparse input matrices where only a small percentage
+    // ///                              of elements are active. It operates on a list of active elements, represented as (x, y) coordinates in
+    // ///                              a 2D grid, rather than iterating over the entire grid. This approach reduces unnecessary computations
+    // ///                              on inactive elements and improves parallel efficiency. The kernel uses a 1D array of 32-bit integers
+    // ///                              to store the connection bits for each synapse in the neighbourhood of each cortical column, minimizing
+    // ///                              the memory footprint and efficiently utilizing the bitwise operations for determining the connectivity
+    // ///                              and contribution of synapses to the overlap score.
+    // ///
+    // /// @param[in] active_grid       A pointer to an array of Int2 elements (a struct storing two int x,y) representing the coordinates of active elements in the input grid.
+    // /// @param[in] in_colConBits     A pointer to the input vector on the GPU where each 32-bit integer represents the connection state
+    // ///                              of synapses in the neighbourhood of a cortical column. Each bit in the integer corresponds to a synapse,
+    // ///                              with a set bit indicating a connection (permanence above threshold) and thus contributing to the overlap score.
+    // /// @param[out] out_overlap      A pointer to the output matrix on the GPU, where each element represents the overlap score of a cortical column.
+    // /// @param[out] out_potential_overlap A pointer to the output matrix on the GPU, where each element represents the potential overlap score
+    // ///                                   of a cortical column, calculated without considering the synapse permanence values.
+    // /// @param[in] num_active        The number of active elements in the input grid.
+    // /// @param[in] in_rows           The number of rows in the input matrix.
+    // /// @param[in] in_cols           The number of columns in the input matrix.
+    // /// @param[in] out_rows          The number of rows in the output matrix, equal to ceil(in_rows / step_rows).
+    // /// @param[in] out_cols          The number of columns in the output matrix, equal to ceil(in_cols / step_cols).
+    // /// @param[in] neib_rows         The number of rows in the neighbourhood of each cortical column.
+    // /// @param[in] neib_cols         The number of columns in the neighbourhood of each cortical column.
+    // /// @param[in] step_rows         The step size in the y direction, the number of rows to step the neighbourhood over the input for each iteration.
+    // /// @param[in] step_cols         The step size in the x direction, the number of columns to step the neighbourhood over the input for each iteration.
+    // /// @param[in] wrap_mode         A flag indicating whether the neighbourhood should wrap around the input matrix, enabling toroidal topology.
+    // /// @param[in] center_neigh      A flag indicating whether the neighbourhood should be centered over the current element in the input matrix.
+    // ///
+    // ///-----------------------------------------------------------------------------
+    // __global__ void overlap_kernel_opt_sparse(Int2 *active_grid, uint32_t *in_colConBits,
+    //                                         float *out_overlap, float *out_potential_overlap,
+    //                                         int num_active, int in_rows, int in_cols, int out_rows, int out_cols, 
+    //                                         int neib_rows, int neib_cols, 
+    //                                         int step_cols, int step_rows, 
+    //                                         bool wrap_mode, bool center_neigh)
+    // {
+    //     extern __shared__ Int2 shared_active_grid[];
 
-        if (i >= out_rows || j >= out_cols)
-            return;
+    //     // Load active elements into shared memory
+    //     int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    //     if (tid < num_active) {
+    //         shared_active_grid[tid] = active_grid[tid];
+    //     }
+    //     __syncthreads();
 
-        float neib_and_tie_sum = 0.0f;
-        float con_neib_and_tie_sum = 0.0f;
-        float norm_value = 0.5f / (neib_cols * neib_rows);
+    //     int i = blockIdx.y * blockDim.y + threadIdx.y; // Row index in the output matrix
+    //     int j = blockIdx.x * blockDim.x + threadIdx.x; // Column index in the output matrix
 
-        for (int idx = 0; idx < num_active; ++idx)
-        {
-            int2 active_pos = active_grid[idx];
-            int active_x = active_pos.x;
-            int active_y = active_pos.y;
+    //     if (i >= out_rows || j >= out_cols)
+    //         return;
 
-            // Adjust active position based on neighborhood centering
-            if (center_neigh) {
-                active_x -= neib_rows / 2;
-                active_y -= neib_cols / 2;
-            }
+    //     int total_num_neib = neib_cols * neib_rows;
+    //     float norm_value = 0.5f / (total_num_neib * (total_num_neib + 1) / 2.0f);
+    //     float neib_and_tie_sum = 0.0f;
+    //     float con_neib_and_tie_sum = 0.0f;
 
-            // Calculate neighborhood position relative to active element
-            for (int ii = 0; ii < neib_rows; ++ii)
-            {
-                for (int jj = 0; jj < neib_cols; ++jj)
-                {
-                    int nx = i * step_rows + ii;
-                    int ny = j * step_cols + jj;
+    //     for (int idx = 0; idx < num_active; ++idx) {
+    //         Int2 active_pos = shared_active_grid[idx];
+    //         int active_x = active_pos.x;
+    //         int active_y = active_pos.y;
 
-                    if (center_neigh) {
-                        nx -= neib_rows / 2;
-                        ny -= neib_cols / 2;
-                    }
+    //         // Adjust active position based on neighborhood centering
+    //         if (center_neigh) {
+    //             active_x -= neib_rows / 2;
+    //             active_y -= neib_cols / 2;
+    //         }
+    //         // Calculate neighborhood position relative to each active element
+    //         for (int ii = 0; ii < neib_rows; ++ii) // Iterate over the rows of the neighborhood
+    //         {
+    //             for (int jj = 0; jj < neib_cols; ++jj) // Iterate over the columns of the neighborhood
+    //             {
+    //                 int nx = i * step_rows + ii;
+    //                 int ny = j * step_cols + jj;
 
-                    if (wrap_mode) {
-                        nx = (nx + in_rows) % in_rows;
-                        ny = (ny + in_cols) % in_cols;
-                    }
+    //                 if (center_neigh) {
+    //                     nx -= neib_rows / 2;
+    //                     ny -= neib_cols / 2;
+    //                 }       
 
-                    if (nx == active_x && ny == active_y)
-                    {
-                        float tie_breaker = (jj * neib_cols + ii + 1) * norm_value;
-                        int bit_idx = (i * out_cols + j) * neib_rows * neib_cols + ii * neib_cols + jj;
-                        uint32_t mask = 1u << (bit_idx % 32);
-                        uint32_t connected = in_colConBits[bit_idx / 32] & mask;
+    //                 if (wrap_mode) {
+    //                     nx = (nx + in_rows) % in_rows; // Handle row wrapping
+    //                     ny = (ny + in_cols) % in_cols; // Handle column wrapping
+    //                 }
+    //                 // Check if the current neighborhood cell corresponds to the position of an active cell
+    //                 if (nx == active_x && ny == active_y) 
+    //                 {
+    //                     // Calculate the tie breaker value based on the position within the neighborhood
+    //                     // This fractional value ensures each potential connection within the neighborhood
+    //                     // contributes uniquely to the overall overlap score, based on its relative position.
+    //                     int cycle_index = (j + i * out_cols + ii * neib_cols + jj) % total_num_neib; // Get unique index per column
+    //                     float tie_breaker = ((cycle_index + 1) * norm_value);  // Calculate tie breaker using cyclic index
+    //                     int bit_idx = (i * out_cols + j) * total_num_neib + ii * neib_cols + jj;
+    //                     uint32_t mask = 1u << (bit_idx % 32);
+    //                     uint32_t connected = in_colConBits[bit_idx / 32] & mask;
+    //                     // For the potential overlap score (not considering the synapse permanence values)
+    //                     neib_and_tie_sum += 1 + tie_breaker;
+                        
+    //                     // Calculate the overlap score for connected synapses
+    //                     if (connected) {
+    //                         con_neib_and_tie_sum += 1 + tie_breaker;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
 
-                        neib_and_tie_sum += 1 + tie_breaker;  // Increment by 1 for active input
+    //     int cort_col_id = i * out_cols + j;
+    //     out_potential_overlap[cort_col_id] = neib_and_tie_sum;
+    //     out_overlap[cort_col_id] = con_neib_and_tie_sum;
+    // }
 
-                        if (connected) {
-                            con_neib_and_tie_sum += 1 + tie_breaker;
-                        }
-                    }
-                }
-            }
-        }
-
-        int cort_col_id = i * out_cols + j;
-        out_potential_overlap[cort_col_id] = neib_and_tie_sum;
-        out_overlap[cort_col_id] = con_neib_and_tie_sum;
-    }
 
 
     // A function that performs a sliding window operation on an input 2D simulated matrix using a 1D input vector..
@@ -778,10 +792,12 @@ namespace gpu_overlap
     // so we can process new inputs (of the same size) using the same allocated memory as the last call. 
     // Define GPU memory pointers globally or as class members to persist across multiple calls
     void *strm_d_in_grid = nullptr;  // Use void pointer to allow for different data types e.g the optimised veriosn uses uint32_t to stuff bits efficiently. The unoptimtised version just uses a single int per input.
+    Int2 *strm_d_active_grid = nullptr;  // Add a pointer for the sparse active grid
     float *strm_d_colSynPerm = nullptr;
     uint32_t *strm_d_colConBits = nullptr;  // Alternative to strm_d_colSynPerm uses an uint32_t to store a single bit for each synapses indicating if the syn is connected (has a permanence value above the threshold)
     float *strm_d_out_overlap = nullptr;
     float *strm_d_out_pot_overlap = nullptr;
+
 
     // Initialization function to allocate GPU memory
     void initialize_gpu_memory(int in_rows, int in_cols, int N, int M, int O, int P, bool optimised) 
@@ -829,6 +845,63 @@ namespace gpu_overlap
         strm_d_out_overlap = nullptr;
         strm_d_out_pot_overlap = nullptr;
     }
+
+    // // Setup the GPU memory for the sparse version of the overlap calculation
+    // void initialize_gpu_memory_sparse(int num_active, int N, int M, int O, int P) 
+    // {
+    //     if (!strm_d_active_grid) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_active_grid, num_active * sizeof(Int2)), "failed to allocate strm_d_active_grid");
+    //     }
+
+    //     if (!strm_d_out_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_out_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_overlap");
+    //     }
+
+    //     if (!strm_d_out_pot_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_out_pot_overlap, N * M * sizeof(float)), "failed to allocate strm_d_out_pot_overlap");
+    //     }
+
+    //     if (!strm_d_colConBits) 
+    //     {
+    //         // Calculate the required size for colConBits considering each uint32_t can hold 32 synapses' states
+    //         int total_synapses = N * M * O * P;
+    //         int colConBits_size = (total_synapses + 31) / 32;  // Ensure enough space for all synapses
+    //         TF_CHECK_CUDA(cudaMalloc(&strm_d_colConBits, colConBits_size * sizeof(uint32_t)), "failed to allocate strm_d_colConBits");
+    //     }
+    // }
+    // // Tear down the GPU memory for the sparse version of the overlap calculation
+    // void cleanup_gpu_memory_sparse() 
+    // {
+    //     if (strm_d_active_grid) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_active_grid), "failed to free strm_d_active_grid");
+    //         strm_d_active_grid = nullptr;
+    //     }
+
+    //     if (strm_d_out_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_out_overlap), "failed to free strm_d_out_overlap");
+    //         strm_d_out_overlap = nullptr;
+    //     }
+
+    //     if (strm_d_out_pot_overlap) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_out_pot_overlap), "failed to free strm_d_out_pot_overlap");
+    //         strm_d_out_pot_overlap = nullptr;
+    //     }
+
+    //     if (strm_d_colConBits) 
+    //     {
+    //         TF_CHECK_CUDA(cudaFree(strm_d_colConBits), "failed to free strm_d_colConBits");
+    //         strm_d_colConBits = nullptr;
+    //     }
+    // }
+
+
+
     void calculate_overlap_gpu_stream(
                             const int width_cortical_cols, const int height_cortical_cols,
                             const std::vector<float> &colSynPerm,
@@ -1000,6 +1073,81 @@ namespace gpu_overlap
         // Execute the taskflow, starting the cuda kernel task.
         executor.run(taskflow).wait();
     }
+
+    // // A version of the calculate_overlap_gpu_stream function that uses a sparse representation of the active input bits.
+    // // It also uses only a single bit to represent the connection state of each synapse (as the colConBits vector input parameter). 
+    // void calculate_overlap_gpu_stream_opt_sparse(
+    //     const int width_cortical_cols, const int height_cortical_cols,
+    //     const std::vector<uint32_t> &colConBits,  // Connection bits for each synapse in the neighbourhood of each cortical column.
+    //     const std::vector<Int2> &active_grid,     // List of active elements represented as Int2 structures (two uint32_t stored in a struct).
+    //     int num_active,                           // Number of active elements in the active_grid.
+    //     const std::pair<int, int> &inputGrid_shape, // The shape of the input matrix (2D grid).
+    //     const std::pair<int, int> &neib_shape,
+    //     const std::pair<int, int> &neib_step,
+    //     bool wrap_mode,
+    //     bool center_neigh,
+    //     std::vector<float> &out_overlap,          // Function output passed by reference to avoid allocating the output on each call
+    //     std::vector<float> &out_pot_overlap)      // Function output passed by reference to avoid allocating the output on each call
+    // {
+    //     // Assume GPU memory is already allocated and pointers (strm_d_in_grid, etc.) are initialized
+    //     // Determine the dimensions of the input matrix.
+    //     const int rows = inputGrid_shape.first;
+    //     const int cols = inputGrid_shape.second;
+
+    //     if (neib_shape.first > rows || neib_shape.second > cols) {
+    //         throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+    //     }
+
+    //     std::pair<int, int> step = neib_step;
+    //     if (step.first == 0 && step.second == 0) {
+    //         step = neib_shape;
+    //     }
+
+    //     // Calculate the dimensions of the output matrix. This is the 2D size of the "cortical columns".
+    //     int N = height_cortical_cols;  // Number of rows in output matrix. This is the height of the "cortical columns".
+    //     int M = width_cortical_cols; // Number of columns in output matrix. This is the width of the "cortical columns".
+    //     // Calculate the dimensions of the neighbourhood matrix (patch) that is stepped over the input matrix for each cortical column.
+    //     int O = neib_shape.first;                                               // Number of rows in each patch connected to a cortical column.
+    //     int P = neib_shape.second;                                              // Number of columns in each patch connected to a cortical column.
+
+    //     // Check size of colConBits to ensure it's correct
+    //     int expected_colConBits_size = (N * M * O * P + 31) / 32;
+    //     assert(colConBits.size() == expected_colConBits_size);
+
+    //     if (out_overlap.size() != N * M) {
+    //         out_overlap.resize(N * M);
+    //     }
+    //     if (out_pot_overlap.size() != N * M) {
+    //         out_pot_overlap.resize(N * M);
+    //     }
+
+    //     tf::Taskflow taskflow("calculate_overlap_gpu_steam_sparse");
+    //     tf::Executor executor;
+
+    //     auto cudaFlow = taskflow.emplace([&]() {
+    //         tf::cudaFlow cf;
+    //         // Copy input data to GPU
+    //         auto copy_active = cf.memcpy(strm_d_active_grid, active_grid.data(), num_active * sizeof(Int2)).name("copy_active");
+    //         auto copy_colConBits = cf.memcpy(strm_d_colConBits, colConBits.data(), expected_colConBits_size * sizeof(uint32_t)).name("copy_colConBits");
+    //         // Launch kernel
+    //         dim3 block(16, 16);
+    //         dim3 grid((M + block.x - 1) / block.x, (N + block.y - 1) / block.y);
+    //         // Setup the GPU kernel function to run the overlap calculation.
+    //         auto overlap_calc = cf.kernel(grid, block, 0, overlap_kernel_opt_sparse, strm_d_active_grid, strm_d_colConBits, strm_d_out_overlap, strm_d_out_pot_overlap, num_active, rows, cols, N, M, O, P, step.first, step.second, wrap_mode, center_neigh);
+    //         // Copy output data back to host
+    //         auto copy_out = cf.memcpy(out_overlap.data(), strm_d_out_overlap, N * M * sizeof(float)).name("copy_out");
+    //         auto copy_out_pot = cf.memcpy(out_pot_overlap.data(), strm_d_out_pot_overlap, N * M * sizeof(float)).name("copy_out_pot");
+    //         // Set the order of the flow tasks.
+    //         overlap_calc.succeed(copy_active, copy_colConBits)
+    //                     .precede(copy_out, copy_out_pot);
+
+    //         tf::cudaStream stream;
+    //         cf.run(stream);
+    //         stream.synchronize();
+    //     }).name("cudaFlow_sparse");
+    //     // Execute the taskflow, starting the cuda kernel task.
+    //     executor.run(taskflow).wait();
+    // }
     // END OF STREAMING VERSION OF THE OVERLAP CALCULATION
     //-----------------------------------------------------------------------------
 

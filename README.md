@@ -143,7 +143,7 @@ and then set a conditional breakpoint in the kernel code on line 128:
 cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_large_2_step
 (cuda-gdb) break gpu_overlap.cu:128 if jj==19
 (cuda-gdb) run
-``````
+```
 
 # Generate Doxygen code documentation
 To generate the code documentation, you need to have doxygen installed.
@@ -156,3 +156,24 @@ doxygen Doxyfile
 ```
 This will generate the documentation in the `htm_flow/docs` directory.
 Open the `htm_flow/docs/html/index.html` file in a web browser to view the documentation.
+
+# Run in a docker container
+To run the project in a docker container, you need to have docker installed with nvidia container toolkit.
+Install dockler with the following command:
+```
+ sudo apt-get update
+ sudo apt-get install ./docker-desktop-<version>-<arch>.deb
+```
+See here for installing the nvidia container toolkit:
+https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#installing-with-apt
+
+Then build the docker image with the following command:
+```
+./build_container.sh
+```
+This will build the docker image with the name `htm_flow:latest`.
+
+Enter the docker container with the following command:
+```
+docker run -it --gpus all htm_flow:latest
+```

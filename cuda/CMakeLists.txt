@@ -49,7 +49,7 @@ set(EXECUTABLE2_NAME gpu_overlap_exec)
 #target_link_libraries(${EXECUTABLE2_NAME} ${LIBRARY2_NAME})
 
 set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CUDA_STANDARD 14)  # C++ standard version e.g C++11 or C++14
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} "-g -G")  # enable cuda-gdb
 endif()
