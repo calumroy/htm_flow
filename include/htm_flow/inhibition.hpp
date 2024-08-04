@@ -94,6 +94,17 @@ namespace inhibition
 
         ///-----------------------------------------------------------------------------
         ///
+        /// parallel_sort   Sorts a vector of indices based on corresponding values in parallel using Taskflow.
+        ///
+        /// @param[in,out] taskflow The Taskflow object for managing tasks.
+        /// @param[in,out] indices  The indices to be sorted.
+        /// @param[in] values The values based on which the sorting is to be performed.
+        ///
+        ///-----------------------------------------------------------------------------
+        void parallel_sort(tf::Taskflow &taskflow, std::vector<int> &indices, const std::vector<int> &values);
+
+        ///-----------------------------------------------------------------------------
+        ///
         /// calculate_inhibition_for_column   Determines if a specific column should be active or inhibited.
         ///
         /// @param[in] colIndex The index of the column being considered.

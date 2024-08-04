@@ -45,6 +45,52 @@ namespace inhibition
         }
     }
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// parallel_sort   Sorts a vector of indices based on corresponding values in parallel using Taskflow.
+    ///
+    /// @param[in,out] taskflow The Taskflow object for managing tasks.
+    /// @param[in,out] indices  The indices to be sorted.
+    /// @param[in] values The values based on which the sorting is to be performed.
+    ///
+    /// This function performs the following steps:
+    /// 1. Check if the indices vector has 1 or fewer elements, and return if true.
+    /// 2. Split the indices vector into two halves (left and right).
+    /// 3. Create a Taskflow task to sort the left half using parallel_sort.
+    /// 4. Create a Taskflow task to sort the right half using parallel_sort.
+    /// 5. Create a Taskflow task to merge the sorted left and right halves back into the indices vector.
+    /// 6. Set the sorting tasks to precede the merge task in Taskflow.
+    ///
+    ///-----------------------------------------------------------------------------
+
+    void InhibitionCalculator::parallel_sort(tf::Taskflow &taskflow, std::vector<int> &indices, const std::vector<int> &values)
+    {
+        if (indices.size() <= 1)
+        {
+            return;
+        }
+
+        auto middle = indices.size() / 2;
+        std::vector<int> left(indices.begin(), indices.begin() + middle);
+        std::vector<int> right(indices.begin() + middle, indices.end());
+
+        auto left_sort_task = taskflow.emplace([&, left]() mutable {
+            parallel_sort(taskflow, left, values);
+        }).name("left_sort");
+
+        auto right_sort_task = taskflow.emplace([&, right]() mutable {
+            parallel_sort(taskflow, right, values);
+        }).name("right_sort");
+
+        auto merge_task = taskflow.emplace([&, left, right]() mutable {
+            std::merge(left.begin(), left.end(), right.begin(), right.end(), indices.begin(),
+                       [&values](int a, int b) { return values[a] > values[b]; });
+        }).name("merge");
+
+        left_sort_task.precede(merge_task);
+        right_sort_task.precede(merge_task);
+    }
+
     // Function: calculate_inhibition
     // This function determines the active and inhibited columns in an HTM layer based on the overlap and potential overlap scores.
     //
@@ -92,46 +138,41 @@ namespace inhibition
             add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), false);
         }).name("AddTieBreaker");
 
-        // Sort the columns by overlap values in descending order using parallel sorting
+        // Sort the columns by overlap values in descending order using custom parallel sorting
         std::vector<int> sortedIndices(colOverlapGrid.size());
         std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
 
-        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(),
-                                       [&colOverlapGrid](int a, int b) {
-                                           return colOverlapGrid[a] > colOverlapGrid[b];
-                                       }).name("SortOverlap");
-
-        // Execute the taskflow (including sorting and inhibition calculation)
-        executor.run(taskflow).wait();
+        parallel_sort(taskflow, sortedIndices, colOverlapGrid);
 
         // Process columns from highest to lowest overlap
-        for (int i : sortedIndices)
-        {
-            if (colOverlapGrid[i] >= minOverlap_)
+        taskflow.emplace([this, &colOverlapGrid, &sortedIndices]() {
+            for (int i : sortedIndices)
             {
-                calculate_inhibition_for_column(i, colOverlapGrid[i]);
+                if (colOverlapGrid[i] >= minOverlap_)
+                {
+                    calculate_inhibition_for_column(i, colOverlapGrid[i]);
+                }
             }
-        }
+        }).name("ProcessOverlap");
 
         // Repeat the process with potential overlaps if necessary
         taskflow.emplace([this, &potColOverlapGrid]() {
             add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
         }).name("AddTieBreakerPot");
 
-        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(),
-                                           [&potColOverlapGrid](int a, int b) {
-                                               return potColOverlapGrid[a] > potColOverlapGrid[b];
-                                           }).name("SortPotOverlap");
+        parallel_sort(taskflow, sortedIndices, potColOverlapGrid);
+
+        taskflow.emplace([this, &potColOverlapGrid, &sortedIndices]() {
+            for (int i : sortedIndices)
+            {
+                if (inhibitedCols_[i] == 0 && columnActive_[i] == 0 && potColOverlapGrid[i] >= minOverlap_)
+                {
+                    calculate_inhibition_for_column(i, potColOverlapGrid[i]);
+                }
+            }
+        }).name("ProcessPotOverlap");
 
         executor.run(taskflow).wait();
-
-        for (int i : sortedIndices)
-        {
-            if (inhibitedCols_[i] == 0 && columnActive_[i] == 0 && potColOverlapGrid[i] >= minOverlap_)
-            {
-                calculate_inhibition_for_column(i, potColOverlapGrid[i]);
-            }
-        }
     }
     
     std::vector<int> InhibitionCalculator::get_active_columns() const
