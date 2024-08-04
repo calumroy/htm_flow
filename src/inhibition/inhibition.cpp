@@ -96,12 +96,10 @@ namespace inhibition
         std::vector<int> sortedIndices(colOverlapGrid.size());
         std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
 
-        // Define a comparator function for sorting
-        auto overlapComparator = [&colOverlapGrid](int a, int b) {
-            return colOverlapGrid[a] > colOverlapGrid[b];
-        };
-
-        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), overlapComparator).name("SortOverlap");
+        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(),
+                                       [&colOverlapGrid](int a, int b) {
+                                           return colOverlapGrid[a] > colOverlapGrid[b];
+                                       }).name("SortOverlap");
 
         // Execute the taskflow (including sorting and inhibition calculation)
         executor.run(taskflow).wait();
@@ -120,12 +118,10 @@ namespace inhibition
             add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
         }).name("AddTieBreakerPot");
 
-        // Define a comparator function for sorting potential overlaps
-        auto potOverlapComparator = [&potColOverlapGrid](int a, int b) {
-            return potColOverlapGrid[a] > potColOverlapGrid[b];
-        };
-
-        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), potOverlapComparator).name("SortPotOverlap");
+        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(),
+                                           [&potColOverlapGrid](int a, int b) {
+                                               return potColOverlapGrid[a] > potColOverlapGrid[b];
+                                           }).name("SortPotOverlap");
 
         executor.run(taskflow).wait();
 
@@ -137,8 +133,7 @@ namespace inhibition
             }
         }
     }
-
-
+    
     std::vector<int> InhibitionCalculator::get_active_columns() const
     {
         return columnActive_;
@@ -258,82 +253,80 @@ namespace inhibition
         }
     }
 
-    // Function: calculateWinningCols
-    // This function determines which columns become active after applying the inhibition process.
-    //
-    // Inputs:
-    // - colOverlapGrid: A vector representing the overlap values for each column in a 2D grid (flattened).
-    // - colOverlapGridShape: The shape of the colOverlapGrid (rows, cols).
-    // - potColOverlapGrid: A vector representing the potential overlap values for each column in a 2D grid (flattened).
-    // - potColOverlapGridShape: The shape of the potColOverlapGrid (rows, cols).
-    //
-    // Outputs:
-    // - A vector representing the active state of each column (1 for active, 0 for inactive).
-    //
-    // Function:
-    // 1. Add a tie-breaker to the overlaps grid based on position and previous activity.
-    // 2. Sort all columns by their overlap values and process from highest to lowest.
-    // 3. Determine if each column should be active based on local inhibition criteria.
-    // 4. Apply the same process to the potential overlaps if necessary.
-    //
-    void InhibitionCalculator::calculateWinningCols(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-                                                const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
-    {
-        // Ensure the overlap grid dimensions match the expected size
-        assert(colOverlapGrid.size() == colOverlapGridShape.first * colOverlapGridShape.second);
-        assert(potColOverlapGrid.size() == potColOverlapGridShape.first * potColOverlapGridShape.second);
+    // // Function: calculateWinningCols
+    // // This function determines which columns become active after applying the inhibition process.
+    // //
+    // // Inputs:
+    // // - colOverlapGrid: A vector representing the overlap values for each column in a 2D grid (flattened).
+    // // - colOverlapGridShape: The shape of the colOverlapGrid (rows, cols).
+    // // - potColOverlapGrid: A vector representing the potential overlap values for each column in a 2D grid (flattened).
+    // // - potColOverlapGridShape: The shape of the potColOverlapGrid (rows, cols).
+    // //
+    // // Outputs:
+    // // - A vector representing the active state of each column (1 for active, 0 for inactive).
+    // //
+    // // Function:
+    // // 1. Add a tie-breaker to the overlaps grid based on position and previous activity.
+    // // 2. Sort all columns by their overlap values and process from highest to lowest.
+    // // 3. Determine if each column should be active based on local inhibition criteria.
+    // // 4. Apply the same process to the potential overlaps if necessary.
+    // //
+    // void InhibitionCalculator::calculateWinningCols(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+    //                                                 const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
+    // {
+    //     // Ensure the overlap grid dimensions match the expected size
+    //     assert(colOverlapGrid.size() == colOverlapGridShape.first * colOverlapGridShape.second);
+    //     assert(potColOverlapGrid.size() == potColOverlapGridShape.first * potColOverlapGridShape.second);
 
-        // Initialize the active column array and inhibited columns array
-        columnActive_.assign(colOverlapGrid.size(), 0);
-        inhibitedCols_.assign(colOverlapGrid.size(), 0);
-        numColsActInNeigh_.assign(colOverlapGrid.size(), 0);
-        activeColumnsInd_.clear();
+    //     // Initialize the active column array and inhibited columns array
+    //     columnActive_.assign(colOverlapGrid.size(), 0);
+    //     inhibitedCols_.assign(colOverlapGrid.size(), 0);
+    //     numColsActInNeigh_.assign(colOverlapGrid.size(), 0);
+    //     activeColumnsInd_.clear();
 
-        // Add tie-breaker to overlap grid
-        add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), true);
+    //     // Add tie-breaker to overlap grid
+    //     add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), true);
 
-        // Sort the columns by overlap values in descending order using parallel sorting
-        std::vector<int> sortedIndices(colOverlapGrid.size());
-        std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
+    //     // Sort the columns by overlap values in descending order using parallel sorting
+    //     std::vector<int> sortedIndices(colOverlapGrid.size());
+    //     std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
 
-        tf::Taskflow taskflow;
-        tf::Executor executor;
+    //     tf::Taskflow taskflow;
+    //     tf::Executor executor;
 
-        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&colOverlapGrid](int a, int b) {
-            return colOverlapGrid[a] > colOverlapGrid[b];
-        });
+    //     auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&colOverlapGrid](int a, int b) {
+    //         return colOverlapGrid[a] > colOverlapGrid[b];
+    //     });
 
-        // Execute the parallel sort
-        executor.run(taskflow).wait();
+    //     // Execute the parallel sort
+    //     executor.run(taskflow).wait();
 
-        // Process columns from highest to lowest overlap
-        for (int i : sortedIndices)
-        {
-            if (colOverlapGrid[i] >= minOverlap_)
-            {
-                calculate_inhibition_for_column(i, colOverlapGrid[i]);
-            }
-        }
+    //     // Process columns from highest to lowest overlap
+    //     for (int i : sortedIndices)
+    //     {
+    //         if (colOverlapGrid[i] >= minOverlap_)
+    //         {
+    //             calculate_inhibition_for_column(i, colOverlapGrid[i]);
+    //         }
+    //     }
 
-        // Process potential overlaps for columns that are not already active
-        add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
+    //     // Process potential overlaps for columns that are not already active
+    //     add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
 
-        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&potColOverlapGrid](int a, int b) {
-            return potColOverlapGrid[a] > potColOverlapGrid[b];
-        });
+    //     auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&potColOverlapGrid](int a, int b) {
+    //         return potColOverlapGrid[a] > potColOverlapGrid[b];
+    //     });
 
-        // Execute the parallel sort for potential overlaps
-        executor.run(taskflow).wait();
+    //     // Execute the parallel sort for potential overlaps
+    //     executor.run(taskflow).wait();
 
-        for (int i : sortedIndices)
-        {
-            if (inhibitedCols_[i] == 0 && columnActive_[i] == 0 && potColOverlapGrid[i] >= minOverlap_)
-            {
-                calculate_inhibition_for_column(i, potColOverlapGrid[i]);
-            }
-        }
-
-    }
-
+    //     for (int i : sortedIndices)
+    //     {
+    //         if (inhibitedCols_[i] == 0 && columnActive_[i] == 0 && potColOverlapGrid[i] >= minOverlap_)
+    //         {
+    //             calculate_inhibition_for_column(i, potColOverlapGrid[i]);
+    //         }
+    //     }
+    // }
 
 } // namespace inhibition
