@@ -2,6 +2,7 @@
 #include <htm_flow/overlap.hpp>
 // // Include the gpu_overlap.hpp header file form the gpu_overlap library
 // #include <overlap/gpu_overlap.hpp>#include <inhibition/inhibition.hpp>
+#include <htm_flow/inhibition.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
 
@@ -22,6 +23,7 @@ int main(int argc, char *argv[])
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
     int pot_height = 30;
+    bool center_pot_synapses = false;
     int num_input_rows = 1200;
     int num_input_cols = 1200;
     int num_column_rows = 800;
