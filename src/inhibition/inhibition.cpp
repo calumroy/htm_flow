@@ -11,9 +11,9 @@ namespace inhibition
 {
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
                                                int desiredLocalActivity, int minOverlap, bool centerInhib)
-        : width_(width), height_(height), potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
+        : width_(width), height_(height), numColumns_(width*height), potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
           desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap), centerInhib_(centerInhib),
-          activeColumns_(), columnActive_(width * height, 0), inhibitedCols_(width * height, 0), numColsActInNeigh_(width * height, 0)
+          activeColumnsInd_(), columnActive_(width * height, 0), inhibitedCols_(width * height, 0), numColsActInNeigh_(width * height, 0)
     {
         // Initialize the neighbours list for each column
         neighbourColsLists_ = std::vector<std::vector<int>>(width * height);
@@ -96,9 +96,12 @@ namespace inhibition
         std::vector<int> sortedIndices(colOverlapGrid.size());
         std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
 
-        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&colOverlapGrid](int a, int b) {
+        // Define a comparator function for sorting
+        auto overlapComparator = [&colOverlapGrid](int a, int b) {
             return colOverlapGrid[a] > colOverlapGrid[b];
-        }).name("SortOverlap");
+        };
+
+        auto sort_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), overlapComparator).name("SortOverlap");
 
         // Execute the taskflow (including sorting and inhibition calculation)
         executor.run(taskflow).wait();
@@ -117,9 +120,12 @@ namespace inhibition
             add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
         }).name("AddTieBreakerPot");
 
-        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), [&potColOverlapGrid](int a, int b) {
+        // Define a comparator function for sorting potential overlaps
+        auto potOverlapComparator = [&potColOverlapGrid](int a, int b) {
             return potColOverlapGrid[a] > potColOverlapGrid[b];
-        }).name("SortPotOverlap");
+        };
+
+        auto sort_pot_task = taskflow.sort(sortedIndices.begin(), sortedIndices.end(), potOverlapComparator).name("SortPotOverlap");
 
         executor.run(taskflow).wait();
 
@@ -131,6 +137,7 @@ namespace inhibition
             }
         }
     }
+
 
     std::vector<int> InhibitionCalculator::get_active_columns() const
     {
@@ -234,7 +241,7 @@ namespace inhibition
             // Activate column if not inhibited and the number of active neighbors is less than desired local activity
             if (inhibitedCols_[colIndex] != 1 && numColsActInNeigh_[colIndex] < desiredLocalActivity_)
             {
-                activeColumns_.push_back(colIndex);
+                activeColumnsInd_.push_back(colIndex);
                 columnActive_[colIndex] = 1;
                 for (int c : colInNeighboursLists_[colIndex])
                 {
@@ -280,7 +287,7 @@ namespace inhibition
         columnActive_.assign(colOverlapGrid.size(), 0);
         inhibitedCols_.assign(colOverlapGrid.size(), 0);
         numColsActInNeigh_.assign(colOverlapGrid.size(), 0);
-        activeColumns_.clear();
+        activeColumnsInd_.clear();
 
         // Add tie-breaker to overlap grid
         add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), true);
@@ -326,8 +333,6 @@ namespace inhibition
             }
         }
 
-        // Save the active column state for potential use in future time steps
-        prevActiveColsGrid_ = columnActive_;
     }
 
 
