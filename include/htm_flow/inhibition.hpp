@@ -44,7 +44,7 @@ namespace inhibition
         /// get_active_columns - Returns the active state of each column.
         ///
         /// @return A 1D vector of ints representing the active state (1 for active, 0 for inactive) of each column.
-        std::vector<int> get_active_columns() const;
+        std::vector<int> get_active_columns();
 
         // ///-----------------------------------------------------------------------------
         // ///

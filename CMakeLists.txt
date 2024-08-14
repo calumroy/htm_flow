@@ -116,8 +116,9 @@ if(BUILD_TESTS)
   # Enable testing for your project
   enable_testing()
 
-  # Add all the cpp files in the test directory
-  file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
+# Add all the cpp files in the test directory and include the necessary source files
+file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp)
+
 
   # Filter out the GPU test files if GPU flag is set to FALSE
   if(NOT USE_GPU)

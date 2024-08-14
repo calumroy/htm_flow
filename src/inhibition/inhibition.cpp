@@ -175,7 +175,7 @@ namespace inhibition
         executor.run(taskflow).wait();
     }
     
-    std::vector<int> InhibitionCalculator::get_active_columns() const
+    std::vector<int> InhibitionCalculator::get_active_columns()
     {
         return columnActive_;
     }

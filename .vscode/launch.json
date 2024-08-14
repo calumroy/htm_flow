@@ -127,6 +127,27 @@
                 }
             ],
             // "preLaunchTask": ""
+        },
+        {
+            "name": "(gdb) InhibitionCalculatorTest.BasicInhibitionCalculation",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/htm_flow_tests",
+            "args": [
+                "--gtest_filter=InhibitionCalculatorTest.BasicInhibitionCalculation"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": ""
         }
     ]
 }
