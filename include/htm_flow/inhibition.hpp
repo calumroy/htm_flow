@@ -13,6 +13,9 @@
 #include <iostream>
 #include <vector>
 #include <taskflow/taskflow.hpp>
+#include <taskflow/algorithm/for_each.hpp> // Ensure this is included
+#include <htm_flow/inhibition_utils.hpp>
+#include <htm_flow/overlap_utils.hpp> // For print_1d_vector
 
 namespace inhibition
 {
@@ -38,7 +41,6 @@ namespace inhibition
         ///-----------------------------------------------------------------------------
         void calculate_inhibition(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                   const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
-
         ///-----------------------------------------------------------------------------
         ///
         /// get_active_columns - Returns the active state of each column.
@@ -78,7 +80,8 @@ namespace inhibition
         /// @param[in] addColBias  A boolean indicating whether to add a bias for columns previously active.
         ///
         ///-----------------------------------------------------------------------------
-        void add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias);
+        void add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias, tf::Taskflow &taskflow);
+
 
         ///-----------------------------------------------------------------------------
         ///
@@ -92,16 +95,6 @@ namespace inhibition
         ///-----------------------------------------------------------------------------
         std::vector<int> neighbours(int pos_x, int pos_y) const;
 
-        ///-----------------------------------------------------------------------------
-        ///
-        /// parallel_sort   Sorts a vector of indices based on corresponding values in parallel using Taskflow.
-        ///
-        /// @param[in,out] taskflow The Taskflow object for managing tasks.
-        /// @param[in,out] indices  The indices to be sorted.
-        /// @param[in] values The values based on which the sorting is to be performed.
-        ///
-        ///-----------------------------------------------------------------------------
-        void parallel_sort(tf::Taskflow &taskflow, std::vector<int> &indices, const std::vector<int> &values);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -111,7 +104,16 @@ namespace inhibition
         /// @param[in] overlapScore The overlap score of the column.
         ///
         ///-----------------------------------------------------------------------------
-        void calculate_inhibition_for_column(int colIndex, int overlapScore);
+        void calculate_inhibition_for_column(const std::vector<int>& sortedIndices,
+                                            const std::vector<int>& overlapGrid,
+                                            std::vector<int>& inhibitedCols, 
+                                            std::vector<int>& columnActive, 
+                                            std::vector<int>& numColsActInNeigh, 
+                                            std::vector<int>& activeColumnsInd, 
+                                            const std::vector<std::vector<int>>& neighbourColsLists, 
+                                            const std::vector<std::vector<int>>& colInNeighboursLists, 
+                                            int desiredLocalActivity,
+                                            int minOverlap);
 
         // Member variables
         int width_;                  // Width of the grid of columns
@@ -132,3 +134,4 @@ namespace inhibition
     };
 
 } // namespace inhibition
+

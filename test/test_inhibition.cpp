@@ -1,5 +1,29 @@
 #include <gtest/gtest.h>
 #include <htm_flow/inhibition.hpp>
+#include <htm_flow/inhibition_utils.hpp>
+
+TEST(ParallelSortIndTest, BasicSorting) {
+    // Set up test data
+    std::vector<int> indices = {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<int> values = {5, 2, 8, 6, 1, 7, 3, 4};
+
+    // Expected result: indices sorted by corresponding values in descending order
+    std::vector<int> expected_sorted_indices = {2, 5, 3, 0, 7, 6, 1, 4};
+
+    // Create Taskflow and Executor
+    tf::Taskflow taskflow;
+    tf::Executor executor;
+
+    // Run the parallel_sort_ind function
+    inhibition_utils::parallel_sort_ind(indices, values, taskflow);
+
+    // Run the constructed taskflow graph
+    tf::Future<void> fu = executor.run(taskflow);
+    fu.wait(); // Block until the execution completes
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(indices, expected_sorted_indices);
+}
 
 TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
 {
@@ -53,3 +77,5 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
+
+

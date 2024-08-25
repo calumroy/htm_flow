@@ -45,174 +45,168 @@ namespace inhibition
         }
     }
 
+
     ///-----------------------------------------------------------------------------
     ///
-    /// parallel_sort   Sorts a vector of indices based on corresponding values in parallel using Taskflow.
+    /// calculate_inhibition   Determines the active and inhibited columns in an HTM layer based on overlap and potential overlap scores.
     ///
-    /// @param[in,out] taskflow The Taskflow object for managing tasks.
-    /// @param[in,out] indices  The indices to be sorted.
-    /// @param[in] values The values based on which the sorting is to be performed.
+    /// @param[in] colOverlapGrid A vector representing the overlap values for each column in a 2D grid (flattened).
+    /// @param[in] colOverlapGridShape A pair representing the shape of the colOverlapGrid (rows, cols).
+    /// @param[in] potColOverlapGrid A vector representing the potential overlap values for each column in a 2D grid (flattened).
+    /// @param[in] potColOverlapGridShape A pair representing the shape of the potColOverlapGrid (rows, cols).
     ///
     /// This function performs the following steps:
-    /// 1. Check if the indices vector has 1 or fewer elements, and return if true.
-    /// 2. Split the indices vector into two halves (left and right).
-    /// 3. Create a Taskflow task to sort the left half using parallel_sort.
-    /// 4. Create a Taskflow task to sort the right half using parallel_sort.
-    /// 5. Create a Taskflow task to merge the sorted left and right halves back into the indices vector.
-    /// 6. Set the sorting tasks to precede the merge task in Taskflow.
-    ///
+    /// 1. Add Tie-Breakers:
+    ///    - Apply a small tie-breaker value to each column's overlap score to resolve ties.
+    /// 2. Sort Columns by Overlap Scores:
+    ///    - Sort columns based on overlap scores using Taskflow for parallel processing.
+    /// 3. Determine Active Columns from Overlap Scores:
+    ///    - Iterate through sorted columns to mark them as active or inhibited based on overlap and neighbor constraints.
+    /// 4. Repeat Process with Potential Overlap Scores (if necessary):
+    ///    - Process potential overlap scores similarly to further refine column activation.
+    /// 5. Finalize Active Columns:
+    ///    - Store the final activation state of each column.
     ///-----------------------------------------------------------------------------
-
-    void InhibitionCalculator::parallel_sort(tf::Taskflow &taskflow, std::vector<int> &indices, const std::vector<int> &values)
-    {
-        if (indices.size() <= 1)
-        {
-            return;
-        }
-
-        auto middle = indices.size() / 2;
-        std::vector<int> left(indices.begin(), indices.begin() + middle);
-        std::vector<int> right(indices.begin() + middle, indices.end());
-
-        auto left_sort_task = taskflow.emplace([&, left]() mutable {
-            parallel_sort(taskflow, left, values);
-        }).name("left_sort");
-
-        auto right_sort_task = taskflow.emplace([&, right]() mutable {
-            parallel_sort(taskflow, right, values);
-        }).name("right_sort");
-
-        auto merge_task = taskflow.emplace([&, left, right]() mutable {
-            std::merge(left.begin(), left.end(), right.begin(), right.end(), indices.begin(),
-                       [&values](int a, int b) { return values[a] > values[b]; });
-        }).name("merge");
-
-        left_sort_task.precede(merge_task);
-        right_sort_task.precede(merge_task);
-    }
-
-    // Function: calculate_inhibition
-    // This function determines the active and inhibited columns in an HTM layer based on the overlap and potential overlap scores.
-    //
-    // Inputs:
-    // - colOverlapGrid: A vector representing the overlap values for each column in a 2D grid (flattened).
-    // - colOverlapGridShape: A pair representing the shape of the colOverlapGrid (rows, cols).
-    // - potColOverlapGrid: A vector representing the potential overlap values for each column in a 2D grid (flattened).
-    // - potColOverlapGridShape: A pair representing the shape of the potColOverlapGrid (rows, cols).
-    //
-    // Outputs:
-    // - Updates the `columnActive_` vector, which represents the active state of each column (1 for active, 0 for inactive).
-    //
-    // Function:
-    // 1. Add Tie-Breakers:
-    //    - Apply a small tie-breaker value to each column's overlap score to ensure that no two columns have the same score.
-    //    - This tie-breaker helps resolve ties during the inhibition process and is based on the column's position.
-    //
-    // 2. Sort Columns by Overlap Scores:
-    //    - Sort the columns based on their overlap scores in descending order. This ensures that columns with higher overlap scores are prioritized in the inhibition process.
-    //    - The sorting is performed using Taskflow to leverage parallel processing and enhance performance.
-    //
-    // 3. Determine Active Columns from Overlap Scores:
-    //    - Iterate through the sorted list of columns and determine if each column should be active or inhibited.
-    //    - For each column, check if it meets the minimum overlap threshold and assess its neighbors to ensure the local activity constraint is met.
-    //    - If the column's overlap score is sufficient and it has fewer active neighbors than the desired local activity, the column is marked as active. Otherwise, it remains inactive or is inhibited.
-    //
-    // 4. Repeat Process with Potential Overlap Scores (if necessary):
-    //    - After processing the initial overlap scores, the function repeats the inhibition calculation using the potential overlap scores (`potColOverlapGrid`).
-    //    - This step is crucial for considering columns that might have lower initial overlap scores but significant potential overlaps, ensuring a more comprehensive activation process.
-    //
-    // 5. Finalize Active Columns:
-    //    - The final set of active columns is stored in `columnActive_`, representing the activation state of each column for the current time step.
-    //    - This state can be used for further processing or carried over to subsequent time steps.
-    //
-    // This function is designed to work efficiently with parallel execution using Taskflow, leveraging multiple CPU cores to speed up the calculation of active and inhibited columns. By sorting the columns before applying inhibition, the function ensures a consistent and deterministic activation pattern, prioritizing columns with the highest overlaps.
-
     void InhibitionCalculator::calculate_inhibition(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                                     const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
     {
-        tf::Executor executor;
+        // Create a single Taskflow and Executor object
         tf::Taskflow taskflow;
+        tf::Executor executor;
 
-        // Add a tie breaker to the overlap grid
-        taskflow.emplace([this, &colOverlapGrid]() {
-            add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), false);
-        }).name("AddTieBreaker");
+        // Prepare a vector of indices for sorting for the colOverlapGrid
+        std::vector<int> sortedIndices_colOver(colOverlapGrid.size());
+        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0);
+        // Prepare a vector of indices for sorting for the potColOverlapGrid
+        std::vector<int> sortedIndices_potOver(potColOverlapGrid.size());
+        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0);
 
-        // Sort the columns by overlap values in descending order using custom parallel sorting
-        std::vector<int> sortedIndices(colOverlapGrid.size());
-        std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
+        // Define the taskflow structure for the inhibition calculation
+        tf::Taskflow tf1, tf2, tf3, tf4, tf5, tf6;
 
-        parallel_sort(taskflow, sortedIndices, colOverlapGrid);
+        // Task to add a small tie breaker to the overlap grid
+        add_tie_breaker(const_cast<std::vector<int>&>(colOverlapGrid), false, tf1);
 
-        // Process columns from highest to lowest overlap
-        taskflow.emplace([this, &colOverlapGrid, &sortedIndices]() {
-            for (int i : sortedIndices)
-            {
-                if (colOverlapGrid[i] >= minOverlap_)
-                {
-                    calculate_inhibition_for_column(i, colOverlapGrid[i]);
-                }
-            }
+        // Sort columns by overlap values using parallel_sort
+        inhibition_utils::parallel_sort_ind(sortedIndices_colOver, colOverlapGrid, tf2);
+
+        // Process columns from highest to lowest overlap based on the sorted indices
+        tf3.emplace([&]() {
+            calculate_inhibition_for_column(sortedIndices_colOver, colOverlapGrid, 
+                                            inhibitedCols_, columnActive_, 
+                                            numColsActInNeigh_, activeColumnsInd_, 
+                                            neighbourColsLists_, colInNeighboursLists_, 
+                                            desiredLocalActivity_, minOverlap_);
         }).name("ProcessOverlap");
 
-        // Repeat the process with potential overlaps if necessary
-        taskflow.emplace([this, &potColOverlapGrid]() {
-            add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false);
-        }).name("AddTieBreakerPot");
+        // Add a small tie breaker to the potential overlap grid
+        add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false, tf4);
 
-        parallel_sort(taskflow, sortedIndices, potColOverlapGrid);
+        // Sort columns by potential overlap values using parallel_sort
+        inhibition_utils::parallel_sort_ind(sortedIndices_potOver, potColOverlapGrid, tf5);
 
-        taskflow.emplace([this, &potColOverlapGrid, &sortedIndices]() {
-            for (int i : sortedIndices)
-            {
-                if (inhibitedCols_[i] == 0 && columnActive_[i] == 0 && potColOverlapGrid[i] >= minOverlap_)
-                {
-                    calculate_inhibition_for_column(i, potColOverlapGrid[i]);
-                }
-            }
+        // Process columns with potential overlap values
+        tf6.emplace([&]() {
+            calculate_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid, 
+                                            inhibitedCols_, columnActive_, 
+                                            numColsActInNeigh_, activeColumnsInd_, 
+                                            neighbourColsLists_, colInNeighboursLists_, 
+                                            desiredLocalActivity_, minOverlap_);
         }).name("ProcessPotOverlap");
 
-        executor.run(taskflow).wait();
-    }
+        // Set the order of the tasks using tf::Task objects
+        tf::Task f1_task = taskflow.composed_of(tf1).name("AddTieBreaker");
+        tf::Task f2_task = taskflow.composed_of(tf2).name("SortOverlap");
+        tf::Task f3_task = taskflow.composed_of(tf3).name("ProcessOverlap");
+        tf::Task f4_task = taskflow.composed_of(tf4).name("AddTieBreakerPot");
+        tf::Task f5_task = taskflow.composed_of(tf5).name("SortPotOverlap");
+        tf::Task f6_task = taskflow.composed_of(tf6).name("ProcessPotOverlap");
+
+        // Set the task dependencies
+        f1_task.precede(f2_task);
+        f2_task.precede(f3_task);
+        f3_task.precede(f4_task);
+        f4_task.precede(f5_task);
+        f5_task.precede(f6_task);
+
+        // Dump the graph to a DOT file through std::cout (optional for debugging)
+        taskflow.dump(std::cout);
+
+        // Run the constructed taskflow graph
+        tf::Future<void> fu = executor.run(taskflow);
+        fu.wait(); // Block until the execution completes
     
+        // Print the results using LOG and overlap_utils functions
+        LOG(INFO, "Final Results:");
+
+        // Print the sorted indices
+        LOG(INFO, "Sorted Indices:");
+        overlap_utils::print_1d_vector(sortedIndices_colOver);
+
+        // Print the overlap grid after tie-breakers
+        LOG(INFO, "Overlap Grid (with Tie-Breakers):");
+        overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
+
+        // Print the inhibited columns
+        LOG(INFO, "Inhibited Columns:");
+        overlap_utils::print_1d_vector(inhibitedCols_);
+
+        // Print the active columns
+        LOG(INFO, "Active Columns:");
+        overlap_utils::print_1d_vector(columnActive_);
+
+        // Print the number of active neighbors in each column's neighborhood
+        LOG(INFO, "Number of Active Neighbors:");
+        overlap_utils::print_1d_vector(numColsActInNeigh_);
+
+        // Print the list of active column indices
+        LOG(INFO, "Active Columns Indices:");
+        overlap_utils::print_1d_vector(activeColumnsInd_);
+    }
+
+
     std::vector<int> InhibitionCalculator::get_active_columns()
     {
         return columnActive_;
     }
 
-    void InhibitionCalculator::add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias)
+    void InhibitionCalculator::add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias, tf::Taskflow &taskflow)
     {
-        float normValue = 1.0f / float(2 * numColumns_ + 2);
+        // Create a task in the taskflow for adding the tie breaker
+        taskflow.emplace([this, &overlapGrid, addColBias]() {
+            float normValue = 1.0f / float(2 * numColumns_ + 2);
 
-        std::vector<float> tieBreaker(width_ * height_, 0.0f);
-        for (int y = 0; y < height_; ++y)
-        {
-            for (int x = 0; x < width_; ++x)
+            std::vector<float> tieBreaker(width_ * height_, 0.0f);
+            for (int y = 0; y < height_; ++y)
             {
-                int index = y * width_ + x;
-                if ((y % 2) == 1)
+                for (int x = 0; x < width_; ++x)
                 {
-                    // For odd rows, bias to the bottom left
-                    tieBreaker[index] = ((y + 1) * width_ + (width_ - x - 1)) * normValue;
-                }
-                else
-                {
-                    // For even rows, bias to the bottom right
-                    tieBreaker[index] = (1 + x + y * width_) * normValue;
+                    int index = y * width_ + x;
+                    if ((y % 2) == 1)
+                    {
+                        // For odd rows, bias to the bottom left
+                        tieBreaker[index] = ((y + 1) * width_ + (width_ - x - 1)) * normValue;
+                    }
+                    else
+                    {
+                        // For even rows, bias to the bottom right
+                        tieBreaker[index] = (1 + x + y * width_) * normValue;
+                    }
                 }
             }
-        }
 
-        if (addColBias)
-        {
-            // If previous columns were active, we can give them a small bias
-            // to maintain stability across time steps (this part is optional)
-            for (int i = 0; i < overlapGrid.size(); ++i)
+            if (addColBias)
             {
-                overlapGrid[i] += tieBreaker[i];
+                // If previous columns were active, we can give them a small bias
+                // to maintain stability across time steps (this part is optional)
+                for (int i = 0; i < overlapGrid.size(); ++i)
+                {
+                    overlapGrid[i] += tieBreaker[i];
+                }
             }
-        }
+        }).name("AddTieBreaker");
     }
+
 
     std::vector<int> InhibitionCalculator::neighbours(int pos_x, int pos_y) const
     {
@@ -239,60 +233,70 @@ namespace inhibition
         return closeColumns;
     }
 
-
-    void InhibitionCalculator::calculate_inhibition_for_column(int colIndex, int overlapScore)
+    void InhibitionCalculator::calculate_inhibition_for_column(const std::vector<int>& sortedIndices,
+                                                            const std::vector<int>& overlapGrid,
+                                                            std::vector<int>& inhibitedCols, 
+                                                            std::vector<int>& columnActive, 
+                                                            std::vector<int>& numColsActInNeigh, 
+                                                            std::vector<int>& activeColumnsInd, 
+                                                            const std::vector<std::vector<int>>& neighbourColsLists, 
+                                                            const std::vector<std::vector<int>>& colInNeighboursLists, 
+                                                            int desiredLocalActivity,
+                                                            int minOverlap)
     {
-        if (inhibitedCols_[colIndex] != 1)
-        {
-            std::vector<int> neighbourCols = neighbourColsLists_[colIndex];
-            int numActiveNeighbours = 0;
+        for (int i : sortedIndices) {
+            if (inhibitedCols[i] == 0 && columnActive[i] == 0 && overlapGrid[i] >= minOverlap) {
+                std::vector<int> neighbourCols = neighbourColsLists[i];
+                int numActiveNeighbours = 0;
 
-            // Check neighbours for active columns
-            for (int neighborIndex : neighbourCols)
-            {
-                if (neighborIndex >= 0 && columnActive_[neighborIndex] == 1)
+                // Check neighbours for active columns
+                for (int neighborIndex : neighbourCols)
                 {
-                    numActiveNeighbours++;
-                    if (numColsActInNeigh_[neighborIndex] >= desiredLocalActivity_)
+                    if (neighborIndex >= 0 && columnActive[neighborIndex] == 1)
                     {
-                        inhibitedCols_[colIndex] = 1;
+                        numActiveNeighbours++;
+                        if (numColsActInNeigh[neighborIndex] >= desiredLocalActivity)
+                        {
+                            inhibitedCols[i] = 1;
+                        }
                     }
                 }
-            }
 
-            // Check if the column is in any neighbour lists of active columns
-            for (int activeNeighbor : colInNeighboursLists_[colIndex])
-            {
-                if (columnActive_[activeNeighbor] == 1)
+                // Check if the column is in any neighbour lists of active columns
+                for (int activeNeighbor : colInNeighboursLists[i])
                 {
-                    if (numColsActInNeigh_[activeNeighbor] >= desiredLocalActivity_)
+                    if (columnActive[activeNeighbor] == 1)
                     {
-                        inhibitedCols_[colIndex] = 1;
+                        if (numColsActInNeigh[activeNeighbor] >= desiredLocalActivity)
+                        {
+                            inhibitedCols[i] = 1;
+                        }
                     }
                 }
-            }
 
-            numColsActInNeigh_[colIndex] = numActiveNeighbours;
+                numColsActInNeigh[i] = numActiveNeighbours;
 
-            // Activate column if not inhibited and the number of active neighbors is less than desired local activity
-            if (inhibitedCols_[colIndex] != 1 && numColsActInNeigh_[colIndex] < desiredLocalActivity_)
-            {
-                activeColumnsInd_.push_back(colIndex);
-                columnActive_[colIndex] = 1;
-                for (int c : colInNeighboursLists_[colIndex])
+                // Activate column if not inhibited and the number of active neighbors is less than desired local activity
+                if (inhibitedCols[i] != 1 && numColsActInNeigh[i] < desiredLocalActivity)
                 {
-                    if (c >= 0)
+                    activeColumnsInd.push_back(i);
+                    columnActive[i] = 1;
+                    for (int c : colInNeighboursLists[i])
                     {
-                        numColsActInNeigh_[c]++;
+                        if (c >= 0)
+                        {
+                            numColsActInNeigh[c]++;
+                        }
                     }
                 }
-            }
-            else
-            {
-                inhibitedCols_[colIndex] = 1;
+                else
+                {
+                    inhibitedCols[i] = 1;
+                }
             }
         }
     }
+
 
     // // Function: calculateWinningCols
     // // This function determines which columns become active after applying the inhibition process.
