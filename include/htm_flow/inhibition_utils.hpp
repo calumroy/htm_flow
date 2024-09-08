@@ -10,7 +10,7 @@ namespace inhibition_utils
     ///
     /// parallel_sort   Sorts a vector of indices based on the corresponding values in the
     ///                 values input vector. Each value in indices should be sorted by the corresponding
-    ///                 value in the values vector at the index in indicies. The sorting shoudl happen in
+    ///                 value in the values vector at the index in indicies. The sorting should happen in
     ///                 parallel using Taskflow.
     ///
     /// @param[in,out] indices  The indices to be sorted.
@@ -21,43 +21,45 @@ namespace inhibition_utils
     template <typename T>
     void parallel_sort_ind(std::vector<T> &indices, const std::vector<T> &values, tf::Taskflow &taskflow) {
         assert(!indices.empty());
+        assert(indices.size() == values.size());
 
-        // Lambda function to perform sorting on a chunk of indices
-        auto sort_indices = [&indices, &values](int begin, int end) {
-            std::sort(indices.begin() + begin, indices.begin() + end, [&](T a, T b) {
-                return values[a] > values[b]; // Sort in descending order.
-            });
-        };
+        size_t indices_size = indices.size();
+        unsigned int num_threads = std::thread::hardware_concurrency();
+        size_t chunk_size = std::max(size_t(1), indices_size / num_threads);
 
-        // Divide the work among available threads
-        int num_threads = std::thread::hardware_concurrency();
-        int chunk_size = indices.size() / num_threads;
+        // Calculate the number of chunks
+        size_t num_chunks = (indices_size + chunk_size - 1) / chunk_size;
 
-        std::vector<tf::Task> tasks;
-        tasks.reserve(num_threads);
+        std::vector<tf::Task> sort_tasks;
+        sort_tasks.reserve(num_chunks);
 
         // Create sorting tasks for each chunk
-        for (int i = 0; i < num_threads; ++i) {
-            int start = i * chunk_size;
-            int end = (i == num_threads - 1) ? indices.size() : (i + 1) * chunk_size;
-
-            tasks.emplace_back(taskflow.emplace([start, end, sort_indices]() {
-                sort_indices(start, end);
+        for (size_t i = 0; i < num_chunks; ++i) {
+            sort_tasks.emplace_back(taskflow.emplace([&indices, &values, i, chunk_size, indices_size]() {
+                size_t start = i * chunk_size;
+                size_t end = std::min((i + 1) * chunk_size, indices_size);
+                std::sort(indices.begin() + start, indices.begin() + end, [&values](T a, T b) {
+                    return values[a] > values[b]; // Sort in descending order.
+                });
             }).name("sort_chunk_" + std::to_string(i)));
         }
 
         // Add a merge step to combine the sorted chunks
-        taskflow.emplace([&indices, chunk_size, num_threads]() {
-            for (int size = chunk_size; size < indices.size(); size *= 2) {
-                for (int left = 0; left < indices.size() - size; left += 2 * size) {
-                    int mid = left + size;
-                    int right = std::min(left + 2 * size, static_cast<int>(indices.size()));
-                    std::inplace_merge(indices.begin() + left, indices.begin() + mid, indices.begin() + right, [&](T a, T b) {
-                        return a > b;
-                    });
+        auto merge_task = taskflow.emplace([&indices, chunk_size, indices_size]() {
+            for (size_t size = chunk_size; size < indices_size; size *= 2) {
+                for (size_t left = 0; left < indices_size - size; left += 2 * size) {
+                    size_t mid = left + size;
+                    size_t right = std::min(left + 2 * size, indices_size);
+                    std::inplace_merge(indices.begin() + left, indices.begin() + mid, indices.begin() + right,
+                        std::greater<T>());
                 }
             }
-        }).name("merge_chunks").precede(tasks.back());
+        }).name("merge_chunks");
+
+        // Set up dependencies
+        for (auto& task : sort_tasks) {
+            merge_task.precede(task);
+        }
     }
-    
+        
 } // namespace inhibition_utils
