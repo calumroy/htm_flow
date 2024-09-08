@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <taskflow/taskflow.hpp>
@@ -39,19 +38,19 @@ namespace inhibition_utils
                 size_t start = i * chunk_size;
                 size_t end = std::min((i + 1) * chunk_size, indices_size);
                 std::sort(indices.begin() + start, indices.begin() + end, [&values](T a, T b) {
-                    return values[a] > values[b]; // Sort in descending order.
+                    return values[a] > values[b]; // Sort indices based on corresponding values in descending order.
                 });
             }).name("sort_chunk_" + std::to_string(i)));
         }
 
         // Add a merge step to combine the sorted chunks
-        auto merge_task = taskflow.emplace([&indices, chunk_size, indices_size]() {
+        auto merge_task = taskflow.emplace([&indices, &values, chunk_size, indices_size]() {
             for (size_t size = chunk_size; size < indices_size; size *= 2) {
                 for (size_t left = 0; left < indices_size - size; left += 2 * size) {
                     size_t mid = left + size;
                     size_t right = std::min(left + 2 * size, indices_size);
                     std::inplace_merge(indices.begin() + left, indices.begin() + mid, indices.begin() + right,
-                        std::greater<T>());
+                        [&values](T a, T b) { return values[a] > values[b]; });
                 }
             }
         }).name("merge_chunks");

@@ -153,7 +153,7 @@ namespace inhibition
 
         // Print the active columns
         LOG(INFO, "Active Columns:");
-        overlap_utils::print_1d_vector(columnActive_);
+        overlap_utils::print_2d_vector(columnActive_, colOverlapGridShape);
 
         // Print the number of active neighbors in each column's neighborhood
         LOG(INFO, "Number of Active Neighbors:");

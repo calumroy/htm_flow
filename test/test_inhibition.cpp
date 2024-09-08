@@ -70,7 +70,7 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     // Define the expected output (modify according to your expectations)
     std::vector<int> expected_activeColumns = {
         1, 0, 1, 0,
-        0, 1, 0, 0,
+        0, 1, 0, 1,
         1, 0, 1, 0,
         0, 1, 0, 1};
 
