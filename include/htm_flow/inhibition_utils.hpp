@@ -37,7 +37,8 @@ namespace inhibition_utils
             sort_tasks.emplace_back(taskflow.emplace([&indices, &values, i, chunk_size, indices_size]() {
                 size_t start = i * chunk_size;
                 size_t end = std::min((i + 1) * chunk_size, indices_size);
-                std::sort(indices.begin() + start, indices.begin() + end, [&values](T a, T b) {
+                // Use std::stable_sort instead of std::sort to preserve relative order of equal values
+                std::stable_sort(indices.begin() + start, indices.begin() + end, [&values](T a, T b) {
                     return values[a] > values[b]; // Sort indices based on corresponding values in descending order.
                 });
             }).name("sort_chunk_" + std::to_string(i)));
@@ -55,9 +56,9 @@ namespace inhibition_utils
             }
         }).name("merge_chunks");
 
-        // Set up dependencies
+        // Correct dependency setup: sort tasks should precede the merge task
         for (auto& task : sort_tasks) {
-            merge_task.precede(task);
+            task.precede(merge_task);
         }
     }
         

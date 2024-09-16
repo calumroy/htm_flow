@@ -169,6 +169,33 @@
                 }
             ],
             // "preLaunchTask": ""
+        },
+        {
+            "name": "(gdb) ParallelSortIndTest.LargeInput",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/htm_flow_tests",
+            "args": [
+                "--gtest_filter=ParallelSortIndTest.LargeInput"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    //"text": " python import sys sys.path.insert(0, '/home/calum/Documents/linux_programs/python_gdb_printer/python') from libstdcxx.v6.printers import register_libstdcxx_printers register_libstdcxx_printers (None) end",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": false
+                    },
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": ""
         }
     ]
 }
