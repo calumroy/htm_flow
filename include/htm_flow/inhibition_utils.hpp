@@ -19,7 +19,10 @@ namespace inhibition_utils
     ///-----------------------------------------------------------------------------
     template <typename T>
     void parallel_sort_ind(std::vector<T> &indices, const std::vector<T> &values, tf::Taskflow &taskflow) {
-        assert(!indices.empty());
+        // Just return if the indices are empty
+        if (indices.empty()) {
+            return;
+        }
         assert(indices.size() == values.size());
 
         size_t indices_size = indices.size();

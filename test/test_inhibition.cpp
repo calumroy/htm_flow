@@ -63,22 +63,22 @@ TEST(ParallelSortIndTest, SmallSorting) {
 }
 
 // Test with empty input vectors
-// TEST(ParallelSortIndTest, EmptyInput) {
-//     std::vector<int> indices;
-//     std::vector<int> values;
+TEST(ParallelSortIndTest, EmptyInput) {
+    std::vector<int> indices;
+    std::vector<int> values;
 
-//     std::vector<int> expected_sorted_indices;
+    std::vector<int> expected_sorted_indices;
 
-//     tf::Taskflow taskflow;
-//     tf::Executor executor;
+    tf::Taskflow taskflow;
+    tf::Executor executor;
 
-//     inhibition_utils::parallel_sort_ind(indices, values, taskflow);
+    inhibition_utils::parallel_sort_ind(indices, values, taskflow);
 
-//     tf::Future<void> fu = executor.run(taskflow);
-//     fu.wait();
+    tf::Future<void> fu = executor.run(taskflow);
+    fu.wait();
 
-//     ASSERT_EQ(indices, expected_sorted_indices);
-// }
+    ASSERT_EQ(indices, expected_sorted_indices);
+}
 
 // Test with a single-element vector
 TEST(ParallelSortIndTest, SingleElement) {
