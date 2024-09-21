@@ -10,14 +10,18 @@
 namespace inhibition
 {
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                                               int desiredLocalActivity, int minOverlap, bool centerInhib)
-        : width_(width), height_(height), numColumns_(width*height), potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
-          desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap), centerInhib_(centerInhib),
-          activeColumnsInd_(), columnActive_(width * height, 0), inhibitedCols_(width * height, 0), numColsActInNeigh_(width * height, 0)
+                                               int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode)
+        : width_(width), height_(height), numColumns_(width * height),
+          potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
+          desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
+          centerInhib_(centerInhib), wrapMode_(wrapMode), 
+          activeColumnsInd_(), columnActive_(width * height, 0),
+          inhibitedCols_(width * height, 0), numColsActInNeigh_(width * height, 0)
     {
         // Initialize the neighbours list for each column
         neighbourColsLists_ = std::vector<std::vector<int>>(width * height);
         colInNeighboursLists_ = std::vector<std::vector<int>>(width * height);
+
         // Calculate neighbours
         for (int y = 0; y < height_; ++y)
         {
@@ -216,17 +220,46 @@ namespace inhibition
         int leftPos_x = centerInhib_ ? std::floor(potentialWidth_ / 2.0) : 0;
         int rightPos_x = centerInhib_ ? std::ceil(potentialWidth_ / 2.0) - 1 : potentialWidth_ - 1;
 
-        for (int i = pos_y - topPos_y; i <= pos_y + bottomPos_y; ++i)
+        for (int dy = -topPos_y; dy <= bottomPos_y; ++dy)
         {
-            if (i >= 0 && i < height_)
+            int i = pos_y + dy;
+            int wrapped_i;
+
+            if (wrapMode_)
             {
-                for (int j = pos_x - leftPos_x; j <= pos_x + rightPos_x; ++j)
+                // Wrap around the vertical boundaries
+                wrapped_i = (i + height_) % height_;
+            }
+            else if (i >= 0 && i < height_)
+            {
+                wrapped_i = i;
+            }
+            else
+            {
+                continue; // Skip out-of-bounds indices when not wrapping
+            }
+
+            for (int dx = -leftPos_x; dx <= rightPos_x; ++dx)
+            {
+                int j = pos_x + dx;
+                int wrapped_j;
+
+                if (wrapMode_)
                 {
-                    if (j >= 0 && j < width_)
-                    {
-                        closeColumns.push_back(i * width_ + j);
-                    }
+                    // Wrap around the horizontal boundaries
+                    wrapped_j = (j + width_) % width_;
                 }
+                else if (j >= 0 && j < width_)
+                {
+                    wrapped_j = j;
+                }
+                else
+                {
+                    continue; // Skip out-of-bounds indices when not wrapping
+                }
+
+                int neighborIndex = wrapped_i * width_ + wrapped_j;
+                closeColumns.push_back(neighborIndex);
             }
         }
 

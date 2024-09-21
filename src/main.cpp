@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
     // Start inhibition calculation
     START_STOPWATCH();
     InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
-                                        desired_local_activity, min_overlap, center_pot_synapses);
+                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input);
     LOG(INFO, "Starting the inhibition calculation.");
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
     STOP_STOPWATCH();

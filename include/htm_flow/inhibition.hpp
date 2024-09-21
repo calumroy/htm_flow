@@ -26,7 +26,7 @@ namespace inhibition
     public:
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                             int desiredLocalActivity, int minOverlap, bool centerInhib);
+                             int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -142,6 +142,7 @@ namespace inhibition
         int desiredLocalActivity_;   // Desired number of active columns within an inhibition neighborhood
         int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
+        bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
 
         std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies     
         std::vector<int> columnActive_;            // Active state of each column (1 for active, 0 for inactive)

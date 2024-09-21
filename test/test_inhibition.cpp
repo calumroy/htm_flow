@@ -317,6 +317,7 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = false;
+    bool wrapMode = false;
 
     // Create test input for colOverlapGrid and potColOverlapGrid
     std::vector<int> colOverlapGrid = {
@@ -341,7 +342,8 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
@@ -371,6 +373,7 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
     int desired_local_activity = 3;
     int min_overlap = 1;
     bool center_pot_synapses = false;
+    bool wrapMode = false;
 
     // Create test input for colOverlapGrid and potColOverlapGrid
     std::vector<int> colOverlapGrid = {
@@ -407,7 +410,8 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
@@ -442,6 +446,7 @@ TEST(InhibitionCalculatorTest, Case1) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  
+    bool wrapMode = false;
 
     // Initialize colOverlapGrid
     std::vector<int> colOverlapGrid = {
@@ -479,7 +484,8 @@ TEST(InhibitionCalculatorTest, Case1) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
@@ -525,6 +531,7 @@ TEST(InhibitionCalculatorTest, Case2) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;
+    bool wrapMode = false;
 
     std::vector<int> colOverlapGrid = {
         8, 4, 5, 8,
@@ -543,7 +550,8 @@ TEST(InhibitionCalculatorTest, Case2) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses
+        center_pot_synapses,
+        wrapMode
     );
 
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, colOverlapGridShape);
@@ -568,6 +576,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  // centerInhib = 1
+    bool wrapMode = false;
 
     // Initialize colOverlapGrid
     std::vector<int> colOverlapGrid = {
@@ -589,7 +598,8 @@ TEST(InhibitionCalculatorTest, Case3) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
@@ -611,6 +621,116 @@ TEST(InhibitionCalculatorTest, Case3) {
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
 
+TEST(InhibitionCalculatorTest, WrapModeCase1) {
+    int num_column_cols = 4;
+    int num_column_rows = 4;
+    int inhibition_width = 2;
+    int inhibition_height = 2;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = false;  
+    bool wrapMode = true;
+
+    // Initialize colOverlapGrid
+    std::vector<int> colOverlapGrid = {
+        8, 4, 5, 8,
+        8, 6, 1, 6,
+        7, 7, 9, 4,
+        2, 3, 1, 5
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // potColOverlapGrid is the same as colOverlapGrid
+    std::vector<int> potColOverlapGrid = colOverlapGrid;
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode);
+
+    // Run the inhibition calculation
+    inhibitionCalc.calculate_inhibition(
+        colOverlapGrid, colOverlapGridShape,
+        potColOverlapGrid, colOverlapGridShape);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // Expected active columns
+    std::vector<int> expected_activeColumns = {
+        1, 1, 0, 1,
+        0, 0, 1, 0,
+        1, 1, 1, 0,
+        0, 0, 0, 0
+    };
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(activeColumns, expected_activeColumns);
+}
+
+TEST(InhibitionCalculatorTest, WrapModeCase2) {
+    int num_column_cols = 6;
+    int num_column_rows = 6;
+    int inhibition_width = 5;
+    int inhibition_height = 4;
+    int desired_local_activity = 4;
+    int min_overlap = 1;
+    bool center_pot_synapses = false;  
+    bool wrapMode = true;
+
+    // Initialize colOverlapGrid
+    std::vector<int> colOverlapGrid = {
+        8, 4, 5, 8, 3, 2,
+        8, 6, 1, 6, 7, 5,
+        7, 7, 9, 4, 2, 1,
+        2, 3, 1, 5, 6, 8,
+        4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // potColOverlapGrid is the same as colOverlapGrid
+    std::vector<int> potColOverlapGrid = colOverlapGrid;
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode);
+
+    // Run the inhibition calculation
+    inhibitionCalc.calculate_inhibition(
+        colOverlapGrid, colOverlapGridShape,
+        potColOverlapGrid, colOverlapGridShape);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // Expected active columns
+    std::vector<int> expected_activeColumns = {
+        1, 0, 0, 1, 0, 0,
+        1, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1,
+        0, 0, 0, 0, 0, 0
+    };
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(activeColumns, expected_activeColumns);
+}
+
 TEST(InhibitionCalculatorTest, Case4) {
     int num_column_cols = 5;
     int num_column_rows = 6;
@@ -619,6 +739,7 @@ TEST(InhibitionCalculatorTest, Case4) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  // centerInhib = 1
+    bool wrapMode = false;
 
     // Initialize colOverlapGrid
     std::vector<int> colOverlapGrid = {
@@ -642,7 +763,8 @@ TEST(InhibitionCalculatorTest, Case4) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
@@ -674,6 +796,7 @@ TEST(InhibitionCalculatorTest, LargeInput) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  
+    bool wrapMode = false;
 
     // Generate colOverlapGrid with incremental values
     std::vector<int> colOverlapGrid(num_column_cols * num_column_rows);
@@ -695,7 +818,8 @@ TEST(InhibitionCalculatorTest, LargeInput) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
@@ -715,6 +839,7 @@ TEST(InhibitionCalculatorTest, RunTime) {
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  
+    bool wrapMode = false;
 
     // Generate colOverlapGrid with incremental values
     std::vector<int> colOverlapGrid(num_column_cols * num_column_rows);
@@ -736,7 +861,8 @@ TEST(InhibitionCalculatorTest, RunTime) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
-        center_pot_synapses);
+        center_pot_synapses,
+        wrapMode);
 
     // Run the inhibition calculation multiple times to test performance
     for (int i = 0; i < numCycles; ++i) {
@@ -748,3 +874,4 @@ TEST(InhibitionCalculatorTest, RunTime) {
     // No assertions; this is a performance test
     ASSERT_TRUE(true);
 }
+
