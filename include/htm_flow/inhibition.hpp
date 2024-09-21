@@ -98,10 +98,28 @@ namespace inhibition
 
         ///-----------------------------------------------------------------------------
         ///
-        /// calculate_inhibition_for_column   Determines if a specific column should be active or inhibited.
+        /// calculate_inhibition_for_column   Determines if a specific column should be active or inhibited based on its overlap score and the activity of its neighboring columns.
         ///
-        /// @param[in] colIndex The index of the column being considered.
-        /// @param[in] overlapScore The overlap score of the column.
+        ///           This function performs the following steps:
+        ///           1. Iterates through the sorted list of column indices.
+        ///           2. For each column, checks if it is already inhibited or active.
+        ///           3. If the column is not inhibited or active and its overlap score meets the minimum threshold, it proceeds to evaluate its neighbors.
+        ///           4. Counts the number of active neighboring columns.
+        ///           5. If the number of active neighbors meets or exceeds the desired local activity, the column is marked as inhibited.
+        ///           6. If the column is not inhibited and the number of active neighbors is less than the desired local activity, the column is marked as active.
+        ///           7. Updates the active state and inhibition state of the column and its neighbors accordingly.
+        ///
+        /// This function ensures that the inhibition process respects the local activity constraints and prevents too many columns from becoming active within a neighborhood.
+        /// @param[in] sortedIndices A vector of column indices sorted by their overlap scores.
+        /// @param[in] overlapGrid A vector representing the overlap values for each column in a 2D grid (flattened).
+        /// @param[in,out] inhibitedCols A vector indicating whether each column is inhibited (1 for inhibited, 0 for not).
+        /// @param[in,out] columnActive A vector indicating whether each column is active (1 for active, 0 for not).
+        /// @param[in,out] numColsActInNeigh A vector indicating the number of active columns in each column's neighborhood.
+        /// @param[in,out] activeColumnsInd A vector storing the indices of active columns.
+        /// @param[in] neighbourColsLists A vector of vectors, where each inner vector contains the indices of neighboring columns for each column.
+        /// @param[in] colInNeighboursLists A vector of vectors, where each inner vector contains the indices of columns that list each column as a neighbor.
+        /// @param[in] desiredLocalActivity The desired number of active columns within an inhibition neighborhood.
+        /// @param[in] minOverlap The minimum overlap score required for a column to be considered for activation.
         ///
         ///-----------------------------------------------------------------------------
         void calculate_inhibition_for_column(const std::vector<int>& sortedIndices,
