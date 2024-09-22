@@ -2,21 +2,20 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Cmake option to enable buildign cuda GPU section or not. Requires CUDA 11.0 or higher.
+# Cmake option to enable building CUDA GPU section or not. Requires CUDA 11.0 or higher.
 # To use specify -DUSE_GPU=ON when running cmake.
 option(USE_GPU "Enable GPU support" OFF) 
 
 # Check if USE_GPU option is set to ON
 if(USE_GPU)
-    project("htm_flow" VERSION 0.9 LANGUAGES CXX CUDA DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+    project("htm_flow" VERSION 0.9 LANGUAGES CXX CUDA DESCRIPTION "A sparse distributed pattern recognizer using cpp taskflow library.")
     set(CUDA_DIR ${PROJECT_SOURCE_DIR}/cuda)
 else()
     # If USE_GPU is OFF, then build the project without CUDA
-    project("htm_flow" VERSION 0.9 LANGUAGES CXX DESCRIPTION "An spare distributed pattern recogniser using cpp taskflow library.")
+    project("htm_flow" VERSION 0.9 LANGUAGES CXX DESCRIPTION "A sparse distributed pattern recognizer using cpp taskflow library.")
 endif()
 
-
-# error setting
+# Error settings
 add_library(error_settings INTERFACE)
 add_library(tf::error_settings ALIAS error_settings)
 target_compile_options(
@@ -29,7 +28,7 @@ target_compile_options(
 )
 
 # -----------------------------------------------------------------------------
-# find nvcc
+# Find NVCC
 # https://cliutils.gitlab.io/modern-cmake/chapters/packages/CUDA.html
 # -----------------------------------------------------------------------------
 
@@ -47,26 +46,26 @@ if(USE_GPU)
     endif()
 endif()
 
-
+# Default settings
 add_library(default_settings INTERFACE)
 add_library(tf::default_settings ALIAS default_settings)
 target_link_libraries(
   default_settings 
   INTERFACE 
   tf::error_settings 
-  #tf::optimize_settings 
-  #tf::features_settings
 )
 
+# Include directories
 include_directories("include")
 
+# Include directories for the project source files
 include_directories(${PROJECT_SOURCE_DIR})
 
 if(USE_GPU)
     add_subdirectory(cuda)
 
     # Add test task flow executable (use this to confirm that task flow is working)
-    # test_script name
+    # Test script name
     set(TEST_SCRIPT_NAME task_flow_test)
     add_executable(${TEST_SCRIPT_NAME} ./src/task_flow_test.cpp)
 
@@ -78,10 +77,9 @@ if(USE_GPU)
 endif()
 
 # Add all the cpp files in the src directory
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp)
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/*.cpp)
 
 # Build the Project executable
-# Link your executable to the Google Test library
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
 
 # Required for CUDA debugging in Visual Studio Code. This adds a -G flag to compilation.
@@ -118,8 +116,9 @@ if(BUILD_TESTS)
   # Enable testing for your project
   enable_testing()
 
-  # Add all the cpp files in the test directory
-  file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
+# Add all the cpp files in the test directory and include the necessary source files
+file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp)
+
 
   # Filter out the GPU test files if GPU flag is set to FALSE
   if(NOT USE_GPU)
@@ -135,6 +134,4 @@ if(BUILD_TESTS)
   else()
     target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
   endif()
-
-
 endif()

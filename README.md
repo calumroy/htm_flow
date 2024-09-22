@@ -66,7 +66,9 @@ To run the unit tests, use the executable
 To list all unit tests use googletest flags   
 `./build/htm_flow_tests --gtest_list_tests`  
 To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags  
-`./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`  
+`./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`
+To run all tests with the "parallel" prefix use  
+`./build/htm_flow_tests --gtest_filter=parallel*`  
 
 To run the GPU unit tests you must build with the GPU option `build.sh Debug GPU`
 Then run specific GPU unit tests with e.g  

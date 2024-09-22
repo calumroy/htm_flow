@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <src/overlap/overlap.cpp>
-#include <src/overlap/overlap_utils.cpp>
+#include <htm_flow/overlap.hpp>
+#include <htm_flow/overlap_utils.hpp>
 
 // Using the overlap namespace
 using namespace overlap_utils;
