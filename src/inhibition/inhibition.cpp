@@ -140,32 +140,32 @@ namespace inhibition
         tf::Future<void> fu = executor.run(taskflow);
         fu.wait(); // Block until the execution completes
     
-        // Print the results using LOG and overlap_utils functions
-        LOG(INFO, "Final Results:");
+        // // Print the results using LOG and overlap_utils functions
+        // LOG(INFO, "Final Results:");
 
-        // Print the sorted indices
-        LOG(INFO, "Sorted Indices:");
-        overlap_utils::print_1d_vector(sortedIndices_colOver);
+        // // Print the sorted indices
+        // LOG(INFO, "Sorted Indices:");
+        // overlap_utils::print_1d_vector(sortedIndices_colOver);
 
-        // Print the overlap grid after tie-breakers
-        LOG(INFO, "Overlap Grid (with Tie-Breakers):");
-        overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
+        // // Print the overlap grid after tie-breakers
+        // LOG(INFO, "Overlap Grid (with Tie-Breakers):");
+        // overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
 
-        // Print the inhibited columns
-        LOG(INFO, "Inhibited Columns:");
-        overlap_utils::print_1d_vector(inhibitedCols_);
+        // // Print the inhibited columns
+        // LOG(INFO, "Inhibited Columns:");
+        // overlap_utils::print_1d_vector(inhibitedCols_);
 
-        // Print the active columns
-        LOG(INFO, "Active Columns:");
-        overlap_utils::print_2d_vector(columnActive_, colOverlapGridShape);
+        // // Print the active columns
+        // LOG(INFO, "Active Columns:");
+        // overlap_utils::print_2d_vector(columnActive_, colOverlapGridShape);
 
-        // Print the number of active neighbors in each column's neighborhood
-        LOG(INFO, "Number of Active Neighbors:");
-        overlap_utils::print_1d_vector(numColsActInNeigh_);
+        // // Print the number of active neighbors in each column's neighborhood
+        // LOG(INFO, "Number of Active Neighbors:");
+        // overlap_utils::print_1d_vector(numColsActInNeigh_);
 
-        // Print the list of active column indices
-        LOG(INFO, "Active Columns Indices:");
-        overlap_utils::print_1d_vector(activeColumnsInd_);
+        // // Print the list of active column indices
+        // LOG(INFO, "Active Columns Indices:");
+        // overlap_utils::print_1d_vector(activeColumnsInd_);
     }
 
 

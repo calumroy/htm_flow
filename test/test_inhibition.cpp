@@ -6,6 +6,8 @@
 #include <random>
 #include <climits>
 
+#include <utilities/stopwatch.hpp>  // Include for the Stop watch Macros to time tests with.
+
 TEST(ParallelSortIndTest, BasicSorting) {
     // Set up test data
     std::vector<int> indices = {0, 1, 2, 3, 4, 5, 6, 7};
@@ -789,14 +791,16 @@ TEST(InhibitionCalculatorTest, Case4) {
 }
 
 TEST(InhibitionCalculatorTest, LargeInput) {
-    int num_column_cols = 100;
-    int num_column_rows = 100;
-    int inhibition_width = 10;
-    int inhibition_height = 10;
+    int num_column_cols = 1000;
+    int num_column_rows = 1000;
+    int inhibition_width = 20;
+    int inhibition_height = 20;
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  
-    bool wrapMode = false;
+    bool wrapMode = true;
+
+    START_STOPWATCH();
 
     // Generate colOverlapGrid with incremental values
     std::vector<int> colOverlapGrid(num_column_cols * num_column_rows);
@@ -807,8 +811,11 @@ TEST(InhibitionCalculatorTest, LargeInput) {
     }
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    // potColOverlapGrid is the same as colOverlapGrid
+    // potColOverlapGrid is the same as colOverlapGrid plus 1
     std::vector<int> potColOverlapGrid = colOverlapGrid;
+    for (int i = 0; i < num_column_cols * num_column_rows; ++i) {
+        potColOverlapGrid[i] += 1;
+    }
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -821,10 +828,23 @@ TEST(InhibitionCalculatorTest, LargeInput) {
         center_pot_synapses,
         wrapMode);
 
+    STOP_STOPWATCH();
+    unsigned long long startup_time_taken = GET_ELAPSED_TIME();
+    
+    START_STOPWATCH();
+
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
         colOverlapGrid, colOverlapGridShape,
         potColOverlapGrid, colOverlapGridShape);
+
+    STOP_STOPWATCH();
+    // Print out the startup time 
+    LOG(INFO, "Startup time ms: ");
+    LOG(INFO, std::to_string(startup_time_taken));
+    // Print out the inhibition calculation time
+    LOG(INFO, "Inhibition calculation time: ");
+    PRINT_ELAPSED_TIME();
 
     // No assertions; this is a performance test
     ASSERT_TRUE(true);
