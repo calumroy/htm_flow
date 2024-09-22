@@ -851,9 +851,15 @@ TEST(InhibitionCalculatorTest, LargeInput) {
 }
 
 TEST(InhibitionCalculatorTest, RunTime) {
+    // This test is to measure the performance of the inhibition calculation
+    // The inhibition calculation is run multiple times to test performance
+    // Running this test on my laptop: 16 CPU(s) 11th Gen Intel(R) Core(TM) i9-11900H
+    //         Build in Release mode
+    //         [INFO] TestBody (897): Total time for 10 cycles: 
+    //         Elapsed time: 454 milliseconds
     int numCycles = 10;
-    int num_column_cols = 100;
-    int num_column_rows = 100;
+    int num_column_cols = 1000;
+    int num_column_rows = 1000;
     int inhibition_width = 10;
     int inhibition_height = 10;
     int desired_local_activity = 2;
@@ -884,12 +890,18 @@ TEST(InhibitionCalculatorTest, RunTime) {
         center_pot_synapses,
         wrapMode);
 
+    START_STOPWATCH();
+
     // Run the inhibition calculation multiple times to test performance
     for (int i = 0; i < numCycles; ++i) {
         inhibitionCalc.calculate_inhibition(
             colOverlapGrid, colOverlapGridShape,
             potColOverlapGrid, colOverlapGridShape);
     }
+
+    STOP_STOPWATCH();
+    LOG(INFO, "Total time for " + std::to_string(numCycles) + " cycles: ");
+    PRINT_ELAPSED_TIME();
 
     // No assertions; this is a performance test
     ASSERT_TRUE(true);
