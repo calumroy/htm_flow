@@ -1,36 +1,30 @@
 #include "spatiallearn.hpp"
 #include <algorithm>
-#include "utilities/logger.hpp"
+// log
+#include <utilities/logger.hpp>
 
 namespace spatiallearn
 {
 
-    void SpatialLearnCalculator::updatePermanence(int c, int s,
-                                                  const std::vector<std::vector<int>> &colPotInputs,
-                                                  std::vector<std::vector<float>> &colSynPerm,
-                                                  float incPerm, float decPerm)
+    SpatialLearnCalculator::SpatialLearnCalculator(int numColumns,
+                                                   int numPotSynapses,
+                                                   float spatialPermanenceInc,
+                                                   float spatialPermanenceDec,
+                                                   float activeColPermanenceDec)
+        : numColumns_(numColumns),
+          numPotSynapses_(numPotSynapses),
+          spatialPermanenceInc_(spatialPermanenceInc),
+          spatialPermanenceDec_(spatialPermanenceDec),
+          activeColPermanenceDec_(activeColPermanenceDec),
+          prevColPotInputs_(numColumns, std::vector<int>(numPotSynapses, -1)),
+          prevActiveCols_(numColumns, -1)
     {
-        if (colPotInputs[c][s] == 1)
-        {
-            colSynPerm[c][s] += incPerm;
-            colSynPerm[c][s] = std::min(1.0f, colSynPerm[c][s]);
-        }
-        else
-        {
-            colSynPerm[c][s] -= decPerm;
-            colSynPerm[c][s] = std::max(0.0f, colSynPerm[c][s]);
-        }
     }
 
-    void SpatialLearnCalculator::updatePermanenceValues(
+    void SpatialLearnCalculator::calculate_spatiallearn(
         std::vector<std::vector<float>> &colSynPerm,
         const std::vector<std::vector<int>> &colPotInputs,
-        const std::vector<int> &activeCols,
-        std::vector<std::vector<int>> &prevColPotInputs,
-        std::vector<int> &prevActiveCols,
-        float spatialPermanenceInc,
-        float spatialPermanenceDec,
-        float activeColPermanenceDec)
+        const std::vector<int> &activeCols)
     {
         tf::Taskflow taskflow;
         tf::Executor executor;
@@ -45,6 +39,13 @@ namespace spatiallearn
             }
         }
 
+        // Prepare local copies of member variables
+        std::vector<std::vector<int>> prevColPotInputs = prevColPotInputs_;
+        std::vector<int> prevActiveCols = prevActiveCols_;
+        float spatialPermanenceInc = spatialPermanenceInc_;
+        float spatialPermanenceDec = spatialPermanenceDec_;
+        float activeColPermanenceDec = activeColPermanenceDec_;
+
         // Process each active column in parallel
         taskflow.for_each(activeColIndices.begin(), activeColIndices.end(),
                           [&prevActiveCols, &activeCols, &colSynPerm, &colPotInputs,
@@ -55,8 +56,16 @@ namespace spatiallearn
                                   // Column was newly activated
                                   for (int s = 0; s < colSynPerm[c].size(); ++s)
                                   {
-                                      updatePermanence(c, s, colPotInputs, colSynPerm,
-                                                       spatialPermanenceInc, spatialPermanenceDec);
+                                      if (colPotInputs[c][s] == 1)
+                                      {
+                                          colSynPerm[c][s] += spatialPermanenceInc;
+                                          colSynPerm[c][s] = std::min(1.0f, colSynPerm[c][s]);
+                                      }
+                                      else
+                                      {
+                                          colSynPerm[c][s] -= spatialPermanenceDec;
+                                          colSynPerm[c][s] = std::max(0.0f, colSynPerm[c][s]);
+                                      }
                                   }
                               }
                               else
@@ -66,8 +75,16 @@ namespace spatiallearn
                                   {
                                       for (int s = 0; s < colSynPerm[c].size(); ++s)
                                       {
-                                          updatePermanence(c, s, colPotInputs, colSynPerm,
-                                                           spatialPermanenceInc, activeColPermanenceDec);
+                                          if (colPotInputs[c][s] == 1)
+                                          {
+                                              colSynPerm[c][s] += spatialPermanenceInc;
+                                              colSynPerm[c][s] = std::min(1.0f, colSynPerm[c][s]);
+                                          }
+                                          else
+                                          {
+                                              colSynPerm[c][s] -= activeColPermanenceDec;
+                                              colSynPerm[c][s] = std::max(0.0f, colSynPerm[c][s]);
+                                          }
                                       }
                                   }
                               }
@@ -77,34 +94,8 @@ namespace spatiallearn
         executor.run(taskflow).wait();
 
         // Update previous inputs and active columns
-        prevColPotInputs = colPotInputs;
-        prevActiveCols = activeCols;
-    }
-
-    void SpatialLearnCalculator::calculate_spatiallearn(
-        std::vector<std::vector<float>> &colSynPerm,
-        const std::vector<std::vector<int>> &colPotInputs,
-        const std::vector<int> &activeCols)
-    {
-        tf::Taskflow taskflow;
-        tf::Executor executor;
-
-        tf::Taskflow tf1;
-
-        // Task to update permanence values
-        tf1.emplace([&]()
-                    {
-                        updatePermanenceValues(colSynPerm, colPotInputs, activeCols,
-                                               prevColPotInputs_, prevActiveCols_,
-                                               spatialPermanenceInc_, spatialPermanenceDec_, activeColPermanenceDec_);
-                    })
-            .name("updatePermanenceValues");
-
-        // Add the sub-taskflow to the main taskflow
-        tf::Task f1_task = taskflow.composed_of(tf1).name("updatePermanenceValues");
-
-        // Run the taskflow
-        executor.run(taskflow).wait();
+        prevColPotInputs_ = colPotInputs;
+        prevActiveCols_ = activeCols;
 
         LOG(INFO, "SpatialLearnCalculator calculate_spatiallearn Done.");
     }
