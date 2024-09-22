@@ -120,18 +120,23 @@ namespace inhibition
         /// @param[in] colInNeighboursLists A vector of vectors, where each inner vector contains the indices of columns that list each column as a neighbor.
         /// @param[in] desiredLocalActivity The desired number of active columns within an inhibition neighborhood.
         /// @param[in] minOverlap The minimum overlap score required for a column to be considered for activation.
+        /// @param[in] activeColumnsMutex A mutex to protect access to the active columns during concurrent execution.
+        /// @param[in] taskflow A Taskflow object to manage parallel tasks.
         ///
         ///-----------------------------------------------------------------------------
-        void calculate_inhibition_for_column(const std::vector<int>& sortedIndices,
-                                            const std::vector<int>& overlapGrid,
-                                            std::vector<int>& inhibitedCols, 
-                                            std::vector<int>& columnActive, 
-                                            std::vector<int>& numColsActInNeigh, 
-                                            std::vector<int>& activeColumnsInd, 
-                                            const std::vector<std::vector<int>>& neighbourColsLists, 
-                                            const std::vector<std::vector<int>>& colInNeighboursLists, 
-                                            int desiredLocalActivity,
-                                            int minOverlap);
+        void calculate_inhibition_for_column(
+                const std::vector<int>& sortedIndices,
+                const std::vector<int>& overlapGrid,
+                std::vector<std::atomic<int>>& inhibitedCols,
+                std::vector<std::atomic<int>>& columnActive,
+                std::vector<std::atomic<int>>& numColsActInNeigh,
+                std::vector<int>& activeColumnsInd,
+                const std::vector<std::vector<int>>& neighbourColsLists,
+                const std::vector<std::vector<int>>& colInNeighboursLists,
+                int desiredLocalActivity,
+                int minOverlap,
+                std::mutex& activeColumnsMutex,
+                tf::Taskflow& taskflow);
 
         // Member variables
         int width_;                  // Width of the grid of columns
@@ -145,9 +150,9 @@ namespace inhibition
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
 
         std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies     
-        std::vector<int> columnActive_;            // Active state of each column (1 for active, 0 for inactive)
-        std::vector<int> inhibitedCols_;          // State indicating if a column is inhibited
-        std::vector<int> numColsActInNeigh_;      // Number of active columns in each column's neighborhood
+        std::vector<std::atomic<int>> columnActive_;            // Active state of each column (1 for active, 0 for inactive)
+        std::vector<std::atomic<int>> inhibitedCols_;          // State indicating if a column is inhibited
+        std::vector<std::atomic<int>> numColsActInNeigh_;      // Number of active columns in each column's neighborhood
         std::vector<std::vector<int>> neighbourColsLists_; // Neighbors of each column
         std::vector<std::vector<int>> colInNeighboursLists_; // Columns that list each column as a neighbor
     };

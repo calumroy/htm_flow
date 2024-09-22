@@ -15,9 +15,13 @@ namespace inhibition
           potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
           desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
           centerInhib_(centerInhib), wrapMode_(wrapMode), 
-          activeColumnsInd_(), columnActive_(width * height, 0),
-          inhibitedCols_(width * height, 0), numColsActInNeigh_(width * height, 0)
+          activeColumnsInd_()
     {
+        // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.
+        columnActive_ = std::vector<std::atomic<int>>(numColumns_);
+        inhibitedCols_ = std::vector<std::atomic<int>>(numColumns_);
+        numColsActInNeigh_ = std::vector<std::atomic<int>>(numColumns_);
+
         // Initialize the neighbours list for each column
         neighbourColsLists_ = std::vector<std::vector<int>>(width * height);
         colInNeighboursLists_ = std::vector<std::vector<int>>(width * height);
@@ -94,14 +98,16 @@ namespace inhibition
         // Sort columns by overlap values using parallel_sort
         inhibition_utils::parallel_sort_ind(sortedIndices_colOver, colOverlapGrid, tf2);
 
+        // Define a mutex to protect access to activeColumnsInd_
+        std::mutex activeColumnsMutex;
+        
         // Process columns from highest to lowest overlap based on the sorted indices
-        tf3.emplace([&]() {
-            calculate_inhibition_for_column(sortedIndices_colOver, colOverlapGrid, 
-                                            inhibitedCols_, columnActive_, 
-                                            numColsActInNeigh_, activeColumnsInd_, 
-                                            neighbourColsLists_, colInNeighboursLists_, 
-                                            desiredLocalActivity_, minOverlap_);
-        }).name("ProcessOverlap");
+        calculate_inhibition_for_column(sortedIndices_colOver, colOverlapGrid,
+                                        inhibitedCols_, columnActive_,
+                                        numColsActInNeigh_, activeColumnsInd_,
+                                        neighbourColsLists_, colInNeighboursLists_,
+                                        desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf3);
+
 
         // Add a small tie breaker to the potential overlap grid
         add_tie_breaker(const_cast<std::vector<int>&>(potColOverlapGrid), false, tf4);
@@ -110,13 +116,11 @@ namespace inhibition
         inhibition_utils::parallel_sort_ind(sortedIndices_potOver, potColOverlapGrid, tf5);
 
         // Process columns with potential overlap values
-        tf6.emplace([&]() {
-            calculate_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid, 
-                                            inhibitedCols_, columnActive_, 
-                                            numColsActInNeigh_, activeColumnsInd_, 
-                                            neighbourColsLists_, colInNeighboursLists_, 
-                                            desiredLocalActivity_, minOverlap_);
-        }).name("ProcessPotOverlap");
+        calculate_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid,
+                                        inhibitedCols_, columnActive_,
+                                        numColsActInNeigh_, activeColumnsInd_,
+                                        neighbourColsLists_, colInNeighboursLists_,
+                                        desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf6);
 
         // Set the order of the tasks using tf::Task objects
         tf::Task f1_task = taskflow.composed_of(tf1).name("AddTieBreaker");
@@ -171,7 +175,17 @@ namespace inhibition
 
     std::vector<int> InhibitionCalculator::get_active_columns()
     {
-        return columnActive_;
+        // TODO:
+        // Remove this this is not efficient to create a new vector each time.
+        std::vector<int> activeColumns;
+        for (size_t i = 0; i < columnActive_.size(); ++i)
+        {
+            if (columnActive_[i].load() == 1)
+            {
+                activeColumns.push_back(i);
+            }
+        }
+        return activeColumns;
     }
 
     void InhibitionCalculator::add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias, tf::Taskflow &taskflow)
@@ -266,69 +280,91 @@ namespace inhibition
         return closeColumns;
     }
 
-    void InhibitionCalculator::calculate_inhibition_for_column(const std::vector<int>& sortedIndices,
-                                                            const std::vector<int>& overlapGrid,
-                                                            std::vector<int>& inhibitedCols, 
-                                                            std::vector<int>& columnActive, 
-                                                            std::vector<int>& numColsActInNeigh, 
-                                                            std::vector<int>& activeColumnsInd, 
-                                                            const std::vector<std::vector<int>>& neighbourColsLists, 
-                                                            const std::vector<std::vector<int>>& colInNeighboursLists, 
-                                                            int desiredLocalActivity,
-                                                            int minOverlap)
+    void InhibitionCalculator::calculate_inhibition_for_column(
+        const std::vector<int>& sortedIndices,
+        const std::vector<int>& overlapGrid,
+        std::vector<std::atomic<int>>& inhibitedCols,
+        std::vector<std::atomic<int>>& columnActive,
+        std::vector<std::atomic<int>>& numColsActInNeigh,
+        std::vector<int>& activeColumnsInd,
+        const std::vector<std::vector<int>>& neighbourColsLists,
+        const std::vector<std::vector<int>>& colInNeighboursLists,
+        int desiredLocalActivity,
+        int minOverlap,
+        std::mutex& activeColumnsMutex,
+        tf::Taskflow& taskflow)
     {
-        // TODO: Make a taskflow parallel version of this function
-        for (int i : sortedIndices) {
-            if (inhibitedCols[i] == 0 && columnActive[i] == 0 && overlapGrid[i] >= minOverlap) {
-                std::vector<int> neighbourCols = neighbourColsLists[i];
+        // Create a parallel_for task in the taskflow
+        taskflow.for_each_index(0ul, sortedIndices.size(), 1ul, [&, this](size_t idx) {
+            int i = sortedIndices[idx];
+            if (inhibitedCols[i].load() == 0 && columnActive[i].load() == 0 && overlapGrid[i] >= minOverlap)
+            {
+                const std::vector<int>& neighbourCols = neighbourColsLists[i];
                 int numActiveNeighbours = 0;
+                bool inhibit = false;
 
                 // Check neighbours for active columns
                 for (int neighborIndex : neighbourCols)
                 {
-                    if (neighborIndex >= 0 && columnActive[neighborIndex] == 1)
+                    if (neighborIndex >= 0 && columnActive[neighborIndex].load() == 1)
                     {
                         numActiveNeighbours++;
-                        if (numColsActInNeigh[neighborIndex] >= desiredLocalActivity)
+                        if (numColsActInNeigh[neighborIndex].load() >= desiredLocalActivity)
                         {
-                            inhibitedCols[i] = 1;
+                            inhibit = true;
+                            inhibitedCols[i].store(1);
+                            break; // No need to check further
                         }
                     }
                 }
 
-                // Check if the column is in any neighbour lists of active columns
-                for (int activeNeighbor : colInNeighboursLists[i])
+                if (!inhibit)
                 {
-                    if (columnActive[activeNeighbor] == 1)
+                    // Check if the column is in any neighbour lists of active columns
+                    const std::vector<int>& inNeighbours = colInNeighboursLists[i];
+                    for (int activeNeighbor : inNeighbours)
                     {
-                        if (numColsActInNeigh[activeNeighbor] >= desiredLocalActivity)
+                        if (columnActive[activeNeighbor].load() == 1)
                         {
-                            inhibitedCols[i] = 1;
+                            if (numColsActInNeigh[activeNeighbor].load() >= desiredLocalActivity)
+                            {
+                                inhibit = true;
+                                inhibitedCols[i].store(1);
+                                break; // No need to check further
+                            }
                         }
                     }
                 }
 
-                numColsActInNeigh[i] = numActiveNeighbours;
+                numColsActInNeigh[i].store(numActiveNeighbours);
 
                 // Activate column if not inhibited and the number of active neighbors is less than desired local activity
-                if (inhibitedCols[i] != 1 && numColsActInNeigh[i] < desiredLocalActivity)
+                if (!inhibit && numColsActInNeigh[i].load() < desiredLocalActivity)
                 {
-                    activeColumnsInd.push_back(i);
-                    columnActive[i] = 1;
-                    for (int c : colInNeighboursLists[i])
+                    // Add i to activeColumnsInd
+                    {
+                        std::lock_guard<std::mutex> lock(activeColumnsMutex);
+                        activeColumnsInd.push_back(i);
+                    }
+
+                    columnActive[i].store(1);
+
+                    // Increment numColsActInNeigh for inNeighbours
+                    const std::vector<int>& inNeighbours = colInNeighboursLists[i];
+                    for (int c : inNeighbours)
                     {
                         if (c >= 0)
                         {
-                            numColsActInNeigh[c]++;
+                            numColsActInNeigh[c].fetch_add(1);
                         }
                     }
                 }
                 else
                 {
-                    inhibitedCols[i] = 1;
+                    inhibitedCols[i].store(1);
                 }
             }
-        }
+        }).name("ProcessOverlapOrPotential");
     }
 
 
