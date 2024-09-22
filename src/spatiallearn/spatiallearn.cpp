@@ -24,20 +24,11 @@ namespace spatiallearn
     void SpatialLearnCalculator::calculate_spatiallearn(
         std::vector<std::vector<float>> &colSynPerm,
         const std::vector<std::vector<int>> &colPotInputs,
-        const std::vector<int> &activeCols)
+        const std::vector<int> &activeCols,
+        const std::vector<int> &activeColIndices)
     {
         tf::Taskflow taskflow;
         tf::Executor executor;
-
-        // Create a vector of active column indices
-        std::vector<int> activeColIndices;
-        for (int c = 0; c < activeCols.size(); ++c)
-        {
-            if (activeCols[c] == 1)
-            {
-                activeColIndices.push_back(c);
-            }
-        }
 
         // Prepare local copies of member variables
         std::vector<std::vector<int>> prevColPotInputs = prevColPotInputs_;

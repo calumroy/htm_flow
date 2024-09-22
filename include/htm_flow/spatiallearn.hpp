@@ -39,15 +39,17 @@ namespace spatiallearn
         ///
         /// calculate_spatiallearn   Performs the spatial learning calculation by updating the synapse permanence values.
         ///
-        /// @param[in,out] colSynPerm    Matrix of synapse permanence values for each column.
-        /// @param[in]     colPotInputs  Matrix of potential synapse inputs for each column.
-        /// @param[in]     activeCols    Vector indicating active columns (1 for active, 0 for inactive).
+        /// @param[in,out] colSynPerm        Matrix of synapse permanence values for each column.
+        /// @param[in]     colPotInputs      Matrix of potential synapse inputs for each column.
+        /// @param[in]     activeCols        Vector indicating active columns (1 for active, 0 for inactive).
+        /// @param[in]     activeColIndices  Vector of indices for active columns.
         ///
         ///-----------------------------------------------------------------------------
         void calculate_spatiallearn(
             std::vector<std::vector<float>> &colSynPerm,
             const std::vector<std::vector<int>> &colPotInputs,
-            const std::vector<int> &activeCols);
+            const std::vector<int> &activeCols,
+            const std::vector<int> &activeColIndices);
 
     private:
         int numColumns_;                  // Number of columns in the HTM layer
