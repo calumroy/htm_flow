@@ -77,7 +77,9 @@ if(USE_GPU)
 endif()
 
 # Add all the cpp files in the src directory
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/*.cpp)
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp 
+                                  ${PROJECT_SOURCE_DIR}/src/inhibition/*.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/spatiallearn/*.cpp)
 
 # Build the Project executable
 add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
@@ -117,7 +119,10 @@ if(BUILD_TESTS)
   enable_testing()
 
 # Add all the cpp files in the test directory and include the necessary source files
-file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp)
+file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp 
+                                  ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp 
+                                  ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/spatiallearn/spatiallearn.cpp)
 
 
   # Filter out the GPU test files if GPU flag is set to FALSE

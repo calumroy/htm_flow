@@ -277,6 +277,7 @@ namespace inhibition
                                                             int desiredLocalActivity,
                                                             int minOverlap)
     {
+        // TODO: Make a taskflow parallel version of this function
         for (int i : sortedIndices) {
             if (inhibitedCols[i] == 0 && columnActive[i] == 0 && overlapGrid[i] >= minOverlap) {
                 std::vector<int> neighbourCols = neighbourColsLists[i];
