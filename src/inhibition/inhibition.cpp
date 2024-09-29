@@ -254,7 +254,8 @@ namespace inhibition
             int i = sortedIndices[idx];
             LOG(INFO, "Processing column: " + std::to_string(i) + " with overlap: " + std::to_string(overlapGrid[i]));
 
-            // Access member variables via 'this'
+            // Access member variables via 'this'.
+            // Check if the column to be processed is already inhibited or active and meets the minimum overlap score
             if (this->inhibitedCols_[i].load() == 0 && this->columnActive_[i].load() == 0 && overlapGrid[i] >= minOverlap)
             {
                 const std::vector<int>& neighbourCols = neighbourColsLists[i];
