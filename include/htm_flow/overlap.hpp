@@ -58,10 +58,10 @@ namespace overlap
 
         ///-----------------------------------------------------------------------------
         ///
-        /// get_col_overlaps - Returns the overlap scores for each column.
+        /// get_col_overlaps - Returns the overlap scores (with tiebreaker fract values) for each column.
         ///
-        /// @return A 1D vector of ints representing the overlap scores for each column.
-        std::vector<int> get_col_overlaps();
+        /// @return A 1D vector of floats representing the overlap scores for each column (overlap scores plus tiebreaker fractional values).
+        std::vector<float> get_col_overlaps();
 
     private:
         // // Calculate the potential synapses for a given column
