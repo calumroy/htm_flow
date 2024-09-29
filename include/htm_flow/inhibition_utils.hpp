@@ -17,8 +17,8 @@ namespace inhibition_utils
     /// @param[in,out] taskflow The Taskflow object for managing tasks.
     ///
     ///-----------------------------------------------------------------------------
-    template <typename T>
-    void parallel_sort_ind(std::vector<T> &indices, const std::vector<T> &values, tf::Taskflow &taskflow) {
+    template <typename T, typename U>
+    void parallel_sort_ind(std::vector<T> &indices, const std::vector<U> &values, tf::Taskflow &taskflow) {
         // Just return if the indices are empty
         if (indices.empty()) {
             return;

@@ -18,13 +18,22 @@ namespace inhibition
           activeColumnsInd_()
     {
         // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.
-        columnActive_ = std::vector<std::atomic<int>>(numColumns_);
-        inhibitedCols_ = std::vector<std::atomic<int>>(numColumns_);
-        numColsActInNeigh_ = std::vector<std::atomic<int>>(numColumns_);
+        // Initialize atomic variables. Allocate the arrays before using them
+        columnActive_ = std::make_unique<std::atomic<int>[]>(numColumns_);
+        inhibitedCols_ = std::make_unique<std::atomic<int>[]>(numColumns_);
+        numColsActInNeigh_ = std::make_unique<std::atomic<int>[]>(numColumns_);
+
+        // Initialize atomic variables
+        for (int i = 0; i < numColumns_; ++i)
+        {
+            columnActive_[i].store(0);
+            inhibitedCols_[i].store(0);
+            numColsActInNeigh_[i].store(0);
+        }
 
         // Initialize the neighbours list for each column
-        neighbourColsLists_ = std::vector<std::vector<int>>(width * height);
-        colInNeighboursLists_ = std::vector<std::vector<int>>(width * height);
+        neighbourColsLists_ = std::vector<std::vector<int>>(width_ * height_);
+        colInNeighboursLists_ = std::vector<std::vector<int>>(width_ * height_);
 
         // Calculate neighbours
         for (int y = 0; y < height_; ++y)
@@ -85,11 +94,11 @@ namespace inhibition
         // TODO: move this into the constructor and only allow it to be called once.
         // THis will force the colOverlapGrid size to be statically determined and not change. 
         // Prepare a vector of indices for sorting for the colOverlapGrid
-        std::vector<float> sortedIndices_colOver(colOverlapGrid.size());
-        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0.0f);
+        std::vector<int> sortedIndices_colOver(colOverlapGrid.size());
+        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0);
         // Prepare a vector of indices for sorting for the potColOverlapGrid
-        std::vector<float> sortedIndices_potOver(potColOverlapGrid.size());
-        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0.0f);
+        std::vector<int> sortedIndices_potOver(potColOverlapGrid.size());
+        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0);
 
         // Define the taskflow structure for the inhibition calculation
         tf::Taskflow tf1, tf2, tf3, tf4;
@@ -102,8 +111,7 @@ namespace inhibition
         
         // Process columns from highest to lowest overlap based on the sorted indices
         calculate_inhibition_for_column(sortedIndices_colOver, colOverlapGrid,
-                                        inhibitedCols_, columnActive_,
-                                        numColsActInNeigh_, activeColumnsInd_,
+                                        activeColumnsInd_,
                                         neighbourColsLists_, colInNeighboursLists_,
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf2);
 
@@ -112,8 +120,7 @@ namespace inhibition
 
         // Process columns with potential overlap values
         calculate_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid,
-                                        inhibitedCols_, columnActive_,
-                                        numColsActInNeigh_, activeColumnsInd_,
+                                        activeColumnsInd_,
                                         neighbourColsLists_, colInNeighboursLists_,
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf4);
 
@@ -148,32 +155,29 @@ namespace inhibition
 
         // Print the inhibited columns
         LOG(INFO, "Inhibited Columns:");
-        overlap_utils::print_1d_vector(inhibitedCols_);
+        overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
 
-        // // Print the active columns
-        // LOG(INFO, "Active Columns:");
-        // overlap_utils::print_2d_vector(columnActive_, colOverlapGridShape);
+        // Print the active columns
+        LOG(INFO, "Active Columns:");
+        overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
 
         // Print the number of active neighbors in each column's neighborhood
         LOG(INFO, "Number of Active Neighbors:");
-        overlap_utils::print_1d_vector(numColsActInNeigh_);
+        overlap_utils::print_1d_atomic_array(numColsActInNeigh_.get(), numColumns_);
 
         // Print the list of active column indices
         LOG(INFO, "Active Columns Indices:");
         overlap_utils::print_1d_vector(activeColumnsInd_);
     }
-
+        
     std::vector<int> InhibitionCalculator::get_active_columns()
     {
         // TODO:
         // Remove this this is not efficient to create a new vector each time.
-        std::vector<int> activeColumns;
-        for (size_t i = 0; i < columnActive_.size(); ++i)
+        std::vector<int> activeColumns(numColumns_, 0);
+        for (size_t i = 0; i < numColumns_; ++i)
         {
-            if (columnActive_[i].load() == 1)
-            {
-                activeColumns.push_back(i);
-            }
+            activeColumns[i] = columnActive_[i].load();
         }
         return activeColumns;
     }
@@ -233,11 +237,8 @@ namespace inhibition
     }
 
     void InhibitionCalculator::calculate_inhibition_for_column(
-        const std::vector<float>& sortedIndices,
+        const std::vector<int>& sortedIndices,
         const std::vector<float>& overlapGrid,
-        std::vector<std::atomic<int>>& inhibitedCols,
-        std::vector<std::atomic<int>>& columnActive,
-        std::vector<std::atomic<int>>& numColsActInNeigh,
         std::vector<int>& activeColumnsInd,
         const std::vector<std::vector<int>>& neighbourColsLists,
         const std::vector<std::vector<int>>& colInNeighboursLists,
@@ -246,10 +247,15 @@ namespace inhibition
         std::mutex& activeColumnsMutex,
         tf::Taskflow& taskflow)
     {
-        // Create a parallel_for task in the taskflow, 0ul is the start index, sortedIndices.size() is the end index, 1ul is the step size
-        taskflow.for_each_index(0ul, sortedIndices.size(), 1ul, [&, this](size_t idx) {
+        // Create a parallel_for task in the taskflow, 0ul is the start index, sortedIndices.size() is the end index, 1ul is the step size.
+        // Capture all required variables by reference using [&] also capture the var desiredLocalActivity and minOverlap by value as these are used in the lambda function.
+        // We are making sure that if the lambda funciotn is called later on the variables are still valid.
+        taskflow.for_each_index(0ul, sortedIndices.size(), 1ul, [&, this, desiredLocalActivity, minOverlap](size_t idx) {
             int i = sortedIndices[idx];
-            if (inhibitedCols[i].load() == 0 && columnActive[i].load() == 0 && overlapGrid[i] >= minOverlap)
+            LOG(INFO, "Processing column: " + std::to_string(i) + " with overlap: " + std::to_string(overlapGrid[i]));
+
+            // Access member variables via 'this'
+            if (this->inhibitedCols_[i].load() == 0 && this->columnActive_[i].load() == 0 && overlapGrid[i] >= minOverlap)
             {
                 const std::vector<int>& neighbourCols = neighbourColsLists[i];
                 int numActiveNeighbours = 0;
@@ -258,13 +264,13 @@ namespace inhibition
                 // Check neighbours for active columns
                 for (int neighborIndex : neighbourCols)
                 {
-                    if (neighborIndex >= 0 && columnActive[neighborIndex].load() == 1)
+                    if (neighborIndex >= 0 && this->columnActive_[neighborIndex].load() == 1)
                     {
                         numActiveNeighbours++;
-                        if (numColsActInNeigh[neighborIndex].load() >= desiredLocalActivity)
+                        if (this->numColsActInNeigh_[neighborIndex].load() >= desiredLocalActivity)
                         {
                             inhibit = true;
-                            inhibitedCols[i].store(1);
+                            this->inhibitedCols_[i].store(1);
                             break; // No need to check further
                         }
                     }
@@ -272,52 +278,54 @@ namespace inhibition
 
                 if (!inhibit)
                 {
-                    // Check if the column is in any neighbour lists of active columns
+                    // Check if the column is in any neighbor lists of active columns
                     const std::vector<int>& inNeighbours = colInNeighboursLists[i];
                     for (int activeNeighbor : inNeighbours)
                     {
-                        if (columnActive[activeNeighbor].load() == 1)
+                        if (this->columnActive_[activeNeighbor].load() == 1)
                         {
-                            if (numColsActInNeigh[activeNeighbor].load() >= desiredLocalActivity)
+                            if (this->numColsActInNeigh_[activeNeighbor].load() >= desiredLocalActivity)
                             {
                                 inhibit = true;
-                                inhibitedCols[i].store(1);
+                                this->inhibitedCols_[i].store(1);
                                 break; // No need to check further
                             }
                         }
                     }
                 }
 
-                numColsActInNeigh[i].store(numActiveNeighbours);
+                // Store the number of active neighbors
+                this->numColsActInNeigh_[i].store(numActiveNeighbours);
 
-                // Activate column if not inhibited and the number of active neighbors is less than desired local activity
-                if (!inhibit && numColsActInNeigh[i].load() < desiredLocalActivity)
+                // Activate the column if not inhibited and local activity criteria are met
+                if (!inhibit && this->numColsActInNeigh_[i].load() < desiredLocalActivity)
                 {
-                    // Add i to activeColumnsInd
+                    // Add the column index to the list of active columns
                     {
                         std::lock_guard<std::mutex> lock(activeColumnsMutex);
                         activeColumnsInd.push_back(i);
                     }
 
-                    columnActive[i].store(1);
+                    // Mark the column as active
+                    this->columnActive_[i].store(1);
 
-                    // Increment numColsActInNeigh for inNeighbours
+                    // Increment the active neighbor count for columns that list this column as a neighbor
                     const std::vector<int>& inNeighbours = colInNeighboursLists[i];
                     for (int c : inNeighbours)
                     {
                         if (c >= 0)
                         {
-                            numColsActInNeigh[c].fetch_add(1);
+                            this->numColsActInNeigh_[c].fetch_add(1);
                         }
                     }
                 }
                 else
                 {
-                    inhibitedCols[i].store(1);
+                    // Mark the column as inhibited
+                    this->inhibitedCols_[i].store(1);
                 }
             }
         }).name("ProcessOverlapOrPotential");
     }
-
 
 } // namespace inhibition

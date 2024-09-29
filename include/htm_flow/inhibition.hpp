@@ -116,11 +116,8 @@ namespace inhibition
         ///
         ///-----------------------------------------------------------------------------
         void calculate_inhibition_for_column(
-                const std::vector<float>& sortedIndices,
+                const std::vector<int>& sortedIndices,
                 const std::vector<float>& overlapGrid,
-                std::vector<std::atomic<int>>& inhibitedCols,
-                std::vector<std::atomic<int>>& columnActive,
-                std::vector<std::atomic<int>>& numColsActInNeigh,
                 std::vector<int>& activeColumnsInd,
                 const std::vector<std::vector<int>>& neighbourColsLists,
                 const std::vector<std::vector<int>>& colInNeighboursLists,
@@ -139,11 +136,15 @@ namespace inhibition
         int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
-
         std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies     
-        std::vector<std::atomic<int>> columnActive_;            // Active state of each column (1 for active, 0 for inactive)
-        std::vector<std::atomic<int>> inhibitedCols_;          // State indicating if a column is inhibited
-        std::vector<std::atomic<int>> numColsActInNeigh_;      // Number of active columns in each column's neighborhood
+        // We use atomic variables to ensure thread safety when updating the active and inhibited columns.
+        // Use a pointer to an array of atomic variables to allow for dynamic memory allocation at runtime.
+        // We cannot use a vector of atomic variables because the vector class does not support atomic types (atomic types cannot be copied or moved).
+        // We use a unique_ptr to ensure that the memory is deallocated when the object is destroyed.
+        std::unique_ptr<std::atomic<int>[]> columnActive_;        // Active state of each column (1 for active, 0 for inactive)
+        std::unique_ptr<std::atomic<int>[]> inhibitedCols_;       // State indicating if a column is inhibited
+        std::unique_ptr<std::atomic<int>[]> numColsActInNeigh_;   // Number of active columns in each column's neighborhood
+
         std::vector<std::vector<int>> neighbourColsLists_; // Neighbors of each column
         std::vector<std::vector<int>> colInNeighboursLists_; // Columns that list each column as a neighbor
     };
