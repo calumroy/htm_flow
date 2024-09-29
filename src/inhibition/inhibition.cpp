@@ -142,32 +142,32 @@ namespace inhibition
         tf::Future<void> fu = executor.run(taskflow);
         fu.wait(); // Block until the execution completes
     
-        // Print the results using LOG and overlap_utils functions
-        LOG(INFO, "Final Results:");
+        // // Print the results using LOG and overlap_utils functions
+        // LOG(INFO, "Final Results:");
 
-        // Print the sorted indices
-        LOG(INFO, "Sorted Indices:");
-        overlap_utils::print_1d_vector(sortedIndices_colOver);
+        // // Print the sorted indices
+        // LOG(INFO, "Sorted Indices:");
+        // overlap_utils::print_1d_vector(sortedIndices_colOver);
 
-        // Print the overlap grid after tie-breakers
-        LOG(INFO, "Overlap Grid (with Tie-Breakers):");
-        overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
+        // // Print the overlap grid after tie-breakers
+        // LOG(INFO, "Overlap Grid (with Tie-Breakers):");
+        // overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
 
-        // Print the inhibited columns
-        LOG(INFO, "Inhibited Columns:");
-        overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
+        // // Print the inhibited columns
+        // LOG(INFO, "Inhibited Columns:");
+        // overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
 
-        // Print the active columns
-        LOG(INFO, "Active Columns:");
-        overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
+        // // Print the active columns
+        // LOG(INFO, "Active Columns:");
+        // overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
 
-        // Print the number of active neighbors in each column's neighborhood
-        LOG(INFO, "Number of Active Neighbors:");
-        overlap_utils::print_1d_atomic_array(numColsActInNeigh_.get(), numColumns_);
+        // // Print the number of active neighbors in each column's neighborhood
+        // LOG(INFO, "Number of Active Neighbors:");
+        // overlap_utils::print_1d_atomic_array(numColsActInNeigh_.get(), numColumns_);
 
-        // Print the list of active column indices
-        LOG(INFO, "Active Columns Indices:");
-        overlap_utils::print_1d_vector(activeColumnsInd_);
+        // // Print the list of active column indices
+        // LOG(INFO, "Active Columns Indices:");
+        // overlap_utils::print_1d_vector(activeColumnsInd_);
     }
         
     std::vector<int> InhibitionCalculator::get_active_columns()
@@ -252,7 +252,7 @@ namespace inhibition
         // We are making sure that if the lambda funciotn is called later on the variables are still valid.
         taskflow.for_each_index(0ul, sortedIndices.size(), 1ul, [&, this, desiredLocalActivity, minOverlap](size_t idx) {
             int i = sortedIndices[idx];
-            LOG(INFO, "Processing column: " + std::to_string(i) + " with overlap: " + std::to_string(overlapGrid[i]));
+            //LOG(DEBUG, "Processing column: " + std::to_string(i) + " with overlap: " + std::to_string(overlapGrid[i]));
 
             // Access member variables via 'this'.
             // Check if the column to be processed is already inhibited or active and meets the minimum overlap score
