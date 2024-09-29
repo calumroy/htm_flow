@@ -308,7 +308,6 @@ TEST(ParallelSortIndTest, RandomValues) {
 
     ASSERT_EQ(indices, expected_sorted_indices);
 }
-
 TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
 {
     // Set up test parameters
@@ -322,14 +321,14 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     bool wrapMode = false;
 
     // Create test input for colOverlapGrid and potColOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         3, 2, 4, 1,
         1, 3, 2, 2,
         4, 1, 3, 1,
         2, 4, 1, 3};
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    std::vector<int> potColOverlapGrid = {
+    std::vector<float> potColOverlapGrid = {
         2, 1, 2, 1,
         1, 2, 1, 2,
         2, 1, 2, 1,
@@ -378,7 +377,7 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
     bool wrapMode = false;
 
     // Create test input for colOverlapGrid and potColOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         3, 2, 4, 1, 5, 2, 3, 4, 1, 2,
         1, 3, 2, 2, 4, 1, 3, 2, 4, 1,
         4, 1, 3, 1, 2, 4, 1, 3, 1, 2,
@@ -391,7 +390,7 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
         1, 3, 2, 2, 4, 1, 3, 2, 4, 1};
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    std::vector<int> potColOverlapGrid = {
+    std::vector<float> potColOverlapGrid = {
         6, 5, 7, 4, 6, 5, 6, 5, 6, 5,
         5, 6, 5, 6, 5, 6, 5, 6, 5, 6,
         7, 4, 6, 4, 6, 5, 6, 5, 6, 5,
@@ -451,11 +450,7 @@ TEST(InhibitionCalculatorTest, Case1) {
     bool wrapMode = false;
 
     // Initialize colOverlapGrid
-    std::vector<int> colOverlapGrid = {
-        0, 0, 3, 3, 0, 0, 0, 0,
-        0, 0, 3, 3, 0, 0, 0, 0,
-        0, 0, 3, 3, 0, 0, 0, 0,
-        0, 0, 3, 3, 0, 0, 0, 0,
+    std::vector<float> colOverlapGrid = {
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
@@ -476,7 +471,7 @@ TEST(InhibitionCalculatorTest, Case1) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -524,7 +519,6 @@ TEST(InhibitionCalculatorTest, Case1) {
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
-
 TEST(InhibitionCalculatorTest, Case2) {
     int num_column_cols = 4;
     int num_column_rows = 4;
@@ -535,7 +529,7 @@ TEST(InhibitionCalculatorTest, Case2) {
     bool center_pot_synapses = true;
     bool wrapMode = false;
 
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
         8, 6, 1, 6,
         7, 7, 9, 4,
@@ -543,7 +537,7 @@ TEST(InhibitionCalculatorTest, Case2) {
     };
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     inhibition::InhibitionCalculator inhibitionCalc(
         num_column_cols,
@@ -581,7 +575,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     bool wrapMode = false;
 
     // Initialize colOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
         8, 6, 1, 6,
         7, 7, 9, 4,
@@ -590,7 +584,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -634,7 +628,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase1) {
     bool wrapMode = true;
 
     // Initialize colOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
         8, 6, 1, 6,
         7, 7, 9, 4,
@@ -643,7 +637,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase1) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -687,7 +681,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase2) {
     bool wrapMode = true;
 
     // Initialize colOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         8, 4, 5, 8, 3, 2,
         8, 6, 1, 6, 7, 5,
         7, 7, 9, 4, 2, 1,
@@ -698,7 +692,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase2) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -744,7 +738,7 @@ TEST(InhibitionCalculatorTest, Case4) {
     bool wrapMode = false;
 
     // Initialize colOverlapGrid
-    std::vector<int> colOverlapGrid = {
+    std::vector<float> colOverlapGrid = {
         0, 0, 3, 3, 0,
         0, 0, 3, 3, 0,
         0, 0, 3, 3, 0,
@@ -755,7 +749,7 @@ TEST(InhibitionCalculatorTest, Case4) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -803,7 +797,7 @@ TEST(InhibitionCalculatorTest, LargeInput) {
     START_STOPWATCH();
 
     // Generate colOverlapGrid with incremental values
-    std::vector<int> colOverlapGrid(num_column_cols * num_column_rows);
+    std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
     for (int row = 0; row < num_column_rows; ++row) {
         for (int col = 0; col < num_column_cols; ++col) {
             colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
@@ -812,7 +806,7 @@ TEST(InhibitionCalculatorTest, LargeInput) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid plus 1
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
     for (int i = 0; i < num_column_cols * num_column_rows; ++i) {
         potColOverlapGrid[i] += 1;
     }
@@ -868,7 +862,7 @@ TEST(InhibitionCalculatorTest, RunTime) {
     bool wrapMode = false;
 
     // Generate colOverlapGrid with incremental values
-    std::vector<int> colOverlapGrid(num_column_cols * num_column_rows);
+    std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
     for (int row = 0; row < num_column_rows; ++row) {
         for (int col = 0; col < num_column_cols; ++col) {
             colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
@@ -877,7 +871,7 @@ TEST(InhibitionCalculatorTest, RunTime) {
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
     // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<int> potColOverlapGrid = colOverlapGrid;
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
 
     // Create an instance of InhibitionCalculator
     inhibition::InhibitionCalculator inhibitionCalc(
@@ -906,4 +900,3 @@ TEST(InhibitionCalculatorTest, RunTime) {
     // No assertions; this is a performance test
     ASSERT_TRUE(true);
 }
-

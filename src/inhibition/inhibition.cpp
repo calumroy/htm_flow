@@ -76,18 +76,20 @@ namespace inhibition
     ///    - Store the final activation state of each column.
     ///-----------------------------------------------------------------------------
     void InhibitionCalculator::calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-                                                    const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
+                                                    const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
     {
         // Create a single Taskflow and Executor object
         tf::Taskflow taskflow;
         tf::Executor executor;
 
+        // TODO: move this into the constructor and only allow it to be called once.
+        // THis will force the colOverlapGrid size to be statically determined and not change. 
         // Prepare a vector of indices for sorting for the colOverlapGrid
-        std::vector<int> sortedIndices_colOver(colOverlapGrid.size());
-        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0);
+        std::vector<float> sortedIndices_colOver(colOverlapGrid.size());
+        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0.0f);
         // Prepare a vector of indices for sorting for the potColOverlapGrid
-        std::vector<int> sortedIndices_potOver(potColOverlapGrid.size());
-        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0);
+        std::vector<float> sortedIndices_potOver(potColOverlapGrid.size());
+        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0.0f);
 
         // Define the taskflow structure for the inhibition calculation
         tf::Taskflow tf1, tf2, tf3, tf4;
@@ -116,16 +118,15 @@ namespace inhibition
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf4);
 
         // Set the order of the tasks using tf::Task objects
-        tf::Task f2_task = taskflow.composed_of(tf1).name("SortOverlap");
-        tf::Task f3_task = taskflow.composed_of(tf2).name("ProcessOverlap");
-        tf::Task f5_task = taskflow.composed_of(tf3).name("SortPotOverlap");
-        tf::Task f6_task = taskflow.composed_of(tf4).name("ProcessPotOverlap");
+        tf::Task f1_task = taskflow.composed_of(tf1).name("SortOverlap");
+        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessOverlap");
+        tf::Task f3_task = taskflow.composed_of(tf3).name("SortPotOverlap");
+        tf::Task f4_task = taskflow.composed_of(tf4).name("ProcessPotOverlap");
 
-        // Set the task dependencies
-        f1_task.precede(f1_task);
-        f2_task.precede(f2_task);
-        f3_task.precede(f3_task);
-        f4_task.precede(f4_task);
+        // Task dependencies to assign order of execution
+        f1_task.precede(f2_task); // SortOverlap precedes ProcessOverlap
+        f2_task.precede(f3_task); // ProcessOverlap precedes SortPotOverlap
+        f3_task.precede(f4_task); // SortPotOverlap precedes ProcessPotOverlap
 
         // Dump the graph to a DOT file through std::cout (optional for debugging)
         taskflow.dump(std::cout);
