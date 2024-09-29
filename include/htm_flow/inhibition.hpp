@@ -39,8 +39,8 @@ namespace inhibition
         /// @param[in] potColOverlapGridShape   The shape of the potColOverlapGrid vector as a pair of ints (rows, cols).
         ///
         ///-----------------------------------------------------------------------------
-        void calculate_inhibition(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-                                  const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
+        void calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+                                  const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
         ///-----------------------------------------------------------------------------
         ///
         /// get_active_columns - Returns the active state of each column.
@@ -72,15 +72,6 @@ namespace inhibition
 
 
     private:
-        ///-----------------------------------------------------------------------------
-        ///
-        /// add_tie_breaker   Adds a small value to each column's overlap score to help resolve ties.
-        ///
-        /// @param[in,out] overlapGrid The overlap scores for each column. A 1D vector simulating a 2D vector.
-        /// @param[in] addColBias  A boolean indicating whether to add a bias for columns previously active.
-        ///
-        ///-----------------------------------------------------------------------------
-        void add_tie_breaker(std::vector<int>& overlapGrid, bool addColBias, tf::Taskflow &taskflow);
 
 
         ///-----------------------------------------------------------------------------
@@ -125,8 +116,8 @@ namespace inhibition
         ///
         ///-----------------------------------------------------------------------------
         void calculate_inhibition_for_column(
-                const std::vector<int>& sortedIndices,
-                const std::vector<int>& overlapGrid,
+                const std::vector<float>& sortedIndices,
+                const std::vector<float>& overlapGrid,
                 std::vector<std::atomic<int>>& inhibitedCols,
                 std::vector<std::atomic<int>>& columnActive,
                 std::vector<std::atomic<int>>& numColsActInNeigh,
