@@ -248,11 +248,12 @@ namespace inhibition
             LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is being processed");
 
             // Begin critical section
-            // Build list of active columns in the neighborhood and their overlap scores
+            // Build list of active columns in the neighborhood (both neighbors and columns that include i as neighbor)
             std::vector<int> activeNeighbors;
             std::vector<float> activeNeighborsOverlap;
-            const std::vector<int>& neighborCols = neighbourColsLists[i];
 
+            // Collect active neighbors from neighbourColsLists[i]
+            const std::vector<int>& neighborCols = neighbourColsLists[i];
             for (int neighborIndex : neighborCols)
             {
                 if (columnActive_[neighborIndex].load() == 1)
@@ -262,8 +263,23 @@ namespace inhibition
                 }
             }
 
-            // Check if the current column is already active, if so do no need to do anything else for this column
-            if (std::find(activeNeighbors.begin(), activeNeighbors.end(), i) != activeNeighbors.end())
+            // Collect active neighbors from colInNeighboursLists[i]
+            const std::vector<int>& inNeighborCols = colInNeighboursLists[i];
+            for (int neighborIndex : inNeighborCols)
+            {
+                if (columnActive_[neighborIndex].load() == 1)
+                {
+                    // Avoid duplicates
+                    if (std::find(activeNeighbors.begin(), activeNeighbors.end(), neighborIndex) == activeNeighbors.end())
+                    {
+                        activeNeighbors.push_back(neighborIndex);
+                        activeNeighborsOverlap.push_back(overlapGrid[neighborIndex]);
+                    }
+                }
+            }
+
+            // Check if the current column is already active
+            if (columnActive_[i].load() == 1)
             {
                 // Current column is already active
                 for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it)
@@ -338,7 +354,6 @@ namespace inhibition
             {
                 columnMutexes_[*it].unlock();
             }
-
 
         }).name("ProcessColumns");
     }
