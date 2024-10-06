@@ -105,17 +105,17 @@ namespace inhibition
                                         neighbourColsLists_, colInNeighboursLists_,
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf1);
 
-        // Process columns with potential overlap grid
-        calculate_inhibition_for_column(potColOverlapGrid,
-                                        activeColumnsInd_,
-                                        neighbourColsLists_, colInNeighboursLists_,
-                                        desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf2);
+        // // Process columns with potential overlap grid
+        // calculate_inhibition_for_column(potColOverlapGrid,
+        //                                 activeColumnsInd_,
+        //                                 neighbourColsLists_, colInNeighboursLists_,
+        //                                 desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf2);
 
         // Set the order of the tasks using tf::Task objects
         tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
-        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
-        // Ensure t1 precedes t2
-        f1_task.precede(f2_task);    
+        // tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
+        // // Ensure t1 precedes t2
+        // f1_task.precede(f2_task);    
 
         // Run the constructed taskflow graph
         tf::Future<void> fu = executor.run(taskflow);
@@ -245,6 +245,8 @@ namespace inhibition
                 columnMutexes_[colIndex].lock();
             }
 
+            LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is being processed");
+
             // Begin critical section
             // Build list of active columns in the neighborhood and their overlap scores
             std::vector<int> activeNeighbors;
@@ -268,6 +270,7 @@ namespace inhibition
                 {
                     columnMutexes_[*it].unlock();
                 }
+                LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is already active");
                 return;
             }
 
@@ -280,6 +283,10 @@ namespace inhibition
                     std::lock_guard<std::mutex> lock(activeColumnsMutex);
                     activeColumnsInd.push_back(i);
                 }
+                LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is activated as it has less active neighbors = " + std::to_string(activeNeighbors.size()) + " than desired local activity = " + std::to_string(desiredLocalActivity));
+                // Print out the active neighbors
+                LOG(INFO, "        Active neighbors: ");
+                overlap_utils::print_1d_vector(activeNeighbors);
             }
             else
             {
@@ -294,6 +301,7 @@ namespace inhibition
                 {
                     // Deactivate the column with the lowest overlap score
                     columnActive_[minOverlapColIndex].store(0);
+                    inhibitedCols_[minOverlapColIndex].store(1);
 
                     // Remove it from activeColumnsInd
                     {
@@ -304,7 +312,7 @@ namespace inhibition
                             activeColumnsInd.erase(it);
                         }
                     }
-                    LOG(INFO, "Deactivated column index: " + std::to_string(minOverlapColIndex) + " with overlap score: " + std::to_string(overlapGrid[minOverlapColIndex]));
+                    LOG(INFO, "    Deactivated column index: " + std::to_string(minOverlapColIndex) + " with overlap score: " + std::to_string(overlapGrid[minOverlapColIndex]));
 
                     // Activate the current column
                     columnActive_[i].store(1);
@@ -320,6 +328,7 @@ namespace inhibition
                     // Do not activate the current column
                     // Mark it as inhibited
                     inhibitedCols_[i].store(1);
+                    LOG(INFO, "    Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is inhibited as it has the lowest overlap score");
                 }
             }
 
@@ -329,6 +338,7 @@ namespace inhibition
             {
                 columnMutexes_[*it].unlock();
             }
+
 
         }).name("ProcessColumns");
     }
