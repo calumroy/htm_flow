@@ -1,8 +1,10 @@
 // inhibition.cpp
+
 #include <iostream>
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <numeric>
 #include <taskflow/taskflow.hpp>
 #include "inhibition.hpp"
 #include "utilities/logger.hpp"
@@ -14,8 +16,9 @@ namespace inhibition
         : width_(width), height_(height), numColumns_(width * height),
           potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
           desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
-          centerInhib_(centerInhib), wrapMode_(wrapMode), 
-          activeColumnsInd_()
+          centerInhib_(centerInhib), wrapMode_(wrapMode),
+          activeColumnsInd_(),
+          columnMutexes_(numColumns_)
     {
         // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.
         // Initialize atomic variables. Allocate the arrays before using them
@@ -32,8 +35,8 @@ namespace inhibition
         }
 
         // Initialize the neighbours list for each column
-        neighbourColsLists_ = std::vector<std::vector<int>>(width_ * height_);
-        colInNeighboursLists_ = std::vector<std::vector<int>>(width_ * height_);
+        neighbourColsLists_ = std::vector<std::vector<int>>(numColumns_);
+        colInNeighboursLists_ = std::vector<std::vector<int>>(numColumns_);
 
         // Calculate neighbours
         for (int y = 0; y < height_; ++y)
@@ -87,56 +90,40 @@ namespace inhibition
     void InhibitionCalculator::calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                                     const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
     {
-        // Create a single Taskflow and Executor object
         tf::Taskflow taskflow;
         tf::Executor executor;
 
-        // TODO: move this into the constructor and only allow it to be called once.
-        // THis will force the colOverlapGrid size to be statically determined and not change. 
-        // Prepare a vector of indices for sorting for the colOverlapGrid
-        std::vector<int> sortedIndices_colOver(colOverlapGrid.size());
-        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0);
-        // Prepare a vector of indices for sorting for the potColOverlapGrid
-        std::vector<int> sortedIndices_potOver(potColOverlapGrid.size());
-        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0);
+        // TODO: find a faster way to do this.
+        // Reset atomic variables and active columns list
+        for (int i = 0; i < numColumns_; ++i)
+        {
+            columnActive_[i].store(0);
+            inhibitedCols_[i].store(0);
+            numColsActInNeigh_[i].store(0);
+        }
+        activeColumnsInd_.clear();
 
         // Define the taskflow structure for the inhibition calculation
-        tf::Taskflow tf1, tf2, tf3, tf4;
-
-        // Sort columns by overlap values using parallel_sort
-        inhibition_utils::parallel_sort_ind(sortedIndices_colOver, colOverlapGrid, tf1);
-
-        // Define a mutex to protect access to activeColumnsInd_
+        tf::Taskflow tf1, tf2;
         std::mutex activeColumnsMutex;
-        
-        // Process columns from highest to lowest overlap based on the sorted indices
-        calculate_inhibition_for_column(sortedIndices_colOver, colOverlapGrid,
+
+        // Process columns with overlap grid
+        calculate_inhibition_for_column(colOverlapGrid,
+                                        activeColumnsInd_,
+                                        neighbourColsLists_, colInNeighboursLists_,
+                                        desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf1);
+
+        // Process columns with potential overlap grid
+        calculate_inhibition_for_column(potColOverlapGrid,
                                         activeColumnsInd_,
                                         neighbourColsLists_, colInNeighboursLists_,
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf2);
 
-        // Sort columns by potential overlap values using parallel_sort
-        inhibition_utils::parallel_sort_ind(sortedIndices_potOver, potColOverlapGrid, tf3);
-
-        // Process columns with potential overlap values
-        calculate_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid,
-                                        activeColumnsInd_,
-                                        neighbourColsLists_, colInNeighboursLists_,
-                                        desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf4);
-
         // Set the order of the tasks using tf::Task objects
-        tf::Task f1_task = taskflow.composed_of(tf1).name("SortOverlap");
-        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessOverlap");
-        tf::Task f3_task = taskflow.composed_of(tf3).name("SortPotOverlap");
-        tf::Task f4_task = taskflow.composed_of(tf4).name("ProcessPotOverlap");
-
-        // Task dependencies to assign order of execution
-        f1_task.precede(f2_task); // SortOverlap precedes ProcessOverlap
-        f2_task.precede(f3_task); // ProcessOverlap precedes SortPotOverlap
-        f3_task.precede(f4_task); // SortPotOverlap precedes ProcessPotOverlap
-
-        // Dump the graph to a DOT file through std::cout (optional for debugging)
-        taskflow.dump(std::cout);
+        tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
+        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
+        // Ensure t1 precedes t2
+        f1_task.precede(f2_task);    
 
         // Run the constructed taskflow graph
         tf::Future<void> fu = executor.run(taskflow);
@@ -169,7 +156,7 @@ namespace inhibition
         // LOG(INFO, "Active Columns Indices:");
         // overlap_utils::print_1d_vector(activeColumnsInd_);
     }
-        
+
     std::vector<int> InhibitionCalculator::get_active_columns()
     {
         // TODO:
@@ -237,7 +224,6 @@ namespace inhibition
     }
 
     void InhibitionCalculator::calculate_inhibition_for_column(
-        const std::vector<int>& sortedIndices,
         const std::vector<float>& overlapGrid,
         std::vector<int>& activeColumnsInd,
         const std::vector<std::vector<int>>& neighbourColsLists,
@@ -250,12 +236,10 @@ namespace inhibition
         // Create a parallel_for task in the taskflow, 0ul is the start index, sortedIndices.size() is the end index, 1ul is the step size.
         // Capture all required variables by reference using [&] also capture the var desiredLocalActivity and minOverlap by value as these are used in the lambda function.
         // We are making sure that if the lambda funciotn is called later on the variables are still valid.
-        taskflow.for_each_index(0ul, sortedIndices.size(), 1ul, [&, this, desiredLocalActivity, minOverlap](size_t idx) {
-            int i = sortedIndices[idx];
-            //LOG(DEBUG, "Processing column: " + std::to_string(i) + " with overlap: " + std::to_string(overlapGrid[i]));
+        taskflow.for_each_index(0ul, static_cast<size_t>(numColumns_), 1ul, [&, this, desiredLocalActivity, minOverlap](size_t idx) {
+            int i = idx;
 
-            // Access member variables via 'this'.
-            // Check if the column to be processed is already inhibited or active and meets the minimum overlap score
+            // Check if the column is already inhibited or active and meets the minimum overlap score
             if (this->inhibitedCols_[i].load() == 0 && this->columnActive_[i].load() == 0 && overlapGrid[i] >= minOverlap)
             {
                 const std::vector<int>& neighbourCols = neighbourColsLists[i];
@@ -301,22 +285,29 @@ namespace inhibition
                 // Activate the column if not inhibited and local activity criteria are met
                 if (!inhibit && this->numColsActInNeigh_[i].load() < desiredLocalActivity)
                 {
-                    // Add the column index to the list of active columns
-                    {
-                        std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                        activeColumnsInd.push_back(i);
-                    }
+                    // Lock the mutex for the current column
+                    std::lock_guard<std::mutex> lock(columnMutexes_[i]);
 
-                    // Mark the column as active
-                    this->columnActive_[i].store(1);
-
-                    // Increment the active neighbor count for columns that list this column as a neighbor
-                    const std::vector<int>& inNeighbours = colInNeighboursLists[i];
-                    for (int c : inNeighbours)
+                    // Double-check the conditions after locking
+                    if (this->inhibitedCols_[i].load() == 0 && this->columnActive_[i].load() == 0)
                     {
-                        if (c >= 0)
+                        // Mark the column as active
+                        this->columnActive_[i].store(1);
+
+                        // Add the column index to the list of active columns
                         {
-                            this->numColsActInNeigh_[c].fetch_add(1);
+                            std::lock_guard<std::mutex> lock(activeColumnsMutex);
+                            activeColumnsInd.push_back(i);
+                        }
+
+                        // Increment the active neighbor count for columns that list this column as a neighbor
+                        const std::vector<int>& inNeighbours = colInNeighboursLists[i];
+                        for (int c : inNeighbours)
+                        {
+                            if (c >= 0)
+                            {
+                                this->numColsActInNeigh_[c].fetch_add(1);
+                            }
                         }
                     }
                 }
@@ -326,7 +317,7 @@ namespace inhibition
                     this->inhibitedCols_[i].store(1);
                 }
             }
-        }).name("ProcessOverlapOrPotential");
+        }).name("ProcessColumns");
     }
 
 } // namespace inhibition

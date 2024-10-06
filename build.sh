@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# A Bash Script to build the project.
+# A Bash Script to build the project or clean the build directory.
 # You can provide a release type parameter: Release, Debug, or RelWithDebInfo
 # If no parameter is provided, the default is Release.
 # You can also provide a GPU option: GPU 
@@ -8,9 +8,7 @@
 
 # Go to library source tree root and run the usual:
 # make this an executable with chmod +x ./build.sh
-
-# A bash script to create a build dir if it doesn't exist and then move into it.
-# If the build dir exists, it will be deleted and recreated.
+# Use ./build.sh clean to delete the build directory.
 
 # Function to display help information
 display_help() {
@@ -24,14 +22,26 @@ display_help() {
     echo "GPU_OPTION:"
     echo "  GPU            - Enable GPU support."
     echo
+    echo "Clean:"
+    echo "  clean          - Deletes the build folder."
+    echo
     echo "Example:"
     echo "  ./build.sh Debug GPU"
+    echo "  ./build.sh clean"
     exit 0
 }
 
 # Check if -h parameter is provided
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     display_help
+fi
+
+# Check if clean parameter is provided
+if [ "$1" = "clean" ]; then
+    echo "Cleaning the build directory..."
+    rm -rf build
+    echo "Build directory cleaned."
+    exit 0
 fi
 
 # Make the build dir if it doesn't exist.
@@ -63,7 +73,7 @@ else
 fi
 
 # Build the project with the specified release type parameter and GPU option.
-# which nvcc should equal someting like /usr/local/cuda-12.2/bin/nvcc
+# which nvcc should equal something like /usr/local/cuda-12.2/bin/nvcc
 cmake -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DCMAKE_CUDA_COMPILER=$(which nvcc) $GPU_OPTION ..
 
 cmake --build .

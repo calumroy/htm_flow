@@ -116,7 +116,6 @@ namespace inhibition
         ///
         ///-----------------------------------------------------------------------------
         void calculate_inhibition_for_column(
-                const std::vector<int>& sortedIndices,
                 const std::vector<float>& overlapGrid,
                 std::vector<int>& activeColumnsInd,
                 const std::vector<std::vector<int>>& neighbourColsLists,
@@ -141,13 +140,13 @@ namespace inhibition
         // Use a pointer to an array of atomic variables to allow for dynamic memory allocation at runtime.
         // We cannot use a vector of atomic variables because the vector class does not support atomic types (atomic types cannot be copied or moved).
         // We use a unique_ptr to ensure that the memory is deallocated when the object is destroyed.
-        std::unique_ptr<std::atomic<int>[]> columnActive_;        // Active state of each column (1 for active, 0 for inactive)
-        std::unique_ptr<std::atomic<int>[]> inhibitedCols_;       // State indicating if a column is inhibited
-        std::unique_ptr<std::atomic<int>[]> numColsActInNeigh_;   // Number of active columns in each column's neighborhood
+        std::unique_ptr<std::atomic<int>[]> columnActive_;      // Active state of each column
+        std::unique_ptr<std::atomic<int>[]> inhibitedCols_;     // Inhibited state of each column
+        std::unique_ptr<std::atomic<int>[]> numColsActInNeigh_; // Number of active neighbors
+        std::vector<std::mutex> columnMutexes_;                 // Mutexes for each column
 
         std::vector<std::vector<int>> neighbourColsLists_; // Neighbors of each column
         std::vector<std::vector<int>> colInNeighboursLists_; // Columns that list each column as a neighbor
     };
 
 } // namespace inhibition
-
