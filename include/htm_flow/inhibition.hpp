@@ -12,6 +12,8 @@
 
 #include <iostream>
 #include <vector>
+#include <atomic>
+#include <mutex>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp> // Ensure this is included
 #include <htm_flow/inhibition_utils.hpp>
@@ -47,29 +49,6 @@ namespace inhibition
         ///
         /// @return A 1D vector of ints representing the active state (1 for active, 0 for inactive) of each column.
         std::vector<int> get_active_columns();
-
-        // ///-----------------------------------------------------------------------------
-        // ///
-        // /// calculateWinningCols   Determines which columns become active after applying the inhibition process.
-        // ///
-        // /// @param[in] colOverlapGrid   A vector representing the overlap values for each column in a 2D grid (flattened).
-        // /// @param[in] colOverlapGridShape   The shape of the colOverlapGrid vector as a pair of ints (rows, cols).
-        // /// @param[in] potColOverlapGrid    A vector representing the potential overlap values for each column in a 2D grid (flattened).
-        // /// @param[in] potColOverlapGridShape   The shape of the potColOverlapGrid vector as a pair of ints (rows, cols).
-        // ///
-        // /// @return A vector representing the active state of each column (1 for active, 0 for inactive).
-        // ///
-        // /// Function:
-        // /// 1. Add a tie-breaker to the overlaps grid based on position and previous activity.
-        // /// 2. Sort all columns by their overlap values and process from highest to lowest.
-        // /// 3. Determine if each column should be active based on local inhibition criteria.
-        // /// 4. Apply the same process to the potential overlaps if necessary.
-        // ///
-        // ///-----------------------------------------------------------------------------
-        // void calculateWinningCols(const std::vector<int>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-        //                           const std::vector<int>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
-
-
 
     private:
 
@@ -142,7 +121,6 @@ namespace inhibition
         // We use a unique_ptr to ensure that the memory is deallocated when the object is destroyed.
         std::unique_ptr<std::atomic<int>[]> columnActive_;      // Active state of each column
         std::unique_ptr<std::atomic<int>[]> inhibitedCols_;     // Inhibited state of each column
-        std::unique_ptr<std::atomic<int>[]> numColsActInNeigh_; // Number of active neighbors
         std::vector<std::mutex> columnMutexes_;                 // Mutexes for each column
 
         std::vector<std::vector<int>> neighbourColsLists_; // Neighbors of each column
