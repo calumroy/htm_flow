@@ -80,6 +80,8 @@
         "fft": "cpp",
         "numbers": "cpp",
         "semaphore": "cpp",
-        "tensor": "cpp"
+        "tensor": "cpp",
+        "latch": "cpp",
+        "span": "cpp"
     }
 }

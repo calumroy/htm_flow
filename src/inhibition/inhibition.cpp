@@ -345,6 +345,18 @@ namespace inhibition
                     // Mark it as inhibited
                     inhibitedCols_[i].store(1);
                     LOG(INFO, "    Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is inhibited as it has the lowest overlap score");
+                    // Print out the active neighbors
+                    LOG(INFO, "        Active neighbors: ");
+                    overlap_utils::print_1d_vector(activeNeighbors);
+                    // Print out the activeNeighborsOverlap vector
+                    LOG(INFO, "        Active neighbors overlap: ");
+                    overlap_utils::print_1d_vector(activeNeighborsOverlap);
+                    // Print minOverlapColIndex
+                    LOG(INFO, "        Min overlap column index: " + std::to_string(minOverlapColIndex));
+                    // Print minIt
+                    LOG(INFO, "        Min overlap score: " + std::to_string(minOverlapScore));
+                    // Print minIndex
+                    LOG(INFO, "        Min index: " + std::to_string(minIndex));
                 }
             }
 

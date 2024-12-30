@@ -731,7 +731,7 @@ TEST(InhibitionCalculatorTest, Case4) {
     int num_column_cols = 5;
     int num_column_rows = 6;
     int inhibition_width = 2;
-    int inhibition_height = 3;
+    int inhibition_height = 2;
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = true;  // centerInhib = 1
@@ -739,12 +739,12 @@ TEST(InhibitionCalculatorTest, Case4) {
 
     // Initialize colOverlapGrid
     std::vector<float> colOverlapGrid = {
-        0, 0, 3, 3, 0,
-        0, 0, 3, 3, 0,
-        0, 0, 3, 3, 0,
-        0, 0, 3, 3, 0,
-        0, 0, 3, 3, 0,
-        0, 0, 3, 3, 0
+        0, 0, 3.10, 3.11, 0,
+        0, 0, 3.02, 3.01, 0,
+        0, 0, 3.13, 3.14, 0,
+        0, 0, 3.03, 3.04, 0,
+        0, 0, 3.15, 3.16, 0,
+        0, 0, 3.07, 3.08, 0
     };
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
@@ -778,6 +778,57 @@ TEST(InhibitionCalculatorTest, Case4) {
         0, 0, 0, 0, 0,
         0, 0, 1, 1, 0,
         0, 0, 0, 0, 0
+    };
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(activeColumns, expected_activeColumns);
+}
+
+TEST(InhibitionCalculatorTest, Case5) {
+    int num_column_cols = 3;
+    int num_column_rows = 3;
+    int inhibition_width = 2;
+    int inhibition_height = 2;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = true;  // centerInhib = 1
+    bool wrapMode = false;
+
+    // Initialize colOverlapGrid
+    std::vector<float> colOverlapGrid = {
+        0, 0, 4,  
+        0, 0, 3,  
+        0, 0, 5  
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // potColOverlapGrid is the same as colOverlapGrid
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode);
+
+    // Run the inhibition calculation
+    inhibitionCalc.calculate_inhibition(
+        colOverlapGrid, colOverlapGridShape,
+        potColOverlapGrid, colOverlapGridShape);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // Expected active columns
+    std::vector<int> expected_activeColumns = {
+        0, 0, 1, 
+        0, 0, 0, 
+        0, 0, 1 
     };
 
     // Check if the actual output matches the expected output
