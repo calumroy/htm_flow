@@ -290,19 +290,79 @@ namespace inhibition
                 return;
             }
 
-            if (activeNeighbors.size() < desiredLocalActivity)
+            // Now see if we can become active
+            if (static_cast<int>(activeNeighbors.size()) < desiredLocalActivity)
             {
-                // Activate the current column
-                columnActive_[i].store(1);
+                // EXTRA CHECK: Are there enough *higher-overlap* neighbors
+                // still unprocessed that might displace us?
 
+                int needed = desiredLocalActivity - static_cast<int>(activeNeighbors.size());
+                if (needed > 0)
+                {
+                    // Gather neighbors that are neither active nor inhibited
+                    // i.e., they "might still become active."
+                    std::vector<int> candidateNeighbors;
+                    {
+                        // Combine both neighbor sets
+                        std::vector<int> allNeighbors = neighbourColsLists[i];
+                        allNeighbors.insert(allNeighbors.end(),
+                                            colInNeighboursLists[i].begin(),
+                                            colInNeighboursLists[i].end());
+
+                        // Remove duplicates
+                        std::sort(allNeighbors.begin(), allNeighbors.end());
+                        allNeighbors.erase(std::unique(allNeighbors.begin(), allNeighbors.end()), allNeighbors.end());
+
+                        // Filter: not inhibited, not active
+                        for (int nb : allNeighbors)
+                        {
+                            if (columnActive_[nb].load() == 0 &&
+                                inhibitedCols_[nb].load() == 0)
+                            {
+                                candidateNeighbors.push_back(nb);
+                            }
+                        }
+                    }
+
+                    // Sort candidates by overlap descending
+                    std::sort(candidateNeighbors.begin(), candidateNeighbors.end(),
+                              [&](int a, int b) {
+                                  return overlapGrid[a] > overlapGrid[b];
+                              });
+
+                    // If there are enough neighbors with bigger overlap than me,
+                    // they could fill up the local activity. So we skip activation.
+                    if (static_cast<int>(candidateNeighbors.size()) >= needed)
+                    {
+                        float threshold = overlapGrid[candidateNeighbors[needed - 1]];
+                        if (overlapGrid[i] < threshold)
+                        {
+                            // This means I'm strictly below
+                            // the "needed-th best" candidate => I'd get displaced
+                            inhibitedCols_[i].store(1);
+
+                            // Unlock and return
+                            for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it)
+                            {
+                                columnMutexes_[*it].unlock();
+                            }
+                            return;
+                        }
+                    }
+                }
+
+                // If we get here, we are "safe" to become active
+                columnActive_[i].store(1);
                 {
                     std::lock_guard<std::mutex> lock(activeColumnsMutex);
                     activeColumnsInd.push_back(i);
                 }
-                LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is activated as it has less active neighbors = " + std::to_string(activeNeighbors.size()) + " than desired local activity = " + std::to_string(desiredLocalActivity));
-                // Print out the active neighbors
-                LOG(INFO, "        Active neighbors: ");
-                overlap_utils::print_1d_vector(activeNeighbors);
+
+                LOG(INFO, "Column index: " + std::to_string(i) +
+                          " with overlap score: " + std::to_string(overlapGrid[i]) +
+                          " is activated as it has fewer active neighbors (" +
+                          std::to_string(activeNeighbors.size()) + ") than desiredLocalActivity (" +
+                          std::to_string(desiredLocalActivity) + ").");
             }
             else
             {
