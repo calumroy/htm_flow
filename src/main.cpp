@@ -33,7 +33,8 @@ int main(int argc, char *argv[])
     int num_pot_syn = pot_width * pot_height;
     int num_columns = num_column_rows * num_column_cols;
     bool wrap_input = true;
-
+    bool strict_local_activity = false;
+    
     // Inhibition calculation parameters
     int inhibition_width = 30;
     int inhibition_height = 30;
@@ -100,7 +101,7 @@ int main(int argc, char *argv[])
     // Start inhibition calculation
     START_STOPWATCH();
     InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
-                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input);
+                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input, strict_local_activity);
     LOG(INFO, "Starting the inhibition calculation.");
     inhibitionCalc.calculate_inhibition(col_overlap_scores, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
     STOP_STOPWATCH();

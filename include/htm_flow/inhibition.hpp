@@ -28,7 +28,7 @@ namespace inhibition
     public:
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                             int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode);
+                             int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, bool strictLocalActivity);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -114,6 +114,7 @@ namespace inhibition
         int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
+        bool strictLocalActivity_;  // Whether the inhibition neighborhood is strict or not. Enabling this to true slows down the inhibition calculation but ensures that the desired local activity is always met. Disabling allows some cases where the desired local activity is not met due to the inhibition neighborhood being not symetrical.
         std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies     
         // We use atomic variables to ensure thread safety when updating the active and inhibited columns.
         // Use a pointer to an array of atomic variables to allow for dynamic memory allocation at runtime.
