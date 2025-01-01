@@ -580,6 +580,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = true;
+    bool debug = true;
     // Initialize colOverlapGrid
     std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
@@ -602,7 +603,8 @@ TEST(InhibitionCalculatorTest, Case3) {
         min_overlap,
         center_pot_synapses,
         wrapMode,
-        strict_local_activity);
+        strict_local_activity,
+        debug);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(

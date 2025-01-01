@@ -12,13 +12,15 @@
 namespace inhibition
 {
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                                               int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, bool strictLocalActivity)
+                                               int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
+                                               bool strictLocalActivity, bool debug)
         : width_(width), height_(height), numColumns_(width * height),
           potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
           desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
           centerInhib_(centerInhib), wrapMode_(wrapMode), strictLocalActivity_(strictLocalActivity),
           activeColumnsInd_(),
-          columnMutexes_(numColumns_)
+          columnMutexes_(numColumns_),
+          debug_(debug)
     {
         // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.
         // Initialize atomic variables. Allocate the arrays before using them
@@ -121,24 +123,26 @@ namespace inhibition
         tf::Future<void> fu = executor.run(taskflow);
         fu.wait(); // Block until the execution completes
     
-        // // Print the results using LOG and overlap_utils functions
-        // LOG(INFO, "Final Results:");
+        // Print the results using LOG and overlap_utils functions
+        if (debug_) {
+            LOG(DEBUG, "Final Results:");
 
-        // // Print the overlap grid after tie-breakers
-        // LOG(INFO, "Overlap Grid (with Tie-Breakers):");
-        // overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
+            // Print the overlap grid after tie-breakers
+            LOG(DEBUG, "Overlap Grid (with Tie-Breakers):");
+            overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
 
-        // // Print the inhibited columns
-        // LOG(INFO, "Inhibited Columns:");
-        // overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
+            // Print the inhibited columns
+            LOG(DEBUG, "Inhibited Columns:");
+            overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
 
-        // // Print the active columns
-        // LOG(INFO, "Active Columns:");
-        // overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
+            // Print the active columns
+            LOG(DEBUG, "Active Columns:");
+            overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
 
-        // // Print the list of active column indices
-        // LOG(INFO, "Active Columns Indices:");
-        // overlap_utils::print_1d_vector(activeColumnsInd_);
+            // Print the list of active column indices
+            LOG(DEBUG, "Active Columns Indices:");
+            overlap_utils::print_1d_vector(activeColumnsInd_);
+        }
     }
 
     std::vector<int> InhibitionCalculator::get_active_columns()
@@ -245,7 +249,9 @@ namespace inhibition
                 columnMutexes_[colIndex].lock();
             }
 
-            //LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is being processed");
+            if (debug_) {
+                LOG(DEBUG, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is being processed");
+            }
 
             // Begin critical section
             // Build list of active columns in the neighborhood (both neighbors and columns that include i as neighbor)
@@ -286,7 +292,9 @@ namespace inhibition
                 {
                     columnMutexes_[*it].unlock();
                 }
-                //LOG(INFO, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is already active");
+                if (debug_) {
+                    LOG(DEBUG, "Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is already active");
+                }
                 return;
             }
 
@@ -346,6 +354,9 @@ namespace inhibition
                                 {
                                     columnMutexes_[*it].unlock();
                                 }
+                                if (debug_) {
+                                    LOG(DEBUG, "    Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is inhibited as it has the lowest overlap score, strictLocalActivity is true");
+                                }
                                 return;
                             }
                         }
@@ -359,11 +370,13 @@ namespace inhibition
                     activeColumnsInd.push_back(i);
                 }
 
-                // LOG(INFO, "Column index: " + std::to_string(i) +
-                //           " with overlap score: " + std::to_string(overlapGrid[i]) +
-                //           " is activated as it has fewer active neighbors (" +
-                //           std::to_string(activeNeighbors.size()) + ") than desiredLocalActivity (" +
-                //           std::to_string(desiredLocalActivity) + ").");
+                if (debug_) {
+                    LOG(DEBUG, "Column index: " + std::to_string(i) +
+                              " with overlap score: " + std::to_string(overlapGrid[i]) +
+                              " is activated as it has fewer active neighbors (" +
+                              std::to_string(activeNeighbors.size()) + ") than desiredLocalActivity (" +
+                              std::to_string(desiredLocalActivity) + ").");
+                }
             }
             else
             {
@@ -389,7 +402,9 @@ namespace inhibition
                             activeColumnsInd.erase(it);
                         }
                     }
-                    //LOG(INFO, "    Deactivated column index: " + std::to_string(minOverlapColIndex) + " with overlap score: " + std::to_string(overlapGrid[minOverlapColIndex]));
+                    if (debug_) {
+                        LOG(DEBUG, "    Deactivated column index: " + std::to_string(minOverlapColIndex) + " with overlap score: " + std::to_string(overlapGrid[minOverlapColIndex]));
+                    }
 
                     // Activate the current column
                     columnActive_[i].store(1);
@@ -397,7 +412,9 @@ namespace inhibition
                     {
                         std::lock_guard<std::mutex> lock(activeColumnsMutex);
                         activeColumnsInd.push_back(i);
-                        //LOG(INFO, "     Activated column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]));
+                        if (debug_) {
+                            LOG(DEBUG, "     Activated column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]));
+                        }
                     }
                 }
                 else
@@ -405,19 +422,21 @@ namespace inhibition
                     // Do not activate the current column
                     // Mark it as inhibited
                     inhibitedCols_[i].store(1);
-                    //LOG(INFO, "    Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is inhibited as it has the lowest overlap score");
-                    // Print out the active neighbors
-                    //LOG(INFO, "        Active neighbors: ");
-                    //overlap_utils::print_1d_vector(activeNeighbors);
-                    // Print out the activeNeighborsOverlap vector
-                    //LOG(INFO, "        Active neighbors overlap: ");
-                    //overlap_utils::print_1d_vector(activeNeighborsOverlap);
-                    // Print minOverlapColIndex
-                    //LOG(INFO, "        Min overlap column index: " + std::to_string(minOverlapColIndex));
-                    // Print minIt
-                    //LOG(INFO, "        Min overlap score: " + std::to_string(minOverlapScore));
-                    // Print minIndex
-                    //LOG(INFO, "        Min index: " + std::to_string(minIndex));
+                    if (debug_) {
+                        LOG(DEBUG, "    Column index: " + std::to_string(i) + " with overlap score: " + std::to_string(overlapGrid[i]) + " is inhibited as it has the lowest overlap score");
+                        // Print out the active neighbors
+                        LOG(DEBUG, "        Active neighbors: ");
+                        overlap_utils::print_1d_vector(activeNeighbors);
+                        // Print out the activeNeighborsOverlap vector
+                        LOG(DEBUG, "        Active neighbors overlap: ");
+                        overlap_utils::print_1d_vector(activeNeighborsOverlap);
+                        // Print minOverlapColIndex
+                        LOG(DEBUG, "        Min overlap column index: " + std::to_string(minOverlapColIndex));
+                        // Print minIt
+                        LOG(DEBUG, "        Min overlap score: " + std::to_string(minOverlapScore));
+                        // Print minIndex
+                        LOG(DEBUG, "        Min index: " + std::to_string(minIndex));
+                    }
                 }
             }
 
