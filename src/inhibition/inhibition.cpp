@@ -22,6 +22,27 @@ namespace inhibition
           columnMutexes_(numColumns_),
           debug_(debug)
     {
+        // If strictLocalActivity is enabled, ensure symmetrical inhibition areas
+        if (strictLocalActivity_) {
+            // Force odd values for width and height to ensure symmetry
+            if (potentialWidth_ % 2 == 0) {
+                potentialWidth_ += 1;
+                LOG(INFO, "strictLocalActivity enabled: Adjusted potentialWidth to odd value so inhibition is symmetrical: " + std::to_string(potentialWidth_));
+            }
+            if (potentialHeight_ % 2 == 0) {
+                potentialHeight_ += 1;
+                LOG(INFO, "strictLocalActivity enabled: Adjusted potentialHeight to odd value so inhibition is symmetrical: " + std::to_string(potentialHeight_));
+            }
+            
+            // Force center inhibition
+            if (!centerInhib_) {
+                centerInhib_ = true;
+                LOG(INFO, "strictLocalActivity enabled: Forced centerInhib to true for symmetrical inhibition");
+            }
+            
+            LOG(INFO, "Symmetrical inhibition areas enforced for strictLocalActivity");
+        }
+
         // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.
         // Initialize atomic variables. Allocate the arrays before using them
         columnActive_ = std::make_unique<std::atomic<int>[]>(numColumns_);
@@ -107,6 +128,7 @@ namespace inhibition
                                         neighbourColsLists_, colInNeighboursLists_,
                                         desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf1);
 
+        // TODO: Reenable this.
         // // Process columns with potential overlap grid
         // calculate_inhibition_for_column(potColOverlapGrid,
         //                                 activeColumnsInd_,
@@ -211,6 +233,36 @@ namespace inhibition
         return closeColumns;
     }
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// This function calculates inhibition for each column in parallel:
+    ///
+    /// 1. For each column with sufficient overlap (>= minOverlap):
+    ///   a. Identify all relevant columns to lock (current column, neighbors, and 
+    ///      columns that list this one as a neighbor)
+    ///   b. Lock these columns in ascending order to prevent deadlocks
+    ///
+    /// 2. Examine the neighborhood activity:
+    ///   a. Collect all currently active neighbors
+    ///   b. If the column is already active, maintain its active state
+    ///
+    /// 3. Determine activation based on local activity constraints:
+    ///   a. If active neighbors < desiredLocalActivity:
+    ///     i. With strictLocalActivity enabled: Check if enough higher-scoring 
+    ///        unprocessed neighbors exist that might fill the activity quota
+    ///        (This ensures the desired local activity constraint is strictly maintained
+    ///        by preventing premature activation when higher-scoring columns might later
+    ///        become active, at the cost of increased computation time)
+    ///     ii. If safe to activate, mark column as active
+    ///   b. If active neighbors >= desiredLocalActivity:
+    ///     i. Find the active neighbor with the lowest overlap score
+    ///     ii. If current column has higher overlap, deactivate that neighbor and 
+    ///         activate current column instead
+    ///     iii. Otherwise, inhibit the current column
+    ///
+    /// 4. Release all locks in reverse order
+    ///
+    ///-----------------------------------------------------------------------------
     void InhibitionCalculator::calculate_inhibition_for_column(
         const std::vector<float>& overlapGrid,
         std::vector<int>& activeColumnsInd,
