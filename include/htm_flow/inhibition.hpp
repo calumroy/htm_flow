@@ -29,7 +29,7 @@ namespace inhibition
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
                              int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
-                             bool strictLocalActivity, bool debug = false);
+                             bool strictLocalActivity = true, bool debug = false);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -115,9 +115,14 @@ namespace inhibition
         int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
-        bool strictLocalActivity_;  // Whether the inhibition neighborhood is strict or not. Enabling this to true slows down the inhibition calculation but ensures that the desired local activity is always met. Disabling allows some cases where the desired local activity is not met due to the inhibition neighborhood being not symetrical.
         bool debug_;                // Whether to print debug messages, this slows down the inhibition calculation.
-        std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies     
+        // Whether the inhibition neighborhood is strict or not. Enabling this to true slows down the inhibition calculation but ensures that the desired local activity is always met. 
+        // When enabled, automatically adjusts potentialWidth_ and potentialHeight_ to odd values and sets centerInhib_ to true to ensure symmetrical inhibition areas. 
+        // NOTE: For strict correctness when using the parallel version of the inhibition calc this should be set to true.
+        // Disabling allows some cases where the desired local activity is not met due to the inhibition neighborhood not being symmetrical.
+        // Disabling it also makes the parallel version of the inhibition calc non deterministic (the order of processing will change the result).
+        bool strictLocalActivity_;  
+        std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies
         // We use atomic variables to ensure thread safety when updating the active and inhibited columns.
         // Use a pointer to an array of atomic variables to allow for dynamic memory allocation at runtime.
         // We cannot use a vector of atomic variables because the vector class does not support atomic types (atomic types cannot be copied or moved).
