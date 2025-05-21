@@ -103,7 +103,13 @@ namespace inhibition
                 int desiredLocalActivity,
                 int minOverlap,
                 std::mutex& activeColumnsMutex,
-                tf::Taskflow& taskflow);
+                tf::Taskflow& taskflow,
+                std::vector<int>& inhibitionCounts,
+                std::vector<int>& minorlyInhibitedColumns,
+                std::mutex& minorlyInhibitedMutex,
+                bool& needsReprocessing,
+                int& iterationCount,
+                std::vector<int>& columnsToProcess);
 
         // Member variables
         int width_;                  // Width of the grid of columns
@@ -133,6 +139,16 @@ namespace inhibition
 
         std::vector<std::vector<int>> neighbourColsLists_; // Neighbors of each column
         std::vector<std::vector<int>> colInNeighboursLists_; // Columns that list each column as a neighbor
+
+        // Member variables for taskflow execution
+        std::vector<int> inhibitionCounts_;
+        std::vector<int> minorlyInhibitedColumns_;
+        std::mutex minorlyInhibitedMutex_;
+        bool needsReprocessing_;
+        int iterationCount_;
+
+        // Tracks the set of columns to process in the current (re-)processing iteration.
+        std::vector<int> columnsToProcess_;
     };
 
 } // namespace inhibition

@@ -82,6 +82,9 @@
         "semaphore": "cpp",
         "tensor": "cpp",
         "latch": "cpp",
-        "span": "cpp"
+        "span": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "text_encoding": "cpp"
     }
 }
