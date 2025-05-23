@@ -279,473 +279,222 @@ namespace inhibition
         int& iterationCount,
         std::vector<int>& columnsToProcess)
     {
-        // Initialize with local variables (not class members)
-        inhibitionCounts.resize(numColumns_);
-        std::fill(inhibitionCounts.begin(), inhibitionCounts.end(), 0);
+        //---------------------------------------------------------------------
+        // 1.  Initial-isation (unchanged)
+        //---------------------------------------------------------------------
+        inhibitionCounts.assign(numColumns_, 0);
         minorlyInhibitedColumns.clear();
-        needsReprocessing = false;
-        iterationCount = 0;
-        
-        // Initialize task - does nothing
-        tf::Task init = taskflow.emplace([](){}).name("Init");
-        
-        // Process all columns initially and check if reprocessing is needed
-        tf::Task initial_pass = taskflow.for_each_index(
-            0ul, static_cast<size_t>(numColumns_), 1ul,
-            [&, this, desiredLocalActivity, minOverlap](size_t idx)
+        iterationCount     = 0;
+        needsReprocessing  = false;
+
+        // Treat every column as "minorly inhibited" for the first pass
+        columnsToProcess.resize(numColumns_);
+        std::iota(columnsToProcess.begin(), columnsToProcess.end(), 0);
+
+        //---------------------------------------------------------------------
+        // 2.  Taskflow skeleton – only three tasks now
+        //---------------------------------------------------------------------
+        tf::Task init  = taskflow.emplace([]{}).name("Init");
+
+        // Unified pass (re-used every iteration)
+        tf::Task process_pass = taskflow.for_each_index(
+            0ul,
+            static_cast<size_t>(numColumns_),
+            1ul,
+            [&, this, desiredLocalActivity, minOverlap](size_t k)
         {
-            int i = static_cast<int>(idx);
-            bool shouldProcess = true;
+            LOG(DEBUG, "process_pass desiredLocalActivity="
+                       + std::to_string(desiredLocalActivity)); 
+            // --------------------------------------------------------------
+            // --- Early exits ---------------------------------------------
+            // --------------------------------------------------------------
+            if (k >= columnsToProcess.size())                            return;
+            int i = columnsToProcess[k];
+            if (i < 0 || i >= numColumns_)                               return;
+            if (overlapGrid[i] < minOverlap)                             return;
+            if (inhibitionCounts[i] >= desiredLocalActivity)             return;
+
+            // Debug: column about to be processed
+            if (this->debug_) {
+                LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
+                           " – processing col " + std::to_string(i) +
+                           "  overlap=" + std::to_string(overlapGrid[i]) +
+                           "  inhibitCnt=" + std::to_string(inhibitionCounts[i]));
+            }
+
+            //-----------------------------------------------------------------
+            // Build neighbourhood and lock the related mutexes
+            //-----------------------------------------------------------------
+            std::vector<int> colsToLock = neighbourColsLists[i];
+            colsToLock.insert(colsToLock.end(),
+                              colInNeighboursLists[i].begin(),
+                              colInNeighboursLists[i].end());
+            colsToLock.push_back(i);
+            std::sort(colsToLock.begin(), colsToLock.end());
+            colsToLock.erase(std::unique(colsToLock.begin(),
+                                         colsToLock.end()), colsToLock.end());
+
+            for (int col : colsToLock)
+                columnMutexes_[col].lock();
+
+            //-----------------------------------------------------------------
+            // Core logic  (previously duplicated between the two passes)
+            //-----------------------------------------------------------------
             bool shouldActivate = false;
 
-            // Check if column has sufficient overlap
-            if (overlapGrid[i] < minOverlap) {
-                shouldProcess = false;
-            }
+            // Compose the full neighbourhood, removing duplicates
+            std::vector<int> allNeighbors = colsToLock;
+            std::sort(allNeighbors.begin(), allNeighbors.end());
+            allNeighbors.erase(std::unique(allNeighbors.begin(),
+                                           allNeighbors.end()), allNeighbors.end());
 
-            if (shouldProcess) {
-                // Build the list of columns to lock
-                std::vector<int> colsToLock = neighbourColsLists[i];
-                colsToLock.insert(colsToLock.end(), colInNeighboursLists[i].begin(), colInNeighboursLists[i].end());
-                colsToLock.push_back(i);
-
-                // Remove duplicates and sort to prevent deadlocks
-                std::sort(colsToLock.begin(), colsToLock.end());
-                colsToLock.erase(std::unique(colsToLock.begin(), colsToLock.end()), colsToLock.end());
-
-                // Lock the mutexes in ascending order
-                for (int colIndex : colsToLock) {
-                    if (colIndex >= 0 && colIndex < static_cast<int>(numColumns_)) {
-                        columnMutexes_[colIndex].lock();
-                    }
-                }
-
-                if (debug_) {
-                    LOG(DEBUG, "Column index: " + std::to_string(i) + 
-                          " with overlap score: " + std::to_string(overlapGrid[i]) + 
-                          " is being processed in initial pass");
-                }
-
-                // Begin critical section
-                
-                // Check column state
-                bool isActive = (columnActive_[i].load() == 1);
-                bool isInhibited = (inhibitedCols_[i].load() == 1);
-
-                // Ensure consistent state
-                if (isActive && isInhibited) {
-                    columnActive_[i].store(0);
-                    
-                    // Remove from active columns list
-                    {
-                        std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                        auto it = std::find(activeColumnsInd.begin(), activeColumnsInd.end(), i);
-                        if (it != activeColumnsInd.end()) {
-                            activeColumnsInd.erase(it);
-                        }
-                    }
-                    
-                    if (debug_) {
-                        LOG(DEBUG, "Column index: " + std::to_string(i) + 
-                              " was both active and inhibited - resolved by deactivating");
-                    }
-                    
-                    isActive = false;
-                }
-
-                if (!isActive && !isInhibited) {
-                    // Combine neighbor sets to get neighborhood
-                    std::vector<int> allNeighbors = neighbourColsLists[i];
-                    if (!colInNeighboursLists[i].empty()) {
-                        allNeighbors.insert(allNeighbors.end(), colInNeighboursLists[i].begin(), colInNeighboursLists[i].end());
-                    }
-                    
-                    // Add current column to neighborhood
-                    allNeighbors.push_back(i);
-                    
-                    // Remove duplicates
-                    std::sort(allNeighbors.begin(), allNeighbors.end());
-                    allNeighbors.erase(std::unique(allNeighbors.begin(), allNeighbors.end()), allNeighbors.end());
-                    
-                    // Filter eligible neighbors (overlap >= minOverlap)
-                    std::vector<int> eligibleNeighbors;
-                    std::vector<float> eligibleOverlaps;
-                    
-                    for (int nb : allNeighbors) {
-                        if (nb >= 0 && nb < static_cast<int>(overlapGrid.size()) && overlapGrid[nb] >= minOverlap) {
-                            eligibleNeighbors.push_back(nb);
-                            eligibleOverlaps.push_back(overlapGrid[nb]);
-                        }
-                    }
-                    
-                    // Sort by overlap score
-                    std::vector<int> indices(eligibleNeighbors.size());
-                    std::iota(indices.begin(), indices.end(), 0);
-                    
-                    if (!eligibleOverlaps.empty() && !indices.empty()) {
-                        std::sort(indices.begin(), indices.end(), [&](int a, int b) {
-                            if (a < 0 || a >= static_cast<int>(eligibleOverlaps.size()) || 
-                                b < 0 || b >= static_cast<int>(eligibleOverlaps.size())) {
-                                return false;
-                            }
-                            return eligibleOverlaps[a] > eligibleOverlaps[b];
-                        });
-                        
-                        if (eligibleNeighbors.size() > static_cast<size_t>(desiredLocalActivity)) {
-                            // Get threshold from Nth highest overlap
-                            int thresholdIdx = desiredLocalActivity - 1;
-                            if (thresholdIdx >= 0 && thresholdIdx < static_cast<int>(indices.size()) && 
-                                indices[thresholdIdx] >= 0 && indices[thresholdIdx] < static_cast<int>(eligibleOverlaps.size())) {
-                                float threshold = eligibleOverlaps[indices[thresholdIdx]];
-                                
-                                // Mark columns below threshold as inhibited
-                                for (int nb : allNeighbors) {
-                                    if (nb >= 0 && nb < static_cast<int>(overlapGrid.size()) && 
-                                        overlapGrid[nb] < threshold && overlapGrid[nb] >= minOverlap) {
-                                        // If active, deactivate first
-                                        if (nb < static_cast<int>(numColumns_) && columnActive_[nb].load() == 1) {
-                                            columnActive_[nb].store(0);
-                                            
-                                            // Remove from active columns list
-                                            {
-                                                std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                                                auto it = std::find(activeColumnsInd.begin(), activeColumnsInd.end(), nb);
-                                                if (it != activeColumnsInd.end()) {
-                                                    activeColumnsInd.erase(it);
-                                                    if (debug_) {
-                                                        LOG(DEBUG, "    Deactivated previously active column index: " + 
-                                                              std::to_string(nb) + " due to being below threshold");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Increment inhibition count
-                                        if (nb >= 0 && nb < static_cast<int>(inhibitionCounts.size())) {
-                                            inhibitionCounts[nb]++;
-                                        }
-                                        
-                                        // Mark as inhibited
-                                        if (nb < static_cast<int>(numColumns_)) {
-                                            inhibitedCols_[nb].store(1);
-                                        }
-                                        
-                                        // Add to minorly inhibited list if count is below threshold
-                                        if (nb >= 0 && nb < static_cast<int>(inhibitionCounts.size()) && 
-                                            inhibitionCounts[nb] < desiredLocalActivity) {
-                                            std::lock_guard<std::mutex> lock(minorlyInhibitedMutex);
-                                            if (std::find(minorlyInhibitedColumns.begin(), minorlyInhibitedColumns.end(), nb) 
-                                                == minorlyInhibitedColumns.end()) {
-                                                minorlyInhibitedColumns.push_back(nb);
-                                                needsReprocessing = true;
-                                            }
-                                        }
-                                        
-                                        if (debug_) {
-                                            LOG(DEBUG, "    Column index: " + std::to_string(nb) + 
-                                                  " with overlap score: " + std::to_string(overlapGrid[nb]) + 
-                                                  " inhibited by threshold " + std::to_string(threshold) + 
-                                                  " in neighborhood of column " + std::to_string(i) + 
-                                                  " (inhibition count: " + std::to_string(
-                                                      nb < static_cast<int>(inhibitionCounts.size()) ? 
-                                                      inhibitionCounts[nb] : -1) + ")");
-                                        }
-                                    }
-                                }
-
-                                // Mark columns above threshold as not inhibited and activate current column
-                                for (int nb : allNeighbors) {
-                                    if (nb >= 0 && nb < static_cast<int>(overlapGrid.size()) && 
-                                        overlapGrid[nb] >= threshold && overlapGrid[nb] >= minOverlap) {
-                                        if (nb < static_cast<int>(numColumns_)) {
-                                            inhibitedCols_[nb].store(0);
-                                        }
-                                        
-                                        // If this is current column, mark for activation
-                                        if (nb == i) {
-                                            shouldActivate = true;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // If fewer eligible columns than desired local activity, all are active
-                            shouldActivate = true;
-                        }
-                    } else {
-                        // No eligible neighbors, activate this column
-                        shouldActivate = true;
-                    }
-                } else {
-                    // Just log status for debugging
-                    if (debug_) {
-                        if (isActive) {
-                            LOG(DEBUG, "Column index: " + std::to_string(i) + " with overlap score: " + 
-                                  std::to_string(overlapGrid[i]) + " is already active");
-                        } else if (isInhibited) {
-                            LOG(DEBUG, "Column index: " + std::to_string(i) + " with overlap score: " + 
-                                  std::to_string(overlapGrid[i]) + " is already inhibited");
-                        }
-                    }
-                }
-
-                // Apply activation if determined
-                if (shouldActivate && !inhibitedCols_[i].load()) {
-                    columnActive_[i].store(1);
-                    {
-                        std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                        if (std::find(activeColumnsInd.begin(), activeColumnsInd.end(), i) == activeColumnsInd.end()) {
-                            activeColumnsInd.push_back(i);
-                        }
-                    }
-
-                    if (debug_) {
-                        LOG(DEBUG, "Column index: " + std::to_string(i) +
-                            " with overlap score: " + std::to_string(overlapGrid[i]) +
-                            " is activated (strictLocalActivity enabled, initial pass)");
-                    }
-                }
-
-                // End critical section and release locks
-                for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it) {
-                    int colIndex = *it;
-                    if (colIndex >= 0 && colIndex < static_cast<int>(numColumns_)) {
-                        columnMutexes_[colIndex].unlock();
-                    }
+            // Select eligible neighbours:
+            //   1) overlap ≥ minOverlap
+            //   2) neighbour has not yet reached its inhibition limit
+            std::vector<int> eligible;
+            std::vector<float> eligibleOverlaps;
+            for (int nb : allNeighbors)
+            {
+                if (overlapGrid[nb] >= minOverlap &&
+                    inhibitionCounts[nb] < desiredLocalActivity)
+                {
+                    eligible.push_back(nb);
+                    eligibleOverlaps.push_back(overlapGrid[nb]);
                 }
             }
-        }).name("ProcessColumns_Initial");
-        
-        // Process minorly inhibited columns and check if more reprocessing is needed
-        tf::Task prepare_reprocess = taskflow.emplace([&]() -> int {
+
+            //-----------------------------------------------------------------
+            // Compute threshold from top-k overlaps (if we have enough)
+            //-----------------------------------------------------------------
+            float threshold = -1.0f;      // -1  ⇒  "everything is above threshold"
+            if (eligible.size() > static_cast<size_t>(desiredLocalActivity))
+            {
+                // indices sorted by overlap descending
+                std::vector<size_t> idx(eligible.size());
+                std::iota(idx.begin(), idx.end(), 0);
+                std::partial_sort(idx.begin(),
+                                  idx.begin() + desiredLocalActivity,
+                                  idx.end(),
+                                  [&](size_t a, size_t b)
+                                  { return eligibleOverlaps[a] > eligibleOverlaps[b]; });
+
+                threshold = eligibleOverlaps[idx[desiredLocalActivity - 1]];
+            }
+
+            // Debug: threshold information
+            if (this->debug_) {
+                LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
+                           " – col " + std::to_string(i) +
+                           " overlapGrid[nb] =" + std::to_string(overlapGrid[i]) +
+                           " minOverlap =" + std::to_string(minOverlap) +
+                           " eligible.size() =" + std::to_string(eligible.size()) +
+                           " threshold = " + std::to_string(threshold));
+            }            
+
+            //-----------------------------------------------------------------
+            // Inhibit / activate according to the threshold
+            //-----------------------------------------------------------------
+            for (int nb : allNeighbors)
+            {
+                // Skip neighbors that don't meet minimum overlap requirement
+                // or the column itself (i) since we don't want to inhibit ourselves
+                if (overlapGrid[nb] < minOverlap || nb == i)  continue;
+
+                bool below = (threshold >= 0.0f) && (overlapGrid[nb] < threshold);
+                if (below)
+                {
+                    // bump inhibition count
+                    ++inhibitionCounts[nb];
+                    inhibitedCols_[nb].store(1);
+
+                    if (this->debug_) {
+                        LOG(DEBUG, "    Inhibited col " + std::to_string(nb) +
+                                   "  overlapGrid[nb]=" + std::to_string(overlapGrid[nb]) +
+                                   "  newInhibCnt=" + std::to_string(inhibitionCounts[nb]));
+                    }
+
+                    // Queue again if still below the limit
+                    if (inhibitionCounts[nb] < desiredLocalActivity)
+                    {
+                        std::lock_guard<std::mutex> lk(minorlyInhibitedMutex);
+                        minorlyInhibitedColumns.push_back(nb);
+                        needsReprocessing = true;
+                    }
+
+                    // deactivate if it had been active
+                    if (columnActive_[nb].load())
+                    {
+                        columnActive_[nb].store(0);
+                        std::lock_guard<std::mutex> lk(activeColumnsMutex);
+                        activeColumnsInd.erase(
+                            std::remove(activeColumnsInd.begin(),
+                                        activeColumnsInd.end(), nb),
+                            activeColumnsInd.end());
+                    }
+                }
+                else // above threshold
+                {
+                    inhibitedCols_[nb].store(0);
+                    if (nb == i) shouldActivate = true;
+                }
+            }
+
+            // Print the inhibition counts as 1d vector
+            if (this->debug_) {
+                LOG(DEBUG, "inhibitionCounts=");
+                overlap_utils::print_1d_vector(inhibitionCounts);
+            }
+
+            if (shouldActivate && !inhibitedCols_[i].load())
+            {
+                columnActive_[i].store(1);
+                std::lock_guard<std::mutex> lk(activeColumnsMutex);
+                if (std::find(activeColumnsInd.begin(),
+                              activeColumnsInd.end(), i) == activeColumnsInd.end())
+                    activeColumnsInd.push_back(i);
+            }
+
+            //-----------------------------------------------------------------
+            // unlock in reverse order
+            //-----------------------------------------------------------------
+            for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it)
+                columnMutexes_[*it].unlock();
+        }).name("ProcessColumns");
+
+        // Decide whether we need another iteration
+        tf::Task prepare_next = taskflow.emplace([&, this, desiredLocalActivity]() {
+            LOG(DEBUG, "prepare_next desiredLocalActivity="
+                       + std::to_string(desiredLocalActivity)); 
+
             ++iterationCount;
 
             {
                 std::lock_guard<std::mutex> lk(minorlyInhibitedMutex);
                 columnsToProcess.swap(minorlyInhibitedColumns);
             }
-            needsReprocessing = !columnsToProcess.empty() &&
+            bool keepGoing = !columnsToProcess.empty() &&
                                 iterationCount < desiredLocalActivity;
+            needsReprocessing = keepGoing;
 
-            return needsReprocessing ? 0 : 1;   // 0 → keep looping, 1 → stop
-        }).name("PrepareReprocess");
-        
-        // Process minorly inhibited columns and check if more reprocessing is needed
-        tf::Task reprocess_pass = taskflow.for_each_index(
-            0ul,
-            static_cast<size_t>(numColumns_),  // iterate over the full column set; early-return if index is out of range for this iteration
-            1ul,
-            [&, this, desiredLocalActivity, minOverlap](size_t k)
-        {
-            if(k >= columnsToProcess.size()) return;
-            int i = columnsToProcess[k];
-            bool shouldActivate = false;
-            
-            // Safety check
-            if (i < 0 || i >= static_cast<int>(numColumns_) || i >= static_cast<int>(overlapGrid.size())) {
-                return;
-            }
-            
-            // Skip if overlap is too low
-            if (overlapGrid[i] < minOverlap) {
-                return;
-            }
-            
-            // Build the list of columns to lock
-            std::vector<int> colsToLock;
-            if (i < static_cast<int>(neighbourColsLists.size())) {
-                colsToLock = neighbourColsLists[i];
-                if (i < static_cast<int>(colInNeighboursLists.size()) && !colInNeighboursLists[i].empty()) {
-                    colsToLock.insert(colsToLock.end(), colInNeighboursLists[i].begin(), colInNeighboursLists[i].end());
+            if (this->debug_) {
+                LOG(DEBUG, "PrepareNext – iteration " + std::to_string(iterationCount) +
+                           "  columnsToProcess.size()=" + std::to_string(columnsToProcess.size()));
+                LOG(DEBUG, "  columnsToProcess=");
+                if (!columnsToProcess.empty()) {
+                    overlap_utils::print_1d_vector(columnsToProcess);
                 }
             }
-            colsToLock.push_back(i);
-            
-            // Remove duplicates and sort to prevent deadlocks
-            std::sort(colsToLock.begin(), colsToLock.end());
-            colsToLock.erase(std::unique(colsToLock.begin(), colsToLock.end()), colsToLock.end());
-            
-            // Lock the mutexes in ascending order - only for valid indices
-            for (int colIndex : colsToLock) {
-                if (colIndex >= 0 && colIndex < static_cast<int>(numColumns_)) {
-                    columnMutexes_[colIndex].lock();
-                }
-            }
-                            
-            if (debug_) {
-                LOG(DEBUG, "Column index: " + std::to_string(i) +
-                        " with overlap score: " + std::to_string(overlapGrid[i]) +
-                      " is being reprocessed in iteration " + std::to_string(iterationCount));
-            }
-            
-            // Begin critical section
-            
-            // Check if column is already active
-            bool isActive = (columnActive_[i].load() == 1);
-            
-            if (!isActive) {
-                // Combine neighbor sets to get neighborhood
-                std::vector<int> allNeighbors;
-                if (i < static_cast<int>(neighbourColsLists.size())) {
-                    allNeighbors = neighbourColsLists[i];
-                    if (i < static_cast<int>(colInNeighboursLists.size())) {
-                        allNeighbors.insert(allNeighbors.end(), colInNeighboursLists[i].begin(), colInNeighboursLists[i].end());
-                    }
-                }
-                
-                // Add current column to neighborhood
-                allNeighbors.push_back(i);
-                
-                // Remove duplicates
-                std::sort(allNeighbors.begin(), allNeighbors.end());
-                allNeighbors.erase(std::unique(allNeighbors.begin(), allNeighbors.end()), allNeighbors.end());
-                
-                // Filter eligible neighbors (active or minorly inhibited)
-                std::vector<int> eligibleNeighbors;
-                std::vector<float> eligibleOverlaps;
-                
-                for (int nb : allNeighbors) {
-                    if (nb < 0 || nb >= static_cast<int>(overlapGrid.size()) || nb >= static_cast<int>(numColumns_)) {
-                        continue;
-                    }
-                    
-                    bool eligible = overlapGrid[nb] >= minOverlap && 
-                                  (columnActive_[nb].load() == 1 || 
-                                   (inhibitedCols_[nb].load() == 1 && 
-                                    nb < static_cast<int>(inhibitionCounts.size()) && 
-                                    inhibitionCounts[nb] < desiredLocalActivity));
-                                       
-                    if (eligible) {
-                        eligibleNeighbors.push_back(nb);
-                        eligibleOverlaps.push_back(overlapGrid[nb]);
-                    }
-                }
-                
-                // Sort by overlap score
-                std::vector<int> indices(eligibleNeighbors.size());
-                std::iota(indices.begin(), indices.end(), 0);
-                
-                if (!eligibleOverlaps.empty() && !indices.empty()) {
-                    std::sort(indices.begin(), indices.end(), [&](int a, int b) {
-                        if (a < 0 || a >= static_cast<int>(eligibleOverlaps.size()) || 
-                            b < 0 || b >= static_cast<int>(eligibleOverlaps.size())) {
-                            return false;
-                        }
-                        return eligibleOverlaps[a] > eligibleOverlaps[b];
-                    });
-                    
-                    if (eligibleNeighbors.size() > static_cast<size_t>(desiredLocalActivity)) {
-                        // Get threshold from Nth highest overlap
-                        int thresholdIdx = desiredLocalActivity - 1;
-                        if (thresholdIdx >= 0 && thresholdIdx < static_cast<int>(indices.size()) && 
-                            indices[thresholdIdx] >= 0 && indices[thresholdIdx] < static_cast<int>(eligibleOverlaps.size())) {
-                            float threshold = eligibleOverlaps[indices[thresholdIdx]];
-                            
-                            // Mark columns below threshold as inhibited
-                            for (int nb : allNeighbors) {
-                                if (nb < 0 || nb >= static_cast<int>(overlapGrid.size()) || nb >= static_cast<int>(numColumns_)) {
-                                    continue;
-                                }
-                                
-                                if (overlapGrid[nb] < threshold && overlapGrid[nb] >= minOverlap) {
-                                    // If active, deactivate first
-                                    if (columnActive_[nb].load() == 1) {
-                                        columnActive_[nb].store(0);
-                                        
-                                        // Remove from active columns list
-                                {
-                                    std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                                                auto it = std::find(activeColumnsInd.begin(), activeColumnsInd.end(), nb);
-                                    if (it != activeColumnsInd.end()) {
-                                        activeColumnsInd.erase(it);
-                                                    if (debug_) {
-                                                        LOG(DEBUG, "    Deactivated previously active column index: " + 
-                                                              std::to_string(nb) + " due to being below threshold");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Increment inhibition count
-                                        if (nb >= 0 && nb < static_cast<int>(inhibitionCounts.size())) {
-                                            inhibitionCounts[nb]++;
-                                        }
-                                        
-                                        // Mark as inhibited
-                                        inhibitedCols_[nb].store(1);
-                                        
-                                        // Add to minorly inhibited list if count is below threshold
-                                        if (nb >= 0 && nb < static_cast<int>(inhibitionCounts.size()) && 
-                                            inhibitionCounts[nb] < desiredLocalActivity) {
-                                            std::lock_guard<std::mutex> lock(minorlyInhibitedMutex);
-                                            if (std::find(minorlyInhibitedColumns.begin(), minorlyInhibitedColumns.end(), nb) 
-                                                == minorlyInhibitedColumns.end()) {
-                                                minorlyInhibitedColumns.push_back(nb);
-                                                needsReprocessing = true;
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Mark columns above threshold as not inhibited and activate current column
-                                for (int nb : allNeighbors) {
-                                    if (nb >= 0 && nb < static_cast<int>(overlapGrid.size()) && 
-                                        nb < static_cast<int>(numColumns_) &&
-                                        overlapGrid[nb] >= threshold && overlapGrid[nb] >= minOverlap) {
-                                        inhibitedCols_[nb].store(0);
-                                        
-                                        // If this is current column, mark for activation
-                                        if (nb == i) {
-                                shouldActivate = true;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // If fewer eligible columns than desired local activity, all are active
-                            shouldActivate = true;
-                        }
-                    } else {
-                        // No eligible neighbors, this column should be active
-                        shouldActivate = true;
-                    }
+            LOG(DEBUG, "iterationCount="
+                       + std::to_string(iterationCount));
+            return keepGoing ? 0 : 1;   // 0 → loop again, 1 → stop
+        }).name("PrepareNext");
 
-                    // Apply activation if determined
-                    if (shouldActivate) {
-                        columnActive_[i].store(1);
-                        inhibitedCols_[i].store(0);
-                        {
-                            std::lock_guard<std::mutex> lock(activeColumnsMutex);
-                            if (std::find(activeColumnsInd.begin(), activeColumnsInd.end(), i) == activeColumnsInd.end()) {
-                            activeColumnsInd.push_back(i);
-                            }
-                        }
+        tf::Task done = taskflow.emplace([]{}).name("Done");
 
-                        if (debug_) {
-                                LOG(DEBUG, "Column index: " + std::to_string(i) +
-                                    " with overlap score: " + std::to_string(overlapGrid[i]) +
-                                  " is activated in reprocessing iteration " + std::to_string(iterationCount));
-                        }
-                    }
-                }
-                
-                // End critical section and release locks
-                for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it) {
-                    int colIndex = *it;
-                    if (colIndex >= 0 && colIndex < static_cast<int>(numColumns_)) {
-                        columnMutexes_[colIndex].unlock();
-                    }
-                }
-        }).name("ReprocessColumns");
-        
-        // Final task
-        tf::Task done = taskflow.emplace([](){}).name("Done");
-        
-        // Set up the flow with conditional branching
-        init.precede(initial_pass);
-        initial_pass.precede(prepare_reprocess, done);
-        prepare_reprocess.precede(reprocess_pass, done);
-        reprocess_pass.precede(prepare_reprocess, done);
+        // Connect the tasks
+        init.precede(process_pass);
+        process_pass.precede(prepare_next, done);
+        prepare_next.precede(process_pass, done);
     }
 
 } // namespace inhibition
