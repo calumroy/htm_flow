@@ -534,6 +534,7 @@ TEST(InhibitionCalculatorTest, Case2) {
     bool center_pot_synapses = true;
     bool wrapMode = false;
     bool strict_local_activity = true;
+    bool debug = true;
 
     std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
@@ -554,7 +555,8 @@ TEST(InhibitionCalculatorTest, Case2) {
         min_overlap,
         center_pot_synapses,
         wrapMode,
-        strict_local_activity);
+        strict_local_activity,
+        debug);
 
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, colOverlapGridShape);
 
@@ -566,6 +568,9 @@ TEST(InhibitionCalculatorTest, Case2) {
         0, 0, 1, 0,
         1, 0, 0, 1
     };
+
+    LOG(DEBUG, "Expected Active Columns (2D):");
+    overlap_utils::print_2d_vector(expected_activeColumns, {num_column_rows, num_column_cols});
 
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
