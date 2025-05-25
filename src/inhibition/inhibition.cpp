@@ -315,13 +315,13 @@ namespace inhibition
             if (overlapGrid[i] < minOverlap)                             return;
             if (inhibitionCounts[i] >= desiredLocalActivity)             return;
 
-            // Debug: column about to be processed
-            if (this->debug_) {
-                LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
-                           " – processing col " + std::to_string(i) +
-                           "  overlap=" + std::to_string(overlapGrid[i]) +
-                           "  inhibitCnt=" + std::to_string(inhibitionCounts[i]));
-            }
+            // // Debug: column about to be processed
+            // if (this->debug_) {
+            //     LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
+            //                " – processing col " + std::to_string(i) +
+            //                "  overlap=" + std::to_string(overlapGrid[i]) +
+            //                "  inhibitCnt=" + std::to_string(inhibitionCounts[i]));
+            // }
 
             //-----------------------------------------------------------------
             // Build neighbourhood and lock the related mutexes
@@ -339,7 +339,7 @@ namespace inhibition
                 columnMutexes_[col].lock();
 
             //-----------------------------------------------------------------
-            // Core logic  (previously duplicated between the two passes)
+            // Core logic  
             //-----------------------------------------------------------------
             
             // Compose the full neighbourhood, removing duplicates
@@ -350,7 +350,7 @@ namespace inhibition
 
             // Select eligible neighbours:
             //   1) overlap ≥ minOverlap
-            //   2) neighbour has not yet reached its inhibition limit
+            //   2) neighbour has not yet reached its inhibition count limit
             std::vector<int> eligible;
             std::vector<float> eligibleOverlaps;
             for (int nb : allNeighbors)
@@ -367,7 +367,7 @@ namespace inhibition
             // Compute threshold from top-k overlaps (if we have enough)
             //-----------------------------------------------------------------
             float threshold = -1.0f;      // -1  ⇒  "everything is above threshold"
-            if (eligible.size() > static_cast<size_t>(desiredLocalActivity))
+            if (eligible.size() >= static_cast<size_t>(desiredLocalActivity))
             {
                 // indices sorted by overlap descending
                 std::vector<size_t> idx(eligible.size());
@@ -383,13 +383,13 @@ namespace inhibition
 
             // Debug: threshold information
             if (this->debug_) {
-                LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
-                           " – col " + std::to_string(i) +
-                           " overlapGrid[i] =" + std::to_string(overlapGrid[i]) +
-                           " minOverlap =" + std::to_string(minOverlap) +
-                           " eligible.size() =" + std::to_string(eligible.size()) +
-                           " threshold = " + std::to_string(threshold));
-            }            
+                LOG(DEBUG, "Iteration " + std::to_string(iterationCount));
+                LOG(DEBUG, "    Column: " + std::to_string(i));
+                LOG(DEBUG, "       " + std::to_string(i) + " Overlap: " + std::to_string(overlapGrid[i]));
+                LOG(DEBUG, "       " + std::to_string(i) + " Min Overlap: " + std::to_string(minOverlap));
+                LOG(DEBUG, "       " + std::to_string(i) + " Eligible Neighbors: " + std::to_string(eligible.size()));
+                LOG(DEBUG, "       " + std::to_string(i) + " Threshold: " + std::to_string(threshold));
+            }
 
             //-----------------------------------------------------------------
             // Check if current column should be activated
@@ -479,12 +479,16 @@ namespace inhibition
                     else // above threshold (but this neighbor didn't win since current column i won)
                     {
                         // Increment inhibition count since we didn't win but threshold is positive
-                        if (threshold >= 0.0f) {
+                        // Also increment if current column has higher overlap than this neighbor
+                        if (threshold >= 0.0f || overlapGrid[i] > overlapGrid[nb]) {
                             ++inhibitionCounts[nb];
-                            if (this->debug_) {
-                                LOG(DEBUG, "    Neighbor col " + std::to_string(nb) +
-                                           " is above threshold but lost to col " + std::to_string(i) +
-                                           ", incrementing inhibition count to " + std::to_string(inhibitionCounts[nb]));
+                            
+                            // Queue again if still below the limit
+                            if (inhibitionCounts[nb] < desiredLocalActivity)
+                            {
+                                std::lock_guard<std::mutex> lk(minorlyInhibitedMutex);
+                                minorlyInhibitedColumns.push_back(nb);
+                                needsReprocessing = true;
                             }
                         }
                     }
@@ -500,6 +504,12 @@ namespace inhibition
             if (this->debug_) {
                 LOG(DEBUG, "Active Columns (2D):");
                 overlap_utils::print_2d_atomic_array(columnActive_.get(), {height_, width_});
+            }
+
+            // Print the minorlyInhibited columns
+            if (this->debug_) {
+                LOG(DEBUG, "Minorly Inhibited Columns:");
+                overlap_utils::print_1d_vector(minorlyInhibitedColumns);
             }
 
             //-----------------------------------------------------------------
@@ -538,7 +548,17 @@ namespace inhibition
             return keepGoing ? 0 : 1;   // 0 → loop again, 1 → stop
         }).name("PrepareNext");
 
-        tf::Task done = taskflow.emplace([]{}).name("Done");
+        tf::Task done = taskflow.emplace([&, this](){
+            if (this->debug_) {
+                LOG(DEBUG, "Done - Final state:");
+                LOG(DEBUG, "Inhibition Counts:");
+                overlap_utils::print_2d_vector(inhibitionCounts, {height_, width_});
+                LOG(DEBUG, "Active Columns:");
+                overlap_utils::print_2d_atomic_array(columnActive_.get(), {height_, width_});
+                LOG(DEBUG, "columnsToProcess Columns:");
+                overlap_utils::print_1d_vector(columnsToProcess);
+            }
+        }).name("Done");
 
         // Connect the tasks
         init.precede(process_pass);

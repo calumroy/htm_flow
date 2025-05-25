@@ -537,10 +537,10 @@ TEST(InhibitionCalculatorTest, Case2) {
     bool debug = true;
 
     std::vector<float> colOverlapGrid = {
-        8, 4, 5, 8,
-        8, 6, 1, 6,
-        7, 7, 9, 4,
-        2, 3, 1, 5
+        19, 15, 16, 20,
+        21, 11, 12, 18,
+        13, 19, 21, 15,
+        18, 14, 10, 17
     };
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
