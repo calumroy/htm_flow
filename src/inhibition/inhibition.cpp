@@ -59,6 +59,11 @@ namespace inhibition
             inhibitedCols_[i].store(0);
         }
 
+        // Initialize serial implementation vectors
+        serialColumnActive_.resize(numColumns_, 0);
+        serialInhibitedCols_.resize(numColumns_, 0);
+        serialNumColsActInNeigh_.resize(numColumns_, 0);
+
         // Initialize the neighbours list for each column
         neighbourColsLists_ = std::vector<std::vector<int>>(numColumns_);
         colInNeighboursLists_ = std::vector<std::vector<int>>(numColumns_);
@@ -94,6 +99,7 @@ namespace inhibition
     /// @param[in] colOverlapGridShape A pair representing the shape of the colOverlapGrid (rows, cols).
     /// @param[in] potColOverlapGrid A vector representing the potential overlap values for each column in a 2D grid (flattened).
     /// @param[in] potColOverlapGridShape A pair representing the shape of the potColOverlapGrid (rows, cols).
+    /// @param[in] use_serial_sort_calc A boolean indicating whether to use the serial sorted implementation.
     ///
     /// This function performs the following steps:
     /// 1. Add Tie-Breakers:
@@ -109,86 +115,93 @@ namespace inhibition
     ///-----------------------------------------------------------------------------
 
     void InhibitionCalculator::calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-                                                    const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
+                                                    const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape,
+                                                    bool use_serial_sort_calc)
     {
-        tf::Taskflow taskflow;
-        tf::Executor executor;
+        if (use_serial_sort_calc) {
+            // Use the slower serial sorted implementation
+            calculate_serial_sort_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
+        } else {
+            // Use the original parallel implementation
+            tf::Taskflow taskflow;
+            tf::Executor executor;
 
-        // Define the taskflow structure for the inhibition calculation
-        tf::Taskflow tf1, tf2;
-        std::mutex activeColumnsMutex;
+            // Define the taskflow structure for the inhibition calculation
+            tf::Taskflow tf1, tf2;
+            std::mutex activeColumnsMutex;
 
-        // Add fast parallel clearing tasks to the main taskflow
-        tf::Task clearColumnActive = taskflow.emplace([this]() {
-            // Ultra-fast memory clearing using memset - much faster than individual atomic stores
-            std::memset(reinterpret_cast<void*>(columnActive_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
-        }).name("FastClearColumnActive");
+            // Add fast parallel clearing tasks to the main taskflow
+            tf::Task clearColumnActive = taskflow.emplace([this]() {
+                // Ultra-fast memory clearing using memset - much faster than individual atomic stores
+                std::memset(reinterpret_cast<void*>(columnActive_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
+            }).name("FastClearColumnActive");
+            
+            tf::Task clearInhibitedCols = taskflow.emplace([this]() {
+                std::memset(reinterpret_cast<void*>(inhibitedCols_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
+            }).name("FastClearInhibitedCols");
+            
+            tf::Task clearActiveColumnsInd = taskflow.emplace([this]() {
+                activeColumnsInd_.clear();
+            }).name("ClearActiveColumnsInd");
+
+            // Process columns with overlap grid
+            calculate_inhibition_for_column(colOverlapGrid,
+                                            activeColumnsInd_,
+                                            neighbourColsLists_, colInNeighboursLists_,
+                                            desiredLocalActivity_, minOverlap_,
+                                            activeColumnsMutex, tf1,
+                                            inhibitionCounts_, minorlyInhibitedColumns_,
+                                            minorlyInhibitedMutex_, needsReprocessing_,
+                                            iterationCount_,
+                                            columnsToProcess_);
+
+            // Process columns with potential overlap grid
+            calculate_inhibition_for_column(potColOverlapGrid,
+                                            activeColumnsInd_,
+                                            neighbourColsLists_, colInNeighboursLists_,
+                                            desiredLocalActivity_, minOverlap_,
+                                            activeColumnsMutex, tf2,
+                                            inhibitionCounts_, minorlyInhibitedColumns_,
+                                            minorlyInhibitedMutex_, needsReprocessing_,
+                                            iterationCount_,
+                                            columnsToProcess_);
+
+            // Set the order of the tasks using tf::Task objects
+            tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
+            tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
+            
+            // Establish task dependencies: clearing tasks must complete before processing tasks
+            clearColumnActive.precede(f1_task);
+            clearInhibitedCols.precede(f1_task);
+            clearActiveColumnsInd.precede(f1_task);
+            
+            // Ensure f1 precedes f2 (existing dependency)
+            f1_task.precede(f2_task);    
+
+            // Run the constructed taskflow graph
+            tf::Future<void> fu = executor.run(taskflow);
+            fu.wait(); // Block until the execution completes
         
-        tf::Task clearInhibitedCols = taskflow.emplace([this]() {
-            std::memset(reinterpret_cast<void*>(inhibitedCols_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
-        }).name("FastClearInhibitedCols");
-        
-        tf::Task clearActiveColumnsInd = taskflow.emplace([this]() {
-            activeColumnsInd_.clear();
-        }).name("ClearActiveColumnsInd");
+            // Print the results using LOG and overlap_utils functions
+            if (debug_) {
+                LOG(DEBUG, "Final Results:");
 
-        // Process columns with overlap grid
-        calculate_inhibition_for_column(colOverlapGrid,
-                                        activeColumnsInd_,
-                                        neighbourColsLists_, colInNeighboursLists_,
-                                        desiredLocalActivity_, minOverlap_,
-                                        activeColumnsMutex, tf1,
-                                        inhibitionCounts_, minorlyInhibitedColumns_,
-                                        minorlyInhibitedMutex_, needsReprocessing_,
-                                        iterationCount_,
-                                        columnsToProcess_);
+                // Print the overlap grid after tie-breakers
+                LOG(DEBUG, "Overlap Grid (with Tie-Breakers):");
+                overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
 
-        // Process columns with potential overlap grid
-        calculate_inhibition_for_column(potColOverlapGrid,
-                                        activeColumnsInd_,
-                                        neighbourColsLists_, colInNeighboursLists_,
-                                        desiredLocalActivity_, minOverlap_,
-                                        activeColumnsMutex, tf2,
-                                        inhibitionCounts_, minorlyInhibitedColumns_,
-                                        minorlyInhibitedMutex_, needsReprocessing_,
-                                        iterationCount_,
-                                        columnsToProcess_);
+                // Print the inhibited columns
+                LOG(DEBUG, "Inhibited Columns:");
+                overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
 
-        // Set the order of the tasks using tf::Task objects
-        tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
-        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
-        
-        // Establish task dependencies: clearing tasks must complete before processing tasks
-        clearColumnActive.precede(f1_task);
-        clearInhibitedCols.precede(f1_task);
-        clearActiveColumnsInd.precede(f1_task);
-        
-        // Ensure f1 precedes f2 (existing dependency)
-        f1_task.precede(f2_task);    
+                // Print the active columns
+                LOG(DEBUG, "Active Columns:");
+                overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
 
-        // Run the constructed taskflow graph
-        tf::Future<void> fu = executor.run(taskflow);
-        fu.wait(); // Block until the execution completes
-    
-        // Print the results using LOG and overlap_utils functions
-        if (debug_) {
-            LOG(DEBUG, "Final Results:");
-
-            // Print the overlap grid after tie-breakers
-            LOG(DEBUG, "Overlap Grid (with Tie-Breakers):");
-            overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
-
-            // Print the inhibited columns
-            LOG(DEBUG, "Inhibited Columns:");
-            overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
-
-            // Print the active columns
-            LOG(DEBUG, "Active Columns:");
-            overlap_utils::print_2d_atomic_array(columnActive_.get(), colOverlapGridShape);
-
-            // Print the list of active column indices
-            LOG(DEBUG, "Active Columns Indices:");
-            overlap_utils::print_1d_vector(activeColumnsInd_);
+                // Print the list of active column indices
+                LOG(DEBUG, "Active Columns Indices:");
+                overlap_utils::print_1d_vector(activeColumnsInd_);
+            }
         }
     }
 
@@ -572,6 +585,208 @@ namespace inhibition
         init.precede(process_pass);
         process_pass.precede(prepare_next, done);
         prepare_next.precede(process_pass, done);
+    }
+
+    void InhibitionCalculator::calculate_serial_sort_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+                                                               const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
+    {
+        // Create a single Taskflow and Executor object
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        // Prepare a vector of indices for sorting for the colOverlapGrid
+        std::vector<int> sortedIndices_colOver(colOverlapGrid.size());
+        std::iota(sortedIndices_colOver.begin(), sortedIndices_colOver.end(), 0);
+        // Prepare a vector of indices for sorting for the potColOverlapGrid
+        std::vector<int> sortedIndices_potOver(potColOverlapGrid.size());
+        std::iota(sortedIndices_potOver.begin(), sortedIndices_potOver.end(), 0);
+
+        // Clear the serial vectors
+        std::fill(serialColumnActive_.begin(), serialColumnActive_.end(), 0);
+        std::fill(serialInhibitedCols_.begin(), serialInhibitedCols_.end(), 0);
+        std::fill(serialNumColsActInNeigh_.begin(), serialNumColsActInNeigh_.end(), 0);
+        activeColumnsInd_.clear();
+
+        // Define the taskflow structure for the inhibition calculation
+        tf::Taskflow tf1, tf2, tf3, tf4, tf5, tf6;
+
+        // Task to add a small tie breaker to the overlap grid
+        add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid), false, tf1);
+
+        // Sort columns by overlap values using parallel_sort
+        inhibition_utils::parallel_sort_ind(sortedIndices_colOver, colOverlapGrid, tf2);
+
+        // Process columns from highest to lowest overlap based on the sorted indices
+        tf3.emplace([&]() {
+            calculate_serial_sort_inhibition_for_column(sortedIndices_colOver, colOverlapGrid, 
+                                            serialInhibitedCols_, serialColumnActive_, 
+                                            serialNumColsActInNeigh_, activeColumnsInd_, 
+                                            neighbourColsLists_, colInNeighboursLists_, 
+                                            desiredLocalActivity_, minOverlap_);
+        }).name("ProcessOverlap");
+
+        // Add a small tie breaker to the potential overlap grid
+        add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid), false, tf4);
+
+        // Sort columns by potential overlap values using parallel_sort
+        inhibition_utils::parallel_sort_ind(sortedIndices_potOver, potColOverlapGrid, tf5);
+
+        // Process columns with potential overlap values
+        tf6.emplace([&]() {
+            calculate_serial_sort_inhibition_for_column(sortedIndices_potOver, potColOverlapGrid, 
+                                            serialInhibitedCols_, serialColumnActive_, 
+                                            serialNumColsActInNeigh_, activeColumnsInd_, 
+                                            neighbourColsLists_, colInNeighboursLists_, 
+                                            desiredLocalActivity_, minOverlap_);
+        }).name("ProcessPotOverlap");
+
+        // Set the order of the tasks using tf::Task objects
+        tf::Task f1_task = taskflow.composed_of(tf1).name("AddTieBreaker");
+        tf::Task f2_task = taskflow.composed_of(tf2).name("SortOverlap");
+        tf::Task f3_task = taskflow.composed_of(tf3).name("ProcessOverlap");
+        tf::Task f4_task = taskflow.composed_of(tf4).name("AddTieBreakerPot");
+        tf::Task f5_task = taskflow.composed_of(tf5).name("SortPotOverlap");
+        tf::Task f6_task = taskflow.composed_of(tf6).name("ProcessPotOverlap");
+
+        // Set the task dependencies
+        f1_task.precede(f2_task);
+        f2_task.precede(f3_task);
+        f3_task.precede(f4_task);
+        f4_task.precede(f5_task);
+        f5_task.precede(f6_task);
+
+        // Run the constructed taskflow graph
+        tf::Future<void> fu = executor.run(taskflow);
+        fu.wait(); // Block until the execution completes
+
+        // Copy results from serial vectors to atomic arrays for consistency
+        for (int i = 0; i < numColumns_; ++i) {
+            columnActive_[i].store(serialColumnActive_[i]);
+            inhibitedCols_[i].store(serialInhibitedCols_[i]);
+        }
+
+        // Print the results using LOG and overlap_utils functions
+        if (debug_) {
+            LOG(DEBUG, "Final Results (Serial Sorted):");
+
+            // Print the overlap grid after tie-breakers
+            LOG(DEBUG, "Overlap Grid (with Tie-Breakers):");
+            overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
+
+            // Print the inhibited columns
+            LOG(DEBUG, "Inhibited Columns:");
+            overlap_utils::print_1d_vector(serialInhibitedCols_);
+
+            // Print the active columns
+            LOG(DEBUG, "Active Columns:");
+            overlap_utils::print_2d_vector(serialColumnActive_, colOverlapGridShape);
+
+            // Print the list of active column indices
+            LOG(DEBUG, "Active Columns Indices:");
+            overlap_utils::print_1d_vector(activeColumnsInd_);
+        }
+    }
+
+    void InhibitionCalculator::calculate_serial_sort_inhibition_for_column(const std::vector<int>& sortedIndices,
+                                                                          const std::vector<float>& overlapGrid,
+                                                                          std::vector<int>& inhibitedCols, 
+                                                                          std::vector<int>& columnActive, 
+                                                                          std::vector<int>& numColsActInNeigh, 
+                                                                          std::vector<int>& activeColumnsInd, 
+                                                                          const std::vector<std::vector<int>>& neighbourColsLists, 
+                                                                          const std::vector<std::vector<int>>& colInNeighboursLists, 
+                                                                          int desiredLocalActivity,
+                                                                          int minOverlap)
+    {
+        // Process columns in sorted order (highest overlap first)
+        for (int i : sortedIndices) {
+            if (inhibitedCols[i] == 0 && columnActive[i] == 0 && overlapGrid[i] >= minOverlap) {
+                std::vector<int> neighbourCols = neighbourColsLists[i];
+                int numActiveNeighbours = 0;
+
+                // Check neighbours for active columns
+                for (int neighborIndex : neighbourCols)
+                {
+                    if (neighborIndex >= 0 && columnActive[neighborIndex] == 1)
+                    {
+                        numActiveNeighbours++;
+                        if (numColsActInNeigh[neighborIndex] >= desiredLocalActivity)
+                        {
+                            inhibitedCols[i] = 1;
+                        }
+                    }
+                }
+
+                // Check if the column is in any neighbour lists of active columns
+                for (int activeNeighbor : colInNeighboursLists[i])
+                {
+                    if (columnActive[activeNeighbor] == 1)
+                    {
+                        if (numColsActInNeigh[activeNeighbor] >= desiredLocalActivity)
+                        {
+                            inhibitedCols[i] = 1;
+                        }
+                    }
+                }
+
+                numColsActInNeigh[i] = numActiveNeighbours;
+
+                // Activate column if not inhibited and the number of active neighbors is less than desired local activity
+                if (inhibitedCols[i] != 1 && numColsActInNeigh[i] < desiredLocalActivity)
+                {
+                    activeColumnsInd.push_back(i);
+                    columnActive[i] = 1;
+                    for (int c : colInNeighboursLists[i])
+                    {
+                        if (c >= 0)
+                        {
+                            numColsActInNeigh[c]++;
+                        }
+                    }
+                }
+                else
+                {
+                    inhibitedCols[i] = 1;
+                }
+            }
+        }
+    }
+
+    void InhibitionCalculator::add_tie_breaker(std::vector<float>& overlapGrid, bool addColBias, tf::Taskflow &taskflow)
+    {
+        // Create a task in the taskflow for adding the tie breaker
+        taskflow.emplace([this, &overlapGrid, addColBias]() {
+            float normValue = 1.0f / float(2 * numColumns_ + 2);
+
+            std::vector<float> tieBreaker(width_ * height_, 0.0f);
+            for (int y = 0; y < height_; ++y)
+            {
+                for (int x = 0; x < width_; ++x)
+                {
+                    int index = y * width_ + x;
+                    if ((y % 2) == 1)
+                    {
+                        // For odd rows, bias to the bottom left
+                        tieBreaker[index] = ((y + 1) * width_ + (width_ - x - 1)) * normValue;
+                    }
+                    else
+                    {
+                        // For even rows, bias to the bottom right
+                        tieBreaker[index] = (1 + x + y * width_) * normValue;
+                    }
+                }
+            }
+
+            if (addColBias)
+            {
+                // If previous columns were active, we can give them a small bias
+                // to maintain stability across time steps (this part is optional)
+                for (size_t i = 0; i < overlapGrid.size(); ++i)
+                {
+                    overlapGrid[i] += tieBreaker[i];
+                }
+            }
+        }).name("AddTieBreaker");
     }
 
 } // namespace inhibition

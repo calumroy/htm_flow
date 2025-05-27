@@ -40,10 +40,12 @@ namespace inhibition
         /// @param[in] colOverlapGridShape  The shape of the colOverlapGrid vector as a pair of ints (rows, cols).
         /// @param[in] potColOverlapGrid    The potential overlap values for each column. A 1D vector simulating a 2D vector.
         /// @param[in] potColOverlapGridShape   The shape of the potColOverlapGrid vector as a pair of ints (rows, cols).
+        /// @param[in] use_serial_sort_calc     Optional parameter to use serial sorted calculation (default: false).
         ///
         ///-----------------------------------------------------------------------------
         void calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
-                                  const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
+                                  const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape,
+                                  bool use_serial_sort_calc = false);
         ///-----------------------------------------------------------------------------
         ///
         /// get_active_columns - Returns the active state of each column.
@@ -111,6 +113,72 @@ namespace inhibition
                 int& iterationCount,
                 std::vector<int>& columnsToProcess);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// calculate_serial_sort_inhibition_for_column   Serial sorted implementation that processes columns
+        ///                                               in order of their overlap scores (highest to lowest).
+        ///
+        /// This function performs the following steps:
+        /// 1. Iterates through the sorted list of column indices (by overlap score).
+        /// 2. For each column, checks if it is already inhibited or active.
+        /// 3. If the column is not inhibited or active and its overlap score meets the minimum threshold, 
+        ///    it proceeds to evaluate its neighbors.
+        /// 4. Counts the number of active neighboring columns.
+        /// 5. If the number of active neighbors meets or exceeds the desired local activity, 
+        ///    the column is marked as inhibited.
+        /// 6. If the column is not inhibited and the number of active neighbors is less than 
+        ///    the desired local activity, the column is marked as active.
+        /// 7. Updates the active state and inhibition state of the column and its neighbors accordingly.
+        ///
+        /// @param[in] sortedIndices A vector of column indices sorted by their overlap scores (descending).
+        /// @param[in] overlapGrid A vector representing the overlap values for each column.
+        /// @param[in,out] inhibitedCols A vector indicating whether each column is inhibited (1 for inhibited, 0 for not).
+        /// @param[in,out] columnActive A vector indicating whether each column is active (1 for active, 0 for not).
+        /// @param[in,out] numColsActInNeigh A vector indicating the number of active columns in each column's neighborhood.
+        /// @param[in,out] activeColumnsInd A vector storing the indices of active columns.
+        /// @param[in] neighbourColsLists A vector of vectors, where each inner vector contains the indices of neighboring columns for each column.
+        /// @param[in] colInNeighboursLists A vector of vectors, where each inner vector contains the indices of columns that list each column as a neighbor.
+        /// @param[in] desiredLocalActivity The desired number of active columns within an inhibition neighborhood.
+        /// @param[in] minOverlap The minimum overlap score required for a column to be considered for activation.
+        ///
+        ///-----------------------------------------------------------------------------
+        void calculate_serial_sort_inhibition_for_column(const std::vector<int>& sortedIndices,
+                                                         const std::vector<float>& overlapGrid,
+                                                         std::vector<int>& inhibitedCols, 
+                                                         std::vector<int>& columnActive, 
+                                                         std::vector<int>& numColsActInNeigh, 
+                                                         std::vector<int>& activeColumnsInd, 
+                                                         const std::vector<std::vector<int>>& neighbourColsLists, 
+                                                         const std::vector<std::vector<int>>& colInNeighboursLists, 
+                                                         int desiredLocalActivity,
+                                                         int minOverlap);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// add_tie_breaker   Adds small tie-breaker values to overlap scores to resolve ties.
+        ///
+        /// @param[in,out] overlapGrid The overlap grid to add tie-breakers to.
+        /// @param[in] addColBias Whether to add column bias (for temporal stability).
+        /// @param[in,out] taskflow The Taskflow object for managing tasks.
+        ///
+        ///-----------------------------------------------------------------------------
+        void add_tie_breaker(std::vector<float>& overlapGrid, bool addColBias, tf::Taskflow &taskflow);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// calculate_serial_sort_inhibition   Performs the complete serial sorted inhibition calculation.
+        ///                                    This method handles the entire serial sorted workflow including
+        ///                                    tie-breaking, sorting, and processing.
+        ///
+        /// @param[in] colOverlapGrid The overlap values for each column.
+        /// @param[in] colOverlapGridShape The shape of the colOverlapGrid.
+        /// @param[in] potColOverlapGrid The potential overlap values for each column.
+        /// @param[in] potColOverlapGridShape The shape of the potColOverlapGrid.
+        ///
+        ///-----------------------------------------------------------------------------
+        void calculate_serial_sort_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+                                              const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
+
         // Member variables
         int width_;                  // Width of the grid of columns
         int height_;                 // Height of the grid of columns
@@ -149,6 +217,11 @@ namespace inhibition
 
         // Tracks the set of columns to process in the current (re-)processing iteration.
         std::vector<int> columnsToProcess_;
+
+        // Member variables for serial sorted implementation (non-atomic for simplicity)
+        std::vector<int> serialColumnActive_;      // Active state of each column (for serial implementation)
+        std::vector<int> serialInhibitedCols_;     // Inhibited state of each column (for serial implementation)
+        std::vector<int> serialNumColsActInNeigh_; // Number of active neighbors for each column (for serial implementation)
     };
 
 } // namespace inhibition

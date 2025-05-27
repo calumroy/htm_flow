@@ -976,3 +976,125 @@ TEST(InhibitionCalculatorTest, RunTime) {
     // No assertions; this is a performance test
     ASSERT_TRUE(true);
 }
+
+TEST(InhibitionCalculatorTest, SerialSortedVsParallel) {
+    // Test to verify that the serial sorted implementation produces the same results as the parallel implementation
+    int num_column_cols = 4;
+    int num_column_rows = 4;
+    int inhibition_width = 3;
+    int inhibition_height = 3;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = true;
+    bool wrapMode = false;
+    bool strict_local_activity = true;
+    bool debug = false;
+
+    std::vector<float> colOverlapGrid = {
+        19, 15, 16, 20,
+        21, 11, 12, 18,
+        13, 19, 21, 15,
+        18, 14, 10, 17
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
+
+    // Test with parallel implementation
+    inhibition::InhibitionCalculator inhibitionCalcParallel(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode,
+        strict_local_activity,
+        debug);
+
+    inhibitionCalcParallel.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, colOverlapGridShape, false);
+    std::vector<int> parallelActiveColumns = inhibitionCalcParallel.get_active_columns();
+
+    // Test with serial sorted implementation
+    inhibition::InhibitionCalculator inhibitionCalcSerial(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode,
+        strict_local_activity,
+        debug);
+
+    inhibitionCalcSerial.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, colOverlapGridShape, true);
+    std::vector<int> serialActiveColumns = inhibitionCalcSerial.get_active_columns();
+
+    // Compare results
+    LOG(DEBUG, "Parallel Active Columns (2D):");
+    overlap_utils::print_2d_vector(parallelActiveColumns, {num_column_rows, num_column_cols});
+    
+    LOG(DEBUG, "Serial Active Columns (2D):");
+    overlap_utils::print_2d_vector(serialActiveColumns, {num_column_rows, num_column_cols});
+
+    // The results should be the same
+    ASSERT_EQ(parallelActiveColumns, serialActiveColumns);
+}
+
+TEST(InhibitionCalculatorTest, SerialSortedBasicTest) {
+    // Basic test specifically for the serial sorted implementation
+    int num_column_cols = 4;
+    int num_column_rows = 4;
+    int inhibition_width = 2;
+    int inhibition_height = 2;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = false;
+    bool wrapMode = false;
+    bool strict_local_activity = false;
+
+    // Create test input for colOverlapGrid and potColOverlapGrid
+    std::vector<float> colOverlapGrid = {
+        3, 2, 4, 1,
+        1, 3, 2, 2,
+        4, 1, 3, 1,
+        2, 4, 1, 3};
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    std::vector<float> potColOverlapGrid = {
+        2, 1, 2, 1,
+        1, 2, 1, 2,
+        2, 1, 2, 1,
+        1, 2, 1, 2};
+    std::pair<int, int> potColOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode,
+        strict_local_activity);
+
+    // Run the inhibition calculation with serial sorted implementation
+    inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape, true);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // Define the expected output (modify according to your expectations)
+    std::vector<int> expected_activeColumns = {
+        1, 0, 1, 0,
+        0, 1, 0, 1,
+        1, 0, 1, 0,
+        0, 1, 0, 1};
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(activeColumns, expected_activeColumns);
+}
