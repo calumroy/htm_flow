@@ -10,6 +10,7 @@
 #include "inhibition.hpp"
 #include "utilities/logger.hpp"
 #include "htm_flow/overlap_utils.hpp"
+#include <cstring>  // for memset
 
 namespace inhibition
 {
@@ -113,18 +114,23 @@ namespace inhibition
         tf::Taskflow taskflow;
         tf::Executor executor;
 
-        // TODO: find a faster way to do this.
-        // Reset atomic variables and active columns list
-        for (int i = 0; i < numColumns_; ++i)
-        {
-            columnActive_[i].store(0);
-            inhibitedCols_[i].store(0);
-        }
-        activeColumnsInd_.clear();
-
         // Define the taskflow structure for the inhibition calculation
         tf::Taskflow tf1, tf2;
         std::mutex activeColumnsMutex;
+
+        // Add fast parallel clearing tasks to the main taskflow
+        tf::Task clearColumnActive = taskflow.emplace([this]() {
+            // Ultra-fast memory clearing using memset - much faster than individual atomic stores
+            std::memset(reinterpret_cast<void*>(columnActive_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
+        }).name("FastClearColumnActive");
+        
+        tf::Task clearInhibitedCols = taskflow.emplace([this]() {
+            std::memset(reinterpret_cast<void*>(inhibitedCols_.get()), 0, numColumns_ * sizeof(std::atomic<int>));
+        }).name("FastClearInhibitedCols");
+        
+        tf::Task clearActiveColumnsInd = taskflow.emplace([this]() {
+            activeColumnsInd_.clear();
+        }).name("ClearActiveColumnsInd");
 
         // Process columns with overlap grid
         calculate_inhibition_for_column(colOverlapGrid,
@@ -151,7 +157,13 @@ namespace inhibition
         // Set the order of the tasks using tf::Task objects
         tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
         tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
-        // Ensure t1 precedes t2
+        
+        // Establish task dependencies: clearing tasks must complete before processing tasks
+        clearColumnActive.precede(f1_task);
+        clearInhibitedCols.precede(f1_task);
+        clearActiveColumnsInd.precede(f1_task);
+        
+        // Ensure f1 precedes f2 (existing dependency)
         f1_task.precede(f2_task);    
 
         // Run the constructed taskflow graph
