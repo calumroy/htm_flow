@@ -42,12 +42,14 @@ namespace overlap
         /// @param[in] colSynPerm_shape  The shape of the colSynPerm vector height then width as a pair of ints.
         /// @param[in] inputGrid    The input grid as a 1D vector simulating a 2D vector of ints input_width_ x input_height_.
         /// @param[in] inputGrid_shape   The shape of the inputGrid vector height then width as a pair of ints.
+        /// @param[in] debug        Optional parameter to enable debug output (defaults to false).
         ///
         ///-----------------------------------------------------------------------------
         void calculate_overlap(const std::vector<float> &colSynPerm,
                                const std::pair<int, int> &colSynPerm_shape,
                                const std::vector<int> &inputGrid,
-                               const std::pair<int, int> &inputGrid_shape);
+                               const std::pair<int, int> &inputGrid_shape,
+                               bool debug = false);
 
         ///-----------------------------------------------------------------------------
         ///

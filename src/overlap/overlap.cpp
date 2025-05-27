@@ -144,57 +144,60 @@ namespace overlap
     {
         int numColumns = columnsWidth * columnsHeight;
 
-        // Make a vector of tiebreaker values to add to the columns overlap values vector.
+        // Create a vector of unique tie breaker values, similar to make_pot_syn_tie_breaker
+        // Each value is a unique multiple of normValue to ensure no duplicates
         float normValue = 1.0f / float(2 * numColumns + 2);
-
-        // Initialise a random seed so we can get the same random numbers.
-        // This means the tie breaker will be the same each time but it will
-        // be randomly distributed over the cells.
+        std::vector<float> uniqueValues(numColumns);
+        for (int i = 0; i < numColumns; ++i) {
+            uniqueValues[i] = (i + 1) * normValue;
+        }
+        
+        // Create a vector of indices to shuffle
+        std::vector<int> indices(numColumns);
+        std::iota(indices.begin(), indices.end(), 0);
+        
+        // Shuffle the indices using the same seed for reproducibility
         std::mt19937 gen(1);
+        std::shuffle(indices.begin(), indices.end(), gen);
 
-        // Create a tiebreaker that is not biased to either side of the columns grid.
+        // Assign the shuffled unique values to the tieBreaker
         for (int j = 0; j < tieBreaker.size(); j++)
         {
-            // The tieBreaker is a flattened vector of the columns overlaps.
-
-            // workout the row and col number of the non flattened matrix.
-            int rowNum = std::floor(j / columnsWidth);
-            int colNum = j % columnsWidth;
-            if (std::uniform_real_distribution<float>(0, 1)(gen) > 0.5f)
-            {
-                // Some positions are bias to the bottom left
-                tieBreaker[j] = ((rowNum + 1) * columnsWidth + (columnsWidth - colNum - 1)) * normValue;
-            }
-            else
-            {
-                // Some Positions are bias to the top right
-                tieBreaker[j] = ((columnsHeight - rowNum) * columnsWidth + colNum) * normValue;
-            }
+            int shuffledIndex = indices[j];
+            tieBreaker[j] = uniqueValues[shuffledIndex];
         }
     }
 
     void OverlapCalculator::parallel_make_col_tie_breaker(std::vector<float> &tieBreaker, int columnsHeight, int columnsWidth)
     {
         int numColumns = columnsWidth * columnsHeight;
+        
+        // Create a vector of unique tie breaker values, similar to make_pot_syn_tie_breaker
+        // Each value is a unique multiple of normValue to ensure no duplicates
         float normValue = 1.0f / float(2 * numColumns + 2);
-
+        std::vector<float> uniqueValues(numColumns);
+        for (int i = 0; i < numColumns; ++i) {
+            uniqueValues[i] = (i + 1) * normValue;
+        }
+        
+        // Create a vector of indices to shuffle
+        std::vector<int> indices(numColumns);
+        std::iota(indices.begin(), indices.end(), 0);
+        
+        // Shuffle the indices using the same seed for reproducibility
         std::mt19937 gen(1);
+        std::shuffle(indices.begin(), indices.end(), gen);
 
         tf::Taskflow taskflow;
         tf::Executor executor;
 
-        taskflow.for_each_index(0, static_cast<int>(tieBreaker.size()), 1, [&tieBreaker, columnsHeight, columnsWidth, normValue, &gen](int j)
+        taskflow.for_each_index(0, static_cast<int>(tieBreaker.size()), 1, [&tieBreaker, &uniqueValues, &indices](int j)
                                 {
-        int rowNum = std::floor(j / columnsWidth);
-        int colNum = j % columnsWidth;
-
-        if (std::uniform_real_distribution<float>(0, 1)(gen) > 0.5f) {
-            // Some positions are bias to the bottom left
-            tieBreaker[j] = ((rowNum + 1) * columnsWidth + (columnsWidth - colNum - 1)) * normValue;
-        } else {
-            // Some Positions are bias to the top right
-            tieBreaker[j] = ((columnsHeight - rowNum) * columnsWidth + colNum) * normValue;
-        } })
+        // Use the shuffled index to get a unique value
+        int shuffledIndex = indices[j];
+        
+        // Assign the unique shuffled value to this position
+        tieBreaker[j] = uniqueValues[shuffledIndex]; })
             .name("make_col_tie_breaker_loop");
 
         executor.run(taskflow).wait();
@@ -246,7 +249,8 @@ namespace overlap
     void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
                                               const std::pair<int, int> &colSynPerm_shape,
                                               const std::vector<int> &inputGrid,
-                                              const std::pair<int, int> &inputGrid_shape)
+                                              const std::pair<int, int> &inputGrid_shape,
+                                              bool debug)
     {
         check_new_input_params(colSynPerm, colSynPerm_shape, inputGrid, inputGrid_shape);
 
@@ -304,30 +308,34 @@ namespace overlap
         fu.wait(); // block until the execution completes.
         executor.run(taskflow).wait();
 
-        // // TODO remove these print outs.
-        // // Print the col_input_pot_syn_ vector
-        // LOG(INFO, "inputGrid");
-        // overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
-        // // print step x y sizes step_x_
-        // LOG(INFO, "step_x_: " + std::to_string(step_x_));
-        // LOG(INFO, "step_y_: " + std::to_string(step_y_));
-        // LOG(INFO, "col_input_pot_syn_");
-        // overlap_utils::print_4d_vector(col_input_pot_syn_, col_inputs_shape_);
-        // LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
-        // overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
+        // Print debug information if requested
+        if (debug) {
+            // Print the col_input_pot_syn_ vector
+            LOG(INFO, "inputGrid");
+            overlap_utils::print_2d_vector(inputGrid, inputGrid_shape);
+            // print step x y sizes step_x_
+            LOG(INFO, "step_x_: " + std::to_string(step_x_));
+            LOG(INFO, "step_y_: " + std::to_string(step_y_));
+            LOG(INFO, "col_input_pot_syn_");
+            overlap_utils::print_4d_vector(col_input_pot_syn_, col_inputs_shape_);
+            LOG(INFO, "colSynPerm shape: " + std::to_string(colSynPerm_shape.first) + " " + std::to_string(colSynPerm_shape.second));
+            overlap_utils::print_2d_vector(colSynPerm, colSynPerm_shape);
 
-        // // TODO remove this
-        // LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
-        // // Print the con_syn_input_ vector
-        // const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
-        // LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
-        // overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
-        // LOG(INFO, "col_pot_overlaps_ shape: " + std::to_string(col_pot_overlaps_.size()));
-        // overlap_utils::print_1d_vector(col_pot_overlaps_);
-        // LOG(INFO, "col_overlaps_ shape: " + std::to_string(col_overlaps_.size()));
-        // overlap_utils::print_1d_vector(col_overlaps_);
-        // LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
-        // overlap_utils::print_1d_vector(col_overlaps_tie_);
+            LOG(INFO, "connected_perm_" + std::to_string(connected_perm_));
+            // Print the con_syn_input_ vector
+            const std::pair<int, int> con_syn_input_shape = {num_columns_, potential_height_ * potential_width_};
+            LOG(INFO, "con_syn_input_ shape: " + std::to_string(con_syn_input_shape.first) + " " + std::to_string(con_syn_input_shape.second));
+            overlap_utils::print_2d_vector(con_syn_input_, con_syn_input_shape);
+            LOG(INFO, "col_pot_overlaps_ shape: " + std::to_string(col_pot_overlaps_.size()));
+            overlap_utils::print_2d_vector(col_pot_overlaps_, {columns_width_, columns_height_});
+            LOG(INFO, "col_overlaps_ shape: " + std::to_string(col_overlaps_.size()));
+            overlap_utils::print_2d_vector(col_overlaps_, {columns_width_, columns_height_});
+            LOG(INFO, "col_overlaps_tie_ shape: " + std::to_string(col_overlaps_tie_.size()));
+            overlap_utils::print_1d_vector(col_overlaps_tie_);
+            // Print the tie breaker values
+            LOG(INFO, "col_tie_breaker_ shape: " + std::to_string(col_tie_breaker_.size()));
+            overlap_utils::print_2d_vector(col_tie_breaker_, {columns_height_, columns_width_});
+        }
 
         LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
     }

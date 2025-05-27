@@ -1068,7 +1068,7 @@ TEST(OverlapCalculatorTest, AllConnectedSynapsesTest)
     bool center_pot_synapses = false;
     float connected_perm = 0.2f; // Low threshold
     int min_overlap = 0;
-    bool wrap_input = false;
+    bool wrap_input = true;
 
     // Create test input (all active)
     std::vector<int> inputGrid(input_width * input_height, 1);
