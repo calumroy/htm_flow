@@ -39,7 +39,4 @@ private:
     static std::chrono::time_point<std::chrono::high_resolution_clock> startTime, stopTime;
 };
 
-std::chrono::time_point<std::chrono::high_resolution_clock> Stopwatch::startTime;
-std::chrono::time_point<std::chrono::high_resolution_clock> Stopwatch::stopTime;
-
 #endif // STOPWATCH_H

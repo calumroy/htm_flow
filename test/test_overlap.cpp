@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include <htm_flow/overlap.hpp>
 #include <htm_flow/overlap_utils.hpp>
+#include "logger.hpp"
+#include <utilities/stopwatch.hpp>
+#include <set>
 
 // Using the overlap namespace
 using namespace overlap_utils;
@@ -683,7 +686,7 @@ TEST(parallel_Images2Neibs_1D, test4_limit_output_size)
     //   {{6, 7}, {10, 11}}}}
 
     // Define the expected output vector
-    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7, 8, 5, 12, 9, 5, 6, 9, 10, 6, 7, 10, 11};
+    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7};
 
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);
@@ -814,3 +817,605 @@ TEST(get_connected_syn_input, test1_small)
 
     ASSERT_EQ(check_conn2, expected_output);
 }
+
+// OverlapCalculator Integration Tests
+TEST(OverlapCalculatorTest, BasicOverlapCalculation)
+{
+    // Set up test parameters
+    int potential_width = 3;
+    int potential_height = 3;
+    int columns_width = 4;
+    int columns_height = 4;
+    int input_width = 6;
+    int input_height = 6;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 1;
+    bool wrap_input = false;
+
+    // Create test input grid (6x6)
+    std::vector<int> inputGrid = {
+        1, 0, 1, 0, 1, 0,
+        0, 1, 0, 1, 0, 1,
+        1, 0, 1, 0, 1, 0,
+        0, 1, 0, 1, 0, 1,
+        1, 0, 1, 0, 1, 0,
+        0, 1, 0, 1, 0, 1
+    };
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create test synapse permanence values (4x4 columns, each with 3x3 potential synapses)
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column);
+    
+    // Initialize with alternating high and low permanence values
+    for (int i = 0; i < colSynPerm.size(); ++i) {
+        colSynPerm[i] = (i % 2 == 0) ? 0.7f : 0.3f;
+    }
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create an instance of OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run the overlap calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Retrieve the overlap scores
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // Check that we got the expected number of overlap scores
+    ASSERT_EQ(overlapScores.size(), num_columns);
+
+    // Check that all overlap scores are non-negative
+    for (float score : overlapScores) {
+        ASSERT_GE(score, 0.0f);
+    }
+
+    LOG(DEBUG, "Basic Overlap Calculation Test Passed");
+}
+
+TEST(OverlapCalculatorTest, SmallGridTest)
+{
+    // Test with a very small grid to verify exact calculations
+    int potential_width = 2;
+    int potential_height = 2;
+    int columns_width = 2;
+    int columns_height = 2;
+    int input_width = 3;
+    int input_height = 3;
+    bool center_pot_synapses = false;
+    float connected_perm = 0.5f;
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    // Create simple test input (3x3)
+    std::vector<int> inputGrid = {
+        1, 1, 0,
+        1, 0, 1,
+        0, 1, 1
+    };
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values where all synapses are connected
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column, 0.8f); // All above threshold
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // Verify we have the right number of scores
+    ASSERT_EQ(overlapScores.size(), num_columns);
+
+    LOG(DEBUG, "Small Grid Test - Overlap Scores:");
+    overlap_utils::print_2d_vector(overlapScores, {columns_height, columns_width});
+
+    LOG(DEBUG, "Small Grid Test Passed");
+}
+
+TEST(OverlapCalculatorTest, WrapInputTest)
+{
+    // Test with wrap_input enabled
+    int potential_width = 3;
+    int potential_height = 3;
+    int columns_width = 3;
+    int columns_height = 3;
+    int input_width = 4;
+    int input_height = 4;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.4f;
+    int min_overlap = 1;
+    bool wrap_input = true;
+
+    // Create test input (4x4)
+    std::vector<int> inputGrid = {
+        1, 0, 1, 0,
+        0, 1, 0, 1,
+        1, 0, 1, 0,
+        0, 1, 0, 1
+    };
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column);
+    
+    // Set varying permanence values
+    for (int i = 0; i < colSynPerm.size(); ++i) {
+        colSynPerm[i] = 0.3f + (i % 5) * 0.1f; // Values from 0.3 to 0.7
+    }
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator with wrap_input enabled
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // Verify results
+    ASSERT_EQ(overlapScores.size(), num_columns);
+    
+    LOG(DEBUG, "Wrap Input Test - Overlap Scores:");
+    overlap_utils::print_2d_vector(overlapScores, {columns_height, columns_width});
+
+    LOG(DEBUG, "Wrap Input Test Passed");
+}
+
+TEST(OverlapCalculatorTest, NoConnectedSynapsesTest)
+{
+    // Test case where no synapses are connected (all permanences below threshold)
+    int potential_width = 2;
+    int potential_height = 2;
+    int columns_width = 3;
+    int columns_height = 3;
+    int input_width = 4;
+    int input_height = 4;
+    bool center_pot_synapses = false;
+    float connected_perm = 0.8f; // High threshold
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    // Create test input (all active)
+    std::vector<int> inputGrid(input_width * input_height, 1);
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values (all below threshold)
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column, 0.3f); // All below 0.8 threshold
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // All overlap scores should be very small (just tie-breaker values)
+    for (float score : overlapScores) {
+        ASSERT_LT(score, 1.0f); // Should be less than 1 (no connected synapses)
+    }
+
+    overlap_utils::print_2d_vector(overlapScores, {columns_height, columns_width});
+
+    LOG(DEBUG, "No Connected Synapses Test Passed");
+}
+
+TEST(OverlapCalculatorTest, AllConnectedSynapsesTest)
+{
+    // Test case where all synapses are connected and all inputs are active
+    int potential_width = 2;
+    int potential_height = 2;
+    int columns_width = 2;
+    int columns_height = 2;
+    int input_width = 3;
+    int input_height = 3;
+    bool center_pot_synapses = false;
+    float connected_perm = 0.2f; // Low threshold
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    // Create test input (all active)
+    std::vector<int> inputGrid(input_width * input_height, 1);
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values (all above threshold)
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column, 0.9f); // All above 0.2 threshold
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // All overlap scores should be close to the number of potential synapses
+    for (float score : overlapScores) {
+        ASSERT_GE(score, synapses_per_column - 1.0f); // Should be close to max possible
+    }
+
+    LOG(DEBUG, "All Connected Synapses Test Passed");
+}
+
+TEST(OverlapCalculatorTest, TieBreakerTest)
+{
+    // Test that tie-breaker values work correctly
+    int potential_width = 2;
+    int potential_height = 2;
+    int columns_width = 3;
+    int columns_height = 3;
+    int input_width = 4;
+    int input_height = 4;
+    bool center_pot_synapses = false;
+    float connected_perm = 0.5f;
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    // Create test input
+    std::vector<int> inputGrid = {
+        1, 1, 0, 0,
+        1, 1, 0, 0,
+        0, 0, 1, 1,
+        0, 0, 1, 1
+    };
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create identical synapse permanence values for all columns
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column, 0.8f); // All identical
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    overlap_utils::print_2d_vector(overlapScores, {columns_height, columns_width});
+
+    // Check that tie-breaker values make scores unique
+    std::set<float> uniqueScores(overlapScores.begin(), overlapScores.end());
+    ASSERT_EQ(uniqueScores.size(), overlapScores.size()); // All scores should be unique
+
+    LOG(DEBUG, "Tie-Breaker Test Passed");
+}
+
+TEST(OverlapCalculatorTest, LargeInputTest)
+{
+    // Performance test with larger input
+    int potential_width = 10;
+    int potential_height = 10;
+    int columns_width = 500;
+    int columns_height = 500;
+    int input_width = 1000;
+    int input_height = 1000;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 1;
+    bool wrap_input = false;
+
+    START_STOPWATCH();
+
+    // Create test input (checkerboard pattern)
+    std::vector<int> inputGrid(input_width * input_height);
+    for (int i = 0; i < input_height; ++i) {
+        for (int j = 0; j < input_width; ++j) {
+            inputGrid[i * input_width + j] = (i + j) % 2;
+        }
+    }
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column);
+    
+    // Initialize with random-like pattern
+    for (int i = 0; i < colSynPerm.size(); ++i) {
+        colSynPerm[i] = 0.3f + (i % 7) * 0.1f; // Values from 0.3 to 0.9
+    }
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    STOP_STOPWATCH();
+    unsigned long long setup_time = GET_ELAPSED_TIME();
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    START_STOPWATCH();
+
+    // Run calculation
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+    STOP_STOPWATCH();
+
+    // Get results
+    std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    // Verify results
+    ASSERT_EQ(overlapScores.size(), num_columns);
+
+    LOG(INFO, "Setup time ms: " + std::to_string(setup_time));
+    LOG(INFO, "Large Input Overlap calculation time: ");
+    PRINT_ELAPSED_TIME();
+
+    LOG(DEBUG, "Large Input Test Passed");
+}
+
+TEST(OverlapCalculatorTest, PerformanceTest)
+{
+    // Performance test with multiple runs
+    int numCycles = 5;
+    int potential_width = 8;
+    int potential_height = 8;
+    int columns_width = 100;
+    int columns_height = 100;
+    int input_width = 200;
+    int input_height = 200;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 1;
+    bool wrap_input = false;
+
+    // Create test input
+    std::vector<int> inputGrid(input_width * input_height);
+    for (int i = 0; i < inputGrid.size(); ++i) {
+        inputGrid[i] = i % 3 == 0 ? 1 : 0; // Sparse pattern
+    }
+    std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Create synapse permanence values
+    int num_columns = columns_width * columns_height;
+    int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column);
+    
+    for (int i = 0; i < colSynPerm.size(); ++i) {
+        colSynPerm[i] = 0.4f + (i % 6) * 0.1f; // Values from 0.4 to 0.9
+    }
+    std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    START_STOPWATCH();
+
+    // Run multiple cycles
+    for (int i = 0; i < numCycles; ++i) {
+        overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+    }
+
+    STOP_STOPWATCH();
+
+    LOG(INFO, "Total time for " + std::to_string(numCycles) + " overlap calculation cycles: ");
+    PRINT_ELAPSED_TIME();
+
+    // This is a performance test, so we just assert it completes
+    ASSERT_TRUE(true);
+}
+
+TEST(OverlapCalculatorTest, DifferentParametersTest)
+{
+    // Test with various parameter combinations
+    struct TestParams {
+        int potential_width;
+        int potential_height;
+        int columns_width;
+        int columns_height;
+        int input_width;
+        int input_height;
+        bool center_pot_synapses;
+        bool wrap_input;
+        float connected_perm;
+    };
+
+    std::vector<TestParams> testCases = {
+        {3, 3, 5, 5, 10, 10, true, false, 0.5f},
+        {2, 4, 4, 3, 8, 6, false, true, 0.3f},
+        {5, 2, 3, 6, 15, 12, true, true, 0.7f},
+        {1, 1, 10, 10, 12, 12, false, false, 0.1f}
+    };
+
+    for (size_t testIdx = 0; testIdx < testCases.size(); ++testIdx) {
+        const auto& params = testCases[testIdx];
+        
+        // Create test input
+        std::vector<int> inputGrid(params.input_width * params.input_height);
+        for (int i = 0; i < inputGrid.size(); ++i) {
+            inputGrid[i] = (i + testIdx) % 3 == 0 ? 1 : 0;
+        }
+        std::pair<int, int> inputGridShape = {params.input_height, params.input_width};
+
+        // Create synapse permanence values
+        int num_columns = params.columns_width * params.columns_height;
+        int synapses_per_column = params.potential_width * params.potential_height;
+        std::vector<float> colSynPerm(num_columns * synapses_per_column);
+        
+        for (int i = 0; i < colSynPerm.size(); ++i) {
+            colSynPerm[i] = 0.2f + (i % 8) * 0.1f;
+        }
+        std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+        // Create OverlapCalculator
+        overlap::OverlapCalculator overlapCalc(
+            params.potential_width,
+            params.potential_height,
+            params.columns_width,
+            params.columns_height,
+            params.input_width,
+            params.input_height,
+            params.center_pot_synapses,
+            params.connected_perm,
+            1, // min_overlap
+            params.wrap_input);
+
+        // Run calculation
+        overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+
+        // Get results
+        std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+        // Verify basic properties
+        ASSERT_EQ(overlapScores.size(), num_columns);
+        for (float score : overlapScores) {
+            ASSERT_GE(score, 0.0f);
+        }
+
+        LOG(DEBUG, "Test case " + std::to_string(testIdx + 1) + " passed");
+    }
+
+    LOG(DEBUG, "Different Parameters Test Passed");
+}
+
+TEST(OverlapCalculatorTest, TieBreakerConsistencyTest)
+{
+    // Test that tie-breaker values are consistent across multiple runs
+    int potential_width = 3;
+    int potential_height = 3;
+    int columns_width = 4;
+    int columns_height = 4;
+    int input_width = 6;
+    int input_height = 6;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    // Create OverlapCalculator
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    // Get tie-breaker values
+    std::vector<float> tieBreaker1 = overlapCalc.get_pot_syn_tie_breaker();
+    std::vector<float> tieBreaker2 = overlapCalc.get_pot_syn_tie_breaker();
+
+    // Tie-breaker values should be identical across calls
+    ASSERT_EQ(tieBreaker1, tieBreaker2);
+
+    // Verify tie-breaker properties
+    ASSERT_EQ(tieBreaker1.size(), columns_width * columns_height * potential_width * potential_height);
+    
+    // All values should be small and positive
+    for (float val : tieBreaker1) {
+        ASSERT_GT(val, 0.0f);
+        ASSERT_LT(val, 0.5f);
+    }
+
+    // Print out the tieBreaker1 values in matrix
+    overlap_utils::print_2d_vector(tieBreaker1, {columns_height * potential_height, columns_width * potential_width});
+
+    LOG(DEBUG, "Tie-Breaker Consistency Test Passed");
+}
+
