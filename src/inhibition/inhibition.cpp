@@ -137,18 +137,22 @@ namespace inhibition
                                         iterationCount_,
                                         columnsToProcess_);
 
-        // TODO: Reenable this.
-        // // Process columns with potential overlap grid
-        // calculate_inhibition_for_column(potColOverlapGrid,
-        //                                 activeColumnsInd_,
-        //                                 neighbourColsLists_, colInNeighboursLists_,
-        //                                 desiredLocalActivity_, minOverlap_, activeColumnsMutex, tf2);
+        // Process columns with potential overlap grid
+        calculate_inhibition_for_column(potColOverlapGrid,
+                                        activeColumnsInd_,
+                                        neighbourColsLists_, colInNeighboursLists_,
+                                        desiredLocalActivity_, minOverlap_,
+                                        activeColumnsMutex, tf2,
+                                        inhibitionCounts_, minorlyInhibitedColumns_,
+                                        minorlyInhibitedMutex_, needsReprocessing_,
+                                        iterationCount_,
+                                        columnsToProcess_);
 
         // Set the order of the tasks using tf::Task objects
         tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
-        // tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
-        // // Ensure t1 precedes t2
-        // f1_task.precede(f2_task);    
+        tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
+        // Ensure t1 precedes t2
+        f1_task.precede(f2_task);    
 
         // Run the constructed taskflow graph
         tf::Future<void> fu = executor.run(taskflow);
@@ -314,14 +318,6 @@ namespace inhibition
             if (i < 0 || i >= numColumns_)                               return;
             if (overlapGrid[i] < minOverlap)                             return;
             if (inhibitionCounts[i] >= desiredLocalActivity)             return;
-
-            // // Debug: column about to be processed
-            // if (this->debug_) {
-            //     LOG(DEBUG, "Iter " + std::to_string(iterationCount) +
-            //                " – processing col " + std::to_string(i) +
-            //                "  overlap=" + std::to_string(overlapGrid[i]) +
-            //                "  inhibitCnt=" + std::to_string(inhibitionCounts[i]));
-            // }
 
             //-----------------------------------------------------------------
             // Build neighbourhood and lock the related mutexes
