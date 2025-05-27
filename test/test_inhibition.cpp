@@ -313,13 +313,15 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     // Set up test parameters
     int num_column_cols = 4;
     int num_column_rows = 4;
-    int inhibition_width = 2;
-    int inhibition_height = 2;
+    int inhibition_width = 3;
+    int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
     bool center_pot_synapses = false;
     bool wrapMode = false;
-    bool strict_local_activity = false;
+    bool strict_local_activity = true;
+    bool debug = false;
+    bool useTieBreaker = true;  // Use tie breaker when their are multiple columns with the same overlap score.
 
     // Create test input for colOverlapGrid and potColOverlapGrid
     std::vector<float> colOverlapGrid = {
@@ -346,7 +348,9 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
         min_overlap,
         center_pot_synapses,
         wrapMode,
-        strict_local_activity);
+        strict_local_activity,
+        debug,
+        useTieBreaker);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
@@ -357,8 +361,8 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     // Define the expected output (modify according to your expectations)
     std::vector<int> expected_activeColumns = {
         1, 0, 1, 0,
-        0, 1, 0, 1,
-        1, 0, 1, 0,
+        0, 0, 1, 0,
+        1, 0, 0, 0,
         0, 1, 0, 1};
 
     // Check if the actual output matches the expected output
@@ -439,7 +443,6 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
 
-    
 }
 
 TEST(InhibitionCalculatorTest, Case1) {
@@ -452,9 +455,15 @@ TEST(InhibitionCalculatorTest, Case1) {
     bool center_pot_synapses = true;  
     bool wrapMode = false;
     bool strict_local_activity = true;
+    bool debug = true;
+    bool useTieBreaker = true;  // Use tie breaker when their are multiple columns with the same overlap score.
 
     // Initialize colOverlapGrid
     std::vector<float> colOverlapGrid = {
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
@@ -487,7 +496,9 @@ TEST(InhibitionCalculatorTest, Case1) {
         min_overlap,
         center_pot_synapses,
         wrapMode,
-        strict_local_activity);
+        strict_local_activity,
+        debug,
+        useTieBreaker);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(
@@ -499,27 +510,110 @@ TEST(InhibitionCalculatorTest, Case1) {
 
     // Expected active columns
     std::vector<int> expected_activeColumns = {
-        0, 0, 1, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 1, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0
     };
+
+    LOG(DEBUG, "Actual Active Columns (2D):");
+    overlap_utils::print_2d_vector(activeColumns, {num_column_rows, num_column_cols});
+
+    LOG(DEBUG, "Expected Active Columns (2D):");
+    overlap_utils::print_2d_vector(expected_activeColumns, {num_column_rows, num_column_cols});
+
+    // Check if the actual output matches the expected output
+    ASSERT_EQ(activeColumns, expected_activeColumns);
+}
+
+TEST(InhibitionCalculatorTest, Case1_10Rows) {
+    int num_column_cols = 8;
+    int num_column_rows = 10;
+    int inhibition_width = 3;
+    int inhibition_height = 3;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = true;  
+    bool wrapMode = false;
+    bool strict_local_activity = true;
+    bool debug = true;
+    bool useTieBreaker = true;  // Use tie breaker when their are multiple columns with the same overlap score.
+
+    // Initialize colOverlapGrid
+    std::vector<float> colOverlapGrid = {
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // potColOverlapGrid is the same as colOverlapGrid
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode,
+        strict_local_activity,
+        debug,
+        useTieBreaker);
+
+    // Run the inhibition calculation
+    inhibitionCalc.calculate_inhibition(
+        colOverlapGrid, colOverlapGridShape,
+        potColOverlapGrid, colOverlapGridShape);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // Expected active columns
+    std::vector<int> expected_activeColumns = {
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0
+    };
+
+    LOG(DEBUG, "Actual Active Columns (2D):");
+    overlap_utils::print_2d_vector(activeColumns, {num_column_rows, num_column_cols});
+
+    LOG(DEBUG, "Expected Active Columns (2D):");
+    overlap_utils::print_2d_vector(expected_activeColumns, {num_column_rows, num_column_cols});
 
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
@@ -578,7 +672,7 @@ TEST(InhibitionCalculatorTest, Case2) {
 TEST(InhibitionCalculatorTest, Case3) {
     int num_column_cols = 4;
     int num_column_rows = 4;
-    int inhibition_width = 2;
+    int inhibition_width = 3;
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
@@ -586,6 +680,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     bool wrapMode = false;
     bool strict_local_activity = true;
     bool debug = true;
+    bool useTieBreaker = true;
     // Initialize colOverlapGrid
     std::vector<float> colOverlapGrid = {
         8, 4, 5, 8,
@@ -609,7 +704,8 @@ TEST(InhibitionCalculatorTest, Case3) {
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
-        debug);
+        debug,
+        useTieBreaker);
 
     // Run the inhibition calculation
     inhibitionCalc.calculate_inhibition(

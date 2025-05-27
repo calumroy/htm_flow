@@ -29,7 +29,7 @@ namespace inhibition
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
                              int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
-                             bool strictLocalActivity = true, bool debug = false);
+                             bool strictLocalActivity = true, bool debug = false, bool useTieBreaker = false);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -158,11 +158,34 @@ namespace inhibition
         /// add_tie_breaker   Adds small tie-breaker values to overlap scores to resolve ties.
         ///
         /// @param[in,out] overlapGrid The overlap grid to add tie-breakers to.
-        /// @param[in] addColBias Whether to add column bias (for temporal stability).
         /// @param[in,out] taskflow The Taskflow object for managing tasks.
         ///
         ///-----------------------------------------------------------------------------
-        void add_tie_breaker(std::vector<float>& overlapGrid, bool addColBias, tf::Taskflow &taskflow);
+        void add_tie_breaker(std::vector<float>& overlapGrid, tf::Taskflow &taskflow);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// parallel_add_tie_breaker   Adds small tie-breaker values to overlap scores in parallel.
+        ///
+        /// @param[in,out] overlapGrid The overlap grid to add tie-breakers to.
+        ///
+        ///-----------------------------------------------------------------------------
+        void parallel_add_tie_breaker(std::vector<float>& overlapGrid);
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// validate_input_parameters   Validates input parameters for inhibition calculation.
+        ///
+        /// @param[in] colOverlapGrid A vector representing the overlap values for each column.
+        /// @param[in] colOverlapGridShape A pair representing the shape of the colOverlapGrid (rows, cols).
+        /// @param[in] potColOverlapGrid A vector representing the potential overlap values for each column.
+        /// @param[in] potColOverlapGridShape A pair representing the shape of the potColOverlapGrid (rows, cols).
+        ///
+        /// @throws std::invalid_argument if any validation check fails.
+        ///
+        ///-----------------------------------------------------------------------------
+        void validate_input_parameters(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+                                       const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
 
         ///-----------------------------------------------------------------------------
         ///
@@ -195,7 +218,8 @@ namespace inhibition
         // NOTE: For strict correctness when using the parallel version of the inhibition calc this should be set to true.
         // Disabling allows some cases where the desired local activity is not met due to the inhibition neighborhood not being symmetrical.
         // Disabling it also makes the parallel version of the inhibition calc non deterministic (the order of processing will change the result).
-        bool strictLocalActivity_;  
+        bool strictLocalActivity_;
+        bool useTieBreaker_;        // Whether to use tie-breaker values to resolve ties in overlap scores  
         std::vector<int> activeColumnsInd_;    // This is a list storing only the active columns indicies
         // We use atomic variables to ensure thread safety when updating the active and inhibited columns.
         // Use a pointer to an array of atomic variables to allow for dynamic memory allocation at runtime.
@@ -222,6 +246,9 @@ namespace inhibition
         std::vector<int> serialColumnActive_;      // Active state of each column (for serial implementation)
         std::vector<int> serialInhibitedCols_;     // Inhibited state of each column (for serial implementation)
         std::vector<int> serialNumColsActInNeigh_; // Number of active neighbors for each column (for serial implementation)
+
+        // Tie breaker values for resolving ties in overlap scores
+        std::vector<float> tieBreaker_;
     };
 
 } // namespace inhibition

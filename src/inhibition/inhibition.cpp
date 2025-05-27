@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include <numeric>
+#include <random>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>
 #include "inhibition.hpp"
@@ -17,14 +18,14 @@ namespace inhibition
 
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
                                                int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
-                                               bool strictLocalActivity, bool debug)
+                                               bool strictLocalActivity, bool debug, bool useTieBreaker)
         : width_(width), height_(height), numColumns_(width * height),
           potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
           desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
           centerInhib_(centerInhib), wrapMode_(wrapMode), strictLocalActivity_(strictLocalActivity),
           activeColumnsInd_(),
           columnMutexes_(numColumns_),
-          debug_(debug),
+          debug_(debug), useTieBreaker_(useTieBreaker),
           columnsToProcess_(numColumns_)
     {
         // If strictLocalActivity is enabled, ensure symmetrical inhibition areas
@@ -64,6 +65,37 @@ namespace inhibition
         serialInhibitedCols_.resize(numColumns_, 0);
         serialNumColsActInNeigh_.resize(numColumns_, 0);
 
+        // Initialize tie breaker vector if enabled
+        if (useTieBreaker_) {
+            tieBreaker_.resize(numColumns_, 0.0f);
+            // Generate tie breaker values similar to overlap calculator
+            int numColumns = width_ * height_;
+            float normValue = 1.0f / float(2 * numColumns + 2);
+            std::vector<float> uniqueValues(numColumns);
+            for (int i = 0; i < numColumns; ++i) {
+                uniqueValues[i] = (i + 1) * normValue;
+            }
+            
+            // Create a vector of indices to shuffle
+            std::vector<int> indices(numColumns);
+            std::iota(indices.begin(), indices.end(), 0);
+            
+            // Shuffle the indices using the same seed for reproducibility
+            std::mt19937 gen(1);
+            std::shuffle(indices.begin(), indices.end(), gen);
+
+            // Assign the shuffled unique values to the tieBreaker
+            for (int j = 0; j < numColumns; ++j) {
+                int shuffledIndex = indices[j];
+                tieBreaker_[j] = uniqueValues[shuffledIndex];
+            }
+
+            if (debug_) {
+                LOG(DEBUG, "Tie-Breaker Values:");
+                overlap_utils::print_1d_vector(tieBreaker_);
+            }
+        }
+
         // Initialize the neighbours list for each column
         neighbourColsLists_ = std::vector<std::vector<int>>(numColumns_);
         colInNeighboursLists_ = std::vector<std::vector<int>>(numColumns_);
@@ -93,6 +125,74 @@ namespace inhibition
 
     ///-----------------------------------------------------------------------------
     ///
+    /// validate_input_parameters   Validates input parameters for inhibition calculation.
+    ///
+    /// @param[in] colOverlapGrid A vector representing the overlap values for each column.
+    /// @param[in] colOverlapGridShape A pair representing the shape of the colOverlapGrid (rows, cols).
+    /// @param[in] potColOverlapGrid A vector representing the potential overlap values for each column.
+    /// @param[in] potColOverlapGridShape A pair representing the shape of the potColOverlapGrid (rows, cols).
+    ///
+    /// @throws std::invalid_argument if any validation check fails.
+    ///-----------------------------------------------------------------------------
+    void InhibitionCalculator::validate_input_parameters(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
+                                                         const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape)
+    {
+        int expectedSize = colOverlapGridShape.first * colOverlapGridShape.second;
+        int expectedPotSize = potColOverlapGridShape.first * potColOverlapGridShape.second;
+        
+        // Check colOverlapGrid dimensions
+        if (colOverlapGrid.size() != static_cast<size_t>(expectedSize)) {
+            std::string errorMsg = "colOverlapGrid size mismatch! Expected: " + std::to_string(expectedSize) + 
+                                 " (rows=" + std::to_string(colOverlapGridShape.first) + 
+                                 " × cols=" + std::to_string(colOverlapGridShape.second) + 
+                                 "), but got: " + std::to_string(colOverlapGrid.size());
+            LOG(ERROR, errorMsg);
+            throw std::invalid_argument(errorMsg);
+        }
+        
+        // Check potColOverlapGrid dimensions
+        if (potColOverlapGrid.size() != static_cast<size_t>(expectedPotSize)) {
+            std::string errorMsg = "potColOverlapGrid size mismatch! Expected: " + std::to_string(expectedPotSize) + 
+                                 " (rows=" + std::to_string(potColOverlapGridShape.first) + 
+                                 " × cols=" + std::to_string(potColOverlapGridShape.second) + 
+                                 "), but got: " + std::to_string(potColOverlapGrid.size());
+            LOG(ERROR, errorMsg);
+            throw std::invalid_argument(errorMsg);
+        }
+        
+        // Check that grid dimensions match the calculator's expected dimensions
+        if (expectedSize != numColumns_) {
+            std::string errorMsg = std::string("Grid dimensions don't match InhibitionCalculator configuration! ") +
+                                 "Grid size: " + std::to_string(expectedSize) + 
+                                 ", Calculator expects: " + std::to_string(numColumns_) + 
+                                 " (width=" + std::to_string(width_) + " × height=" + std::to_string(height_) + ")";
+            LOG(ERROR, errorMsg);
+            throw std::invalid_argument(errorMsg);
+        }
+        
+        // Check tie-breaker vector size if enabled
+        if (useTieBreaker_ && tieBreaker_.size() != static_cast<size_t>(numColumns_)) {
+            std::string errorMsg = "Tie-breaker vector size mismatch! Expected: " + std::to_string(numColumns_) + 
+                                 ", but got: " + std::to_string(tieBreaker_.size());
+            LOG(ERROR, errorMsg);
+            throw std::invalid_argument(errorMsg);
+        }
+        
+        if (debug_) {
+            LOG(DEBUG, "Input validation passed:");
+            LOG(DEBUG, "  colOverlapGrid size: " + std::to_string(colOverlapGrid.size()));
+            LOG(DEBUG, "  colOverlapGridShape: " + std::to_string(colOverlapGridShape.first) + "×" + std::to_string(colOverlapGridShape.second));
+            LOG(DEBUG, "  potColOverlapGrid size: " + std::to_string(potColOverlapGrid.size()));
+            LOG(DEBUG, "  potColOverlapGridShape: " + std::to_string(potColOverlapGridShape.first) + "×" + std::to_string(potColOverlapGridShape.second));
+            LOG(DEBUG, "  Calculator dimensions: " + std::to_string(width_) + "×" + std::to_string(height_) + " = " + std::to_string(numColumns_));
+            if (useTieBreaker_) {
+                LOG(DEBUG, "  Tie-breaker vector size: " + std::to_string(tieBreaker_.size()));
+            }
+        }
+    }
+
+    ///-----------------------------------------------------------------------------
+    ///
     /// calculate_inhibition   Determines the active and inhibited columns in an HTM layer based on overlap and potential overlap scores.
     ///
     /// @param[in] colOverlapGrid A vector representing the overlap values for each column in a 2D grid (flattened).
@@ -102,22 +202,26 @@ namespace inhibition
     /// @param[in] use_serial_sort_calc A boolean indicating whether to use the serial sorted implementation.
     ///
     /// This function performs the following steps:
-    /// 1. Add Tie-Breakers:
-    ///    - Apply a small tie-breaker value to each column's overlap score to resolve ties.
-    /// 2. Sort Columns by Overlap Scores:
-    ///    - Sort columns based on overlap scores using Taskflow for parallel processing.
-    /// 3. Determine Active Columns from Overlap Scores:
-    ///    - Iterate through sorted columns to mark them as active or inhibited based on overlap and neighbor constraints.
-    /// 4. Repeat Process with Potential Overlap Scores (if necessary):
-    ///    - Process potential overlap scores similarly to further refine column activation.
-    /// 5. Finalize Active Columns:
-    ///    - Store the final activation state of each column.
+    /// 1. Validate Input Parameters:
+    ///    - Check grid dimensions match expected sizes and calculator configuration.
+    /// 2. Add Tie-Breakers (if enabled):
+    ///    - Apply small tie-breaker values to resolve overlap score ties.
+    /// 3. Process Columns:
+    ///    - Serial mode: Sort by overlap scores, then process highest to lowest.
+    ///    - Parallel mode: Process all columns concurrently with iterative refinement.
+    /// 4. Apply Inhibition Rules:
+    ///    - Enforce local activity constraints and neighbor competition.
+    /// 5. Finalize Results:
+    ///    - Store final activation state of each column.
     ///-----------------------------------------------------------------------------
 
     void InhibitionCalculator::calculate_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                                     const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape,
                                                     bool use_serial_sort_calc)
     {
+        // Validate input parameters
+        validate_input_parameters(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
+
         if (use_serial_sort_calc) {
             // Use the slower serial sorted implementation
             calculate_serial_sort_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
@@ -143,6 +247,18 @@ namespace inhibition
             tf::Task clearActiveColumnsInd = taskflow.emplace([this]() {
                 activeColumnsInd_.clear();
             }).name("ClearActiveColumnsInd");
+
+            // Add tie breaker tasks if enabled
+            tf::Task addTieBreakerCol, addTieBreakerPot;
+            if (useTieBreaker_) {
+                addTieBreakerCol = taskflow.emplace([this, &colOverlapGrid]() {
+                    parallel_add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid));
+                }).name("AddTieBreakerCol");
+                
+                addTieBreakerPot = taskflow.emplace([this, &potColOverlapGrid]() {
+                    parallel_add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid));
+                }).name("AddTieBreakerPot");
+            }
 
             // Process columns with overlap grid
             calculate_inhibition_for_column(colOverlapGrid,
@@ -174,6 +290,12 @@ namespace inhibition
             clearColumnActive.precede(f1_task);
             clearInhibitedCols.precede(f1_task);
             clearActiveColumnsInd.precede(f1_task);
+            
+            // Add tie breaker dependencies if enabled
+            if (useTieBreaker_) {
+                addTieBreakerCol.precede(f1_task);
+                addTieBreakerPot.precede(f2_task);
+            }
             
             // Ensure f1 precedes f2 (existing dependency)
             f1_task.precede(f2_task);    
@@ -333,8 +455,10 @@ namespace inhibition
             1ul,
             [&, this, desiredLocalActivity, minOverlap](size_t k)
         {
-            LOG(DEBUG, "process_pass desiredLocalActivity="
-                       + std::to_string(desiredLocalActivity)); 
+            if (this->debug_) {
+                LOG(DEBUG, "process_pass desiredLocalActivity="
+                        + std::to_string(desiredLocalActivity)); 
+            }
             // --------------------------------------------------------------
             // --- Early exits ---------------------------------------------
             // --------------------------------------------------------------
@@ -542,8 +666,10 @@ namespace inhibition
 
         // Decide whether we need another iteration
         tf::Task prepare_next = taskflow.emplace([&, this, desiredLocalActivity]() {
-            LOG(DEBUG, "prepare_next desiredLocalActivity="
-                       + std::to_string(desiredLocalActivity)); 
+            if (this->debug_) {
+                LOG(DEBUG, "prepare_next desiredLocalActivity="
+                        + std::to_string(desiredLocalActivity)); 
+            }
 
             ++iterationCount;
 
@@ -563,9 +689,10 @@ namespace inhibition
                 if (!columnsToProcess.empty()) {
                     overlap_utils::print_1d_vector(columnsToProcess);
                 }
+                LOG(DEBUG, "iterationCount=" + std::to_string(iterationCount));
+                LOG(DEBUG, "keepGoing=" + std::to_string(keepGoing));
             }
-            LOG(DEBUG, "iterationCount="
-                       + std::to_string(iterationCount));
+            
             return keepGoing ? 0 : 1;   // 0 → loop again, 1 → stop
         }).name("PrepareNext");
 
@@ -610,8 +737,10 @@ namespace inhibition
         // Define the taskflow structure for the inhibition calculation
         tf::Taskflow tf1, tf2, tf3, tf4, tf5, tf6;
 
-        // Task to add a small tie breaker to the overlap grid
-        add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid), false, tf1);
+        // Task to add a small tie breaker to the overlap grid (if enabled)
+        if (useTieBreaker_) {
+            add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid), tf1);
+        }
 
         // Sort columns by overlap values using parallel_sort
         inhibition_utils::parallel_sort_ind(sortedIndices_colOver, colOverlapGrid, tf2);
@@ -625,8 +754,10 @@ namespace inhibition
                                             desiredLocalActivity_, minOverlap_);
         }).name("ProcessOverlap");
 
-        // Add a small tie breaker to the potential overlap grid
-        add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid), false, tf4);
+        // Add a small tie breaker to the potential overlap grid (if enabled)
+        if (useTieBreaker_) {
+            add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid), tf4);
+        }
 
         // Sort columns by potential overlap values using parallel_sort
         inhibition_utils::parallel_sort_ind(sortedIndices_potOver, potColOverlapGrid, tf5);
@@ -641,19 +772,25 @@ namespace inhibition
         }).name("ProcessPotOverlap");
 
         // Set the order of the tasks using tf::Task objects
-        tf::Task f1_task = taskflow.composed_of(tf1).name("AddTieBreaker");
         tf::Task f2_task = taskflow.composed_of(tf2).name("SortOverlap");
         tf::Task f3_task = taskflow.composed_of(tf3).name("ProcessOverlap");
-        tf::Task f4_task = taskflow.composed_of(tf4).name("AddTieBreakerPot");
         tf::Task f5_task = taskflow.composed_of(tf5).name("SortPotOverlap");
         tf::Task f6_task = taskflow.composed_of(tf6).name("ProcessPotOverlap");
 
         // Set the task dependencies
-        f1_task.precede(f2_task);
-        f2_task.precede(f3_task);
-        f3_task.precede(f4_task);
-        f4_task.precede(f5_task);
-        f5_task.precede(f6_task);
+        if (useTieBreaker_) {
+            tf::Task f1_task = taskflow.composed_of(tf1).name("AddTieBreaker");
+            tf::Task f4_task = taskflow.composed_of(tf4).name("AddTieBreakerPot");
+            f1_task.precede(f2_task);
+            f2_task.precede(f3_task);
+            f3_task.precede(f4_task);
+            f4_task.precede(f5_task);
+            f5_task.precede(f6_task);
+        } else {
+            f2_task.precede(f3_task);
+            f3_task.precede(f5_task);
+            f5_task.precede(f6_task);
+        }
 
         // Run the constructed taskflow graph
         tf::Future<void> fu = executor.run(taskflow);
@@ -752,41 +889,58 @@ namespace inhibition
         }
     }
 
-    void InhibitionCalculator::add_tie_breaker(std::vector<float>& overlapGrid, bool addColBias, tf::Taskflow &taskflow)
+    void InhibitionCalculator::add_tie_breaker(std::vector<float>& overlapGrid, tf::Taskflow &taskflow)
     {
         // Create a task in the taskflow for adding the tie breaker
-        taskflow.emplace([this, &overlapGrid, addColBias]() {
-            float normValue = 1.0f / float(2 * numColumns_ + 2);
-
-            std::vector<float> tieBreaker(width_ * height_, 0.0f);
-            for (int y = 0; y < height_; ++y)
-            {
-                for (int x = 0; x < width_; ++x)
-                {
-                    int index = y * width_ + x;
-                    if ((y % 2) == 1)
-                    {
-                        // For odd rows, bias to the bottom left
-                        tieBreaker[index] = ((y + 1) * width_ + (width_ - x - 1)) * normValue;
-                    }
-                    else
-                    {
-                        // For even rows, bias to the bottom right
-                        tieBreaker[index] = (1 + x + y * width_) * normValue;
-                    }
-                }
+        taskflow.emplace([this, &overlapGrid]() {
+            // Validate that the overlap grid size matches the tie-breaker vector size
+            if (overlapGrid.size() != tieBreaker_.size()) {
+                std::string errorMsg = std::string("add_tie_breaker: Size mismatch! ") +
+                                     "overlapGrid size: " + std::to_string(overlapGrid.size()) + 
+                                     ", tieBreaker size: " + std::to_string(tieBreaker_.size()) + 
+                                     ", expected numColumns: " + std::to_string(numColumns_);
+                LOG(ERROR, errorMsg);
+                throw std::invalid_argument(errorMsg);
             }
-
-            if (addColBias)
+            
+            if (debug_) {
+                LOG(DEBUG, "add_tie_breaker: Processing " + std::to_string(overlapGrid.size()) + " elements");
+            }
+            
+            // Add the pre-computed tie breaker values to the overlap grid
+            for (size_t i = 0; i < overlapGrid.size(); ++i)
             {
-                // If previous columns were active, we can give them a small bias
-                // to maintain stability across time steps (this part is optional)
-                for (size_t i = 0; i < overlapGrid.size(); ++i)
-                {
-                    overlapGrid[i] += tieBreaker[i];
-                }
+                overlapGrid[i] += tieBreaker_[i];
             }
         }).name("AddTieBreaker");
+    }
+
+    void InhibitionCalculator::parallel_add_tie_breaker(std::vector<float>& overlapGrid)
+    {
+        // Validate that the overlap grid size matches the tie-breaker vector size
+        if (overlapGrid.size() != tieBreaker_.size()) {
+            std::string errorMsg = std::string("parallel_add_tie_breaker: Size mismatch! ") +
+                                 "overlapGrid size: " + std::to_string(overlapGrid.size()) + 
+                                 ", tieBreaker size: " + std::to_string(tieBreaker_.size()) + 
+                                 ", expected numColumns: " + std::to_string(numColumns_);
+            LOG(ERROR, errorMsg);
+            throw std::invalid_argument(errorMsg);
+        }
+        
+        if (debug_) {
+            LOG(DEBUG, "parallel_add_tie_breaker: Processing " + std::to_string(overlapGrid.size()) + " elements");
+        }
+
+        tf::Taskflow taskflow;
+        tf::Executor executor;
+
+        taskflow.for_each_index(0, static_cast<int>(overlapGrid.size()), 1, [this, &overlapGrid](int i)
+        {
+            // Add the pre-computed tie breaker values to the overlap grid
+            overlapGrid[i] += tieBreaker_[i];
+        }).name("ParallelAddTieBreaker");
+
+        executor.run(taskflow).wait();
     }
 
 } // namespace inhibition
