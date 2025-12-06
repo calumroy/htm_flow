@@ -222,7 +222,10 @@ namespace inhibition
         // Validate input parameters
         validate_input_parameters(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
 
-        if (use_serial_sort_calc) {
+        // When strictLocalActivity is enabled, always use the serial implementation
+        // as the parallel implementation cannot guarantee deterministic results
+        // that strictly respect the local activity constraint.
+        if (use_serial_sort_calc || strictLocalActivity_) {
             // Use the slower serial sorted implementation
             calculate_serial_sort_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
         } else {
@@ -249,15 +252,14 @@ namespace inhibition
             }).name("ClearActiveColumnsInd");
 
             // Add tie breaker tasks if enabled
+            tf::Taskflow tieBreakerTf1, tieBreakerTf2;
             tf::Task addTieBreakerCol, addTieBreakerPot;
             if (useTieBreaker_) {
-                addTieBreakerCol = taskflow.emplace([this, &colOverlapGrid]() {
-                    parallel_add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid));
-                }).name("AddTieBreakerCol");
+                parallel_add_tie_breaker(const_cast<std::vector<float>&>(colOverlapGrid), tieBreakerTf1);
+                addTieBreakerCol = taskflow.composed_of(tieBreakerTf1).name("AddTieBreakerCol");
                 
-                addTieBreakerPot = taskflow.emplace([this, &potColOverlapGrid]() {
-                    parallel_add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid));
-                }).name("AddTieBreakerPot");
+                parallel_add_tie_breaker(const_cast<std::vector<float>&>(potColOverlapGrid), tieBreakerTf2);
+                addTieBreakerPot = taskflow.composed_of(tieBreakerTf2).name("AddTieBreakerPot");
             }
 
             // Process columns with overlap grid
@@ -312,9 +314,13 @@ namespace inhibition
                 LOG(DEBUG, "Overlap Grid (with Tie-Breakers):");
                 overlap_utils::print_2d_vector(colOverlapGrid, colOverlapGridShape);
 
+                // Print inhibition counts
+                LOG(DEBUG, "Inhibition Counts:");
+                overlap_utils::print_2d_vector(inhibitionCounts_, colOverlapGridShape);
+
                 // Print the inhibited columns
                 LOG(DEBUG, "Inhibited Columns:");
-                overlap_utils::print_1d_atomic_array(inhibitedCols_.get(), numColumns_);
+                overlap_utils::print_2d_atomic_array(inhibitedCols_.get(), colOverlapGridShape);
 
                 // Print the active columns
                 LOG(DEBUG, "Active Columns:");
@@ -455,10 +461,6 @@ namespace inhibition
             1ul,
             [&, this, desiredLocalActivity, minOverlap](size_t k)
         {
-            if (this->debug_) {
-                LOG(DEBUG, "process_pass desiredLocalActivity="
-                        + std::to_string(desiredLocalActivity)); 
-            }
             // --------------------------------------------------------------
             // --- Early exits ---------------------------------------------
             // --------------------------------------------------------------
@@ -468,14 +470,32 @@ namespace inhibition
             if (overlapGrid[i] < minOverlap)                             return;
             if (inhibitionCounts[i] >= desiredLocalActivity)             return;
 
+            if (this->debug_) {
+                LOG(DEBUG, "Iteration " + std::to_string(iterationCount) +
+                           " process_pass i=" + std::to_string(i) +
+                           " desiredLocalActivity=" + std::to_string(desiredLocalActivity)); 
+            }
+
             //-----------------------------------------------------------------
             // Build neighbourhood and lock the related mutexes
+            // For stricter local activity enforcement, we need to lock not just
+            // immediate neighbors, but also neighbors-of-neighbors to safely
+            // check if activation would violate the constraint.
             //-----------------------------------------------------------------
             std::vector<int> colsToLock = neighbourColsLists[i];
             colsToLock.insert(colsToLock.end(),
                               colInNeighboursLists[i].begin(),
                               colInNeighboursLists[i].end());
             colsToLock.push_back(i);
+            
+            // For stricter local activity, also include neighbors of columns that have
+            // this column in their neighborhood (needed for the constraint check)
+            for (int j : colInNeighboursLists[i]) {
+                colsToLock.insert(colsToLock.end(),
+                                  neighbourColsLists[j].begin(),
+                                  neighbourColsLists[j].end());
+            }
+            
             std::sort(colsToLock.begin(), colsToLock.end());
             colsToLock.erase(std::unique(colsToLock.begin(),
                                          colsToLock.end()), colsToLock.end());
@@ -547,6 +567,39 @@ namespace inhibition
                 }
             }
 
+            // Additional check: verify that activating this column won't cause any
+            // neighbor's neighborhood to exceed the desiredLocalActivity limit.
+            // For each column j that has column i in its neighborhood (j in colInNeighboursLists[i]):
+            // - If j is active and already has (desiredLocalActivity - 1) active neighbors,
+            //   then activating i would make j's neighborhood have desiredLocalActivity + 1 active
+            //   (j itself + its existing active neighbors + i), violating the constraint.
+            if (shouldActivate) {
+                for (int j : colInNeighboursLists[i]) {
+                    if (columnActive_[j].load() == 1) {
+                        // Count active neighbors of j (excluding i since i isn't active yet)
+                        int activeNeighborsOfJ = 0;
+                        for (int jNeighbor : neighbourColsLists[j]) {
+                            if (jNeighbor != i && columnActive_[jNeighbor].load() == 1) {
+                                activeNeighborsOfJ++;
+                            }
+                        }
+                        // If j already has (desiredLocalActivity - 1) active neighbors,
+                        // activating i would push j's neighborhood over the limit
+                        // (j + activeNeighborsOfJ + i = 1 + (desiredLocalActivity-1) + 1 = desiredLocalActivity + 1)
+                        if (activeNeighborsOfJ >= desiredLocalActivity - 1) {
+                            shouldActivate = false;
+                            if (this->debug_) {
+                                LOG(DEBUG, "    Col " + std::to_string(i) +
+                                           " blocked: neighbor " + std::to_string(j) +
+                                           " already has " + std::to_string(activeNeighborsOfJ) +
+                                           " active neighbors");
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Debug: activation decision
             if (this->debug_) {
                 LOG(DEBUG, "    Col " + std::to_string(i) +
@@ -589,16 +642,61 @@ namespace inhibition
                     // Skip since we don't want to inhibit ourselves)
                     if (nb == i)  continue;
 
+                    bool shouldIncrementInhibition = false;
+                    bool shouldDeactivate = false;
+                    
                     bool below = (threshold >= 0.0f) && (overlapGrid[nb] < threshold);
                     if (below)
                     {
-                        // bump inhibition count
-                        ++inhibitionCounts[nb];
-                        inhibitedCols_[nb].store(1);
+                        // This neighbor is below threshold, so it should be inhibited
+                        shouldIncrementInhibition = true;
+
+                        // If current column has overlap equal to threshold (weakest winner),
+                        // permanently inhibit all neighbors below threshold
+                        if (overlapGrid[i] == threshold)
+                        {
+                            inhibitionCounts[nb] = desiredLocalActivity;
+                            shouldDeactivate = true;
+                            inhibitedCols_[nb].store(1);
+                            if (this->debug_) {
+                                LOG(DEBUG, "    Permanently inhibited col " + std::to_string(nb) +
+                                           " due to weak winner");
+                            }
+                        }
+                        // Otherwise, check if neighbor has reached the desired local activity
+                        else if (inhibitionCounts[nb] >= desiredLocalActivity)
+                        {
+                            shouldDeactivate = true;
+                            inhibitedCols_[nb].store(1);
+                        }
 
                         if (this->debug_) {
                             LOG(DEBUG, "    Inhibited col " + std::to_string(nb) +
                                        "  overlapGrid[nb]=" + std::to_string(overlapGrid[nb]) +
+                                       "  below threshold=" + std::to_string(threshold));
+                        }
+                    }
+                    else if (threshold >= 0.0f && overlapGrid[i] > overlapGrid[nb])
+                    {
+                        // This neighbor is above threshold but current column has higher overlap
+                        // so this neighbor still gets inhibited (loses the competition)
+                        shouldIncrementInhibition = true;
+                        
+                        if (this->debug_) {
+                            LOG(DEBUG, "        Inhibited col " + std::to_string(nb) +
+                                       "  overlapGrid[nb]=" + std::to_string(overlapGrid[nb]) +
+                                       "  lost competition to col " + std::to_string(i) +
+                                       " with overlap=" + std::to_string(overlapGrid[i]));
+                        }
+                    }
+
+                    // Increment inhibition count if this neighbor should be inhibited
+                    if (shouldIncrementInhibition)
+                    {
+                        ++inhibitionCounts[nb];
+                        
+                        if (this->debug_) {
+                            LOG(DEBUG, "    Incremented inhibition count for col " + std::to_string(nb) +
                                        "  newInhibCnt=" + std::to_string(inhibitionCounts[nb]));
                         }
 
@@ -610,8 +708,8 @@ namespace inhibition
                             needsReprocessing = true;
                         }
 
-                        // deactivate if it had been active
-                        if (columnActive_[nb].load())
+                        // Deactivate if it had been active and should be deactivated
+                        if (shouldDeactivate && columnActive_[nb].load())
                         {
                             columnActive_[nb].store(0);
                             std::lock_guard<std::mutex> lk(activeColumnsMutex);
@@ -619,21 +717,9 @@ namespace inhibition
                                 std::remove(activeColumnsInd.begin(),
                                             activeColumnsInd.end(), nb),
                                 activeColumnsInd.end());
-                        }
-                    }
-                    else // above threshold (but this neighbor didn't win since current column i won)
-                    {
-                        // Increment inhibition count since we didn't win but threshold is positive
-                        // Also increment if current column has higher overlap than this neighbor
-                        if (threshold >= 0.0f || overlapGrid[i] > overlapGrid[nb]) {
-                            ++inhibitionCounts[nb];
-                            
-                            // Queue again if still below the limit
-                            if (inhibitionCounts[nb] < desiredLocalActivity)
-                            {
-                                std::lock_guard<std::mutex> lk(minorlyInhibitedMutex);
-                                minorlyInhibitedColumns.push_back(nb);
-                                needsReprocessing = true;
+                            if (this->debug_) {
+                                LOG(DEBUG, "    Deactivated col " + std::to_string(nb) +
+                                           " and removed from active columns");
                             }
                         }
                     }
@@ -841,35 +927,51 @@ namespace inhibition
                 std::vector<int> neighbourCols = neighbourColsLists[i];
                 int numActiveNeighbours = 0;
 
-                // Check neighbours for active columns
+                // Count active neighbors of column i
                 for (int neighborIndex : neighbourCols)
                 {
                     if (neighborIndex >= 0 && columnActive[neighborIndex] == 1)
                     {
                         numActiveNeighbours++;
-                        if (numColsActInNeigh[neighborIndex] >= desiredLocalActivity)
-                        {
-                            inhibitedCols[i] = 1;
-                        }
-                    }
-                }
-
-                // Check if the column is in any neighbour lists of active columns
-                for (int activeNeighbor : colInNeighboursLists[i])
-                {
-                    if (columnActive[activeNeighbor] == 1)
-                    {
-                        if (numColsActInNeigh[activeNeighbor] >= desiredLocalActivity)
-                        {
-                            inhibitedCols[i] = 1;
-                        }
                     }
                 }
 
                 numColsActInNeigh[i] = numActiveNeighbours;
 
-                // Activate column if not inhibited and the number of active neighbors is less than desired local activity
-                if (inhibitedCols[i] != 1 && numColsActInNeigh[i] < desiredLocalActivity)
+                // Check if activating column i would violate the constraint for ANY neighborhood
+                // that includes column i. A neighborhood centered on position j includes column i
+                // if i is in neighbourColsLists[j], which means j is in colInNeighboursLists[i].
+                // 
+                // For each such position j, count active columns in j's neighborhood.
+                // If count >= desiredLocalActivity, activating i would violate the constraint.
+                bool wouldViolateConstraint = false;
+                
+                // Check i's own neighborhood first
+                if (numActiveNeighbours >= desiredLocalActivity) {
+                    wouldViolateConstraint = true;
+                }
+                
+                // Check all positions that have i in their neighborhood
+                if (!wouldViolateConstraint) {
+                    for (int j : colInNeighboursLists[i]) {
+                        // Count active columns in j's neighborhood (excluding i since i isn't active yet)
+                        int activeInJsNeighborhood = 0;
+                        for (int k : neighbourColsLists[j]) {
+                            if (k != i && columnActive[k] == 1) {
+                                activeInJsNeighborhood++;
+                            }
+                        }
+                        // If j's neighborhood already has desiredLocalActivity active columns,
+                        // activating i would make it exceed the limit
+                        if (activeInJsNeighborhood >= desiredLocalActivity) {
+                            wouldViolateConstraint = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Activate column if it won't violate the constraint
+                if (!wouldViolateConstraint && numColsActInNeigh[i] < desiredLocalActivity)
                 {
                     activeColumnsInd.push_back(i);
                     columnActive[i] = 1;
@@ -915,7 +1017,7 @@ namespace inhibition
         }).name("AddTieBreaker");
     }
 
-    void InhibitionCalculator::parallel_add_tie_breaker(std::vector<float>& overlapGrid)
+    void InhibitionCalculator::parallel_add_tie_breaker(std::vector<float>& overlapGrid, tf::Taskflow &taskflow)
     {
         // Validate that the overlap grid size matches the tie-breaker vector size
         if (overlapGrid.size() != tieBreaker_.size()) {
@@ -931,16 +1033,12 @@ namespace inhibition
             LOG(DEBUG, "parallel_add_tie_breaker: Processing " + std::to_string(overlapGrid.size()) + " elements");
         }
 
-        tf::Taskflow taskflow;
-        tf::Executor executor;
-
+        // Create a task in the taskflow for adding the tie breaker in parallel
         taskflow.for_each_index(0, static_cast<int>(overlapGrid.size()), 1, [this, &overlapGrid](int i)
         {
             // Add the pre-computed tie breaker values to the overlap grid
             overlapGrid[i] += tieBreaker_[i];
         }).name("ParallelAddTieBreaker");
-
-        executor.run(taskflow).wait();
     }
 
 } // namespace inhibition

@@ -168,9 +168,10 @@ namespace inhibition
         /// parallel_add_tie_breaker   Adds small tie-breaker values to overlap scores in parallel.
         ///
         /// @param[in,out] overlapGrid The overlap grid to add tie-breakers to.
+        /// @param[in,out] taskflow The Taskflow object for managing tasks.
         ///
         ///-----------------------------------------------------------------------------
-        void parallel_add_tie_breaker(std::vector<float>& overlapGrid);
+        void parallel_add_tie_breaker(std::vector<float>& overlapGrid, tf::Taskflow &taskflow);
 
         ///-----------------------------------------------------------------------------
         ///

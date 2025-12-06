@@ -508,7 +508,7 @@ TEST(InhibitionCalculatorTest, Case1) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns 
     std::vector<int> expected_activeColumns = {
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
@@ -517,14 +517,14 @@ TEST(InhibitionCalculatorTest, Case1) {
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
@@ -541,10 +541,9 @@ TEST(InhibitionCalculatorTest, Case1) {
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
-
-TEST(InhibitionCalculatorTest, Case1_10Rows) {
+TEST(InhibitionCalculatorTest, Case1_15Rows) {
     int num_column_cols = 8;
-    int num_column_rows = 10;
+    int num_column_rows = 15;
     int inhibition_width = 3;
     int inhibition_height = 3;
     int desired_local_activity = 2;
@@ -557,6 +556,11 @@ TEST(InhibitionCalculatorTest, Case1_10Rows) {
 
     // Initialize colOverlapGrid
     std::vector<float> colOverlapGrid = {
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
+        0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
         0, 0, 3, 3, 0, 0, 0, 0,
@@ -606,7 +610,12 @@ TEST(InhibitionCalculatorTest, Case1_10Rows) {
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0
     };
 
     LOG(DEBUG, "Actual Active Columns (2D):");
@@ -715,16 +724,206 @@ TEST(InhibitionCalculatorTest, Case3) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns - with strict_local_activity=true, the constraint
+    // "at most 2 active in any 3x3 neighborhood" is strictly enforced.
+    // The previous expected values violated this constraint (e.g., position (1,1)
+    // had 4 active columns in its neighborhood: cols 0, 2, 4, 10).
     std::vector<int> expected_activeColumns = {
-        1, 0, 1, 1,
+        0, 0, 0, 1,
         1, 0, 0, 0,
         0, 0, 1, 0,
-        1, 1, 0, 1
+        0, 0, 0, 1
     };
 
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
+}
+
+TEST(InhibitionCalculatorTest, Case3_NonStrict) {
+    // Same as Case3 but with strict_local_activity = false
+    // This uses the parallel implementation which is faster but may not
+    // strictly enforce the local activity constraint in all neighborhoods.
+    int num_column_cols = 4;
+    int num_column_rows = 4;
+    int inhibition_width = 3;
+    int inhibition_height = 3;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = true;  // centerInhib = 1
+    bool wrapMode = false;
+    bool strict_local_activity = false;  // Non-strict mode uses parallel implementation
+    bool debug = true;
+    bool useTieBreaker = true;
+    
+    // Initialize colOverlapGrid (same as Case3)
+    std::vector<float> colOverlapGrid = {
+        8, 4, 5, 8,
+        8, 6, 1, 6,
+        7, 7, 9, 4,
+        2, 3, 1, 5
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // potColOverlapGrid is the same as colOverlapGrid
+    std::vector<float> potColOverlapGrid = colOverlapGrid;
+
+    // Create an instance of InhibitionCalculator
+    inhibition::InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrapMode,
+        strict_local_activity,
+        debug,
+        useTieBreaker);
+
+    // Run the inhibition calculation
+    inhibitionCalc.calculate_inhibition(
+        colOverlapGrid, colOverlapGridShape,
+        potColOverlapGrid, colOverlapGridShape);
+
+    // Retrieve the active columns
+    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+
+    // With strict_local_activity=false, the parallel implementation is used.
+    // This may produce more active columns but doesn't guarantee the strict
+    // constraint is met in all neighborhoods. The result may also be
+    // non-deterministic due to thread scheduling.
+    // We just verify that some columns are active (basic sanity check).
+    int activeCount = 0;
+    for (int val : activeColumns) {
+        activeCount += val;
+    }
+    
+    LOG(INFO, "Non-strict mode produced " + std::to_string(activeCount) + " active columns");
+    overlap_utils::print_2d_vector(activeColumns, {num_column_rows, num_column_cols});
+    
+    // Should have at least some active columns
+    ASSERT_GT(activeCount, 0);
+}
+
+TEST(InhibitionCalculatorTest, Case3_Determinism) {
+    // This test verifies that the inhibition calculator produces deterministic results
+    // by running the same calculation multiple times and checking all results are identical.
+    // It also verifies that the strict local activity constraint is respected.
+    const int NUM_ITERATIONS = 100;
+    
+    int num_column_cols = 4;
+    int num_column_rows = 4;
+    int inhibition_width = 3;
+    int inhibition_height = 3;
+    int desired_local_activity = 2;
+    int min_overlap = 1;
+    bool center_pot_synapses = true;  // centerInhib = 1
+    bool wrapMode = false;
+    bool strict_local_activity = true;
+    bool debug = false;  // Disable debug for performance
+    bool useTieBreaker = true;
+    
+    // Initialize colOverlapGrid (same as Case3)
+    std::vector<float> colOverlapGrid_original = {
+        8, 4, 5, 8,
+        8, 6, 1, 6,
+        7, 7, 9, 4,
+        2, 3, 1, 5
+    };
+    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+
+    // Store results from all iterations to compare
+    std::vector<std::vector<int>> allResults;
+    allResults.reserve(NUM_ITERATIONS);
+
+    LOG(INFO, "Running Case3 determinism test with " + std::to_string(NUM_ITERATIONS) + " iterations...");
+
+    for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
+        // Create fresh copies of the overlap grids for each iteration
+        // (since tie-breakers modify the grids)
+        std::vector<float> colOverlapGrid = colOverlapGrid_original;
+        std::vector<float> potColOverlapGrid = colOverlapGrid_original;
+
+        // Create a new instance of InhibitionCalculator for each iteration
+        inhibition::InhibitionCalculator inhibitionCalc(
+            num_column_cols,
+            num_column_rows,
+            inhibition_width,
+            inhibition_height,
+            desired_local_activity,
+            min_overlap,
+            center_pot_synapses,
+            wrapMode,
+            strict_local_activity,
+            debug,
+            useTieBreaker);
+
+        // Run the inhibition calculation
+        inhibitionCalc.calculate_inhibition(
+            colOverlapGrid, colOverlapGridShape,
+            potColOverlapGrid, colOverlapGridShape);
+
+        // Retrieve the active columns
+        std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
+        allResults.push_back(activeColumns);
+    }
+
+    // Print the first result for reference
+    LOG(INFO, "First iteration result:");
+    overlap_utils::print_2d_vector(allResults[0], {num_column_rows, num_column_cols});
+
+    // Verify all results are identical to the first result
+    const std::vector<int>& firstResult = allResults[0];
+    int mismatchCount = 0;
+    for (int iter = 1; iter < NUM_ITERATIONS; ++iter) {
+        if (allResults[iter] != firstResult) {
+            ++mismatchCount;
+            LOG(ERROR, "Determinism failure! Iteration " + std::to_string(iter) + 
+                       " differs from iteration 0");
+            LOG(ERROR, "Iteration 0 result:");
+            overlap_utils::print_2d_vector(firstResult, {num_column_rows, num_column_cols});
+            LOG(ERROR, "Iteration " + std::to_string(iter) + " result:");
+            overlap_utils::print_2d_vector(allResults[iter], {num_column_rows, num_column_cols});
+        }
+    }
+
+    if (mismatchCount > 0) {
+        FAIL() << mismatchCount << " out of " << (NUM_ITERATIONS - 1) << " iterations differed from the first result";
+    }
+
+    LOG(INFO, "All " + std::to_string(NUM_ITERATIONS) + " iterations produced identical results!");
+
+    // Verify the constraint is respected: no neighborhood should have more than
+    // desired_local_activity active columns
+    LOG(INFO, "Verifying strict local activity constraint...");
+    for (int row = 0; row < num_column_rows; ++row) {
+        for (int col = 0; col < num_column_cols; ++col) {
+            // Count active columns in this column's 3x3 neighborhood
+            int activeInNeighborhood = 0;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    int ny = row + dy;
+                    int nx = col + dx;
+                    if (ny >= 0 && ny < num_column_rows && nx >= 0 && nx < num_column_cols) {
+                        int idx = ny * num_column_cols + nx;
+                        if (firstResult[idx] == 1) {
+                            activeInNeighborhood++;
+                        }
+                    }
+                }
+            }
+            if (activeInNeighborhood > desired_local_activity) {
+                LOG(ERROR, "Constraint violation at (" + std::to_string(row) + "," + 
+                           std::to_string(col) + "): " + std::to_string(activeInNeighborhood) +
+                           " active in neighborhood, max allowed is " + std::to_string(desired_local_activity));
+                FAIL() << "Local activity constraint violated";
+            }
+        }
+    }
+    LOG(INFO, "Constraint verified: all neighborhoods have <= " + std::to_string(desired_local_activity) + " active columns");
+    
+    SUCCEED();
 }
 
 TEST(InhibitionCalculatorTest, WrapModeCase1) {

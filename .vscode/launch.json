@@ -150,12 +150,12 @@
             // "preLaunchTask": ""
         },
         {
-            "name": "(gdb) InhibitionCalculatorTest.Case1",
+            "name": "(gdb) InhibitionCalculatorTest.Case1_15Rows",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/htm_flow_tests",
             "args": [
-                "--gtest_filter=InhibitionCalculatorTest.Case1"
+                "--gtest_filter=InhibitionCalculatorTest.Case1_15Rows"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
