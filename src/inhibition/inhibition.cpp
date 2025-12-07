@@ -402,23 +402,60 @@ namespace inhibition
 
     ///-----------------------------------------------------------------------------
     ///
-    /// This function calculates inhibition for each column in parallel:
+    /// calculate_inhibition_for_column - Parallel threshold-based inhibition algorithm.
     ///
-    /// 1. For each column with sufficient overlap (>= minOverlap):
-    ///   a. Identify all relevant columns to lock (current column, neighbors, and 
-    ///      columns that list this one as a neighbor)
-    ///   b. Lock these columns in ascending order to prevent deadlocks
+    /// NOTE: This function is used when strictLocalActivity_ is FALSE. When strict mode
+    /// is enabled, the serial implementation (calculate_serial_sort_inhibition) is used
+    /// instead to guarantee deterministic results and strict constraint enforcement.
     ///
-    /// 2. When strictLocalActivity is enabled:
-    ///   a. Collect all columns in the neighborhood
-    ///   b. Determine an activation threshold based on the top desiredLocalActivity overlap scores
-    ///   c. Mark all columns below threshold as inhibited and deactivate them if they were active
-    ///   d. Keep track of how many times each column is inhibited
-    ///   e. Maintain a list of columns that have been inhibited less than desiredLocalActivity times
-    ///   f. After initial processing, reprocess these minorly inhibited columns until the desired 
-    ///      local activity is achieved or maximum iterations reached
+    /// Algorithm Overview:
+    /// -------------------
+    /// Uses a parallel iterative approach where columns compete based on overlap scores.
+    /// Columns above a local threshold become active and inhibit weaker neighbors.
     ///
-    /// 3. Release all locks in reverse order
+    /// Taskflow Structure:
+    /// -------------------
+    ///   init ──► process_pass ──► prepare_next ──► done
+    ///                 ▲               │
+    ///                 └───────────────┘ (loop if more columns to process)
+    ///
+    /// Processing Steps (per column):
+    /// ------------------------------
+    /// 1. Early Exit Checks:
+    ///    - Skip if column index is invalid or out of range
+    ///    - Skip if overlap < minOverlap
+    ///    - Skip if already fully inhibited (inhibitionCount >= desiredLocalActivity)
+    ///
+    /// 2. Locking Strategy (deadlock prevention):
+    ///    - Collect all columns that need to be locked:
+    ///      • Column's own neighbors (neighbourColsLists[i])
+    ///      • Columns that list this column as a neighbor (colInNeighboursLists[i])
+    ///      • The column itself
+    ///    - Sort and deduplicate the lock set
+    ///    - Lock mutexes in ascending index order
+    ///
+    /// 3. Threshold Calculation:
+    ///    - Find eligible neighbors (overlap >= minOverlap, not fully inhibited)
+    ///    - If enough eligible neighbors exist, compute threshold as the
+    ///      desiredLocalActivity-th highest overlap value
+    ///    - Threshold of -1 means no limit (all eligible columns can activate)
+    ///
+    /// 4. Activation Decision:
+    ///    - Column activates if its overlap >= threshold (or threshold is -1)
+    ///
+    /// 5. Neighbor Inhibition (if column activates):
+    ///    - For each neighbor below threshold: increment their inhibition count
+    ///    - For neighbors that lose the competition: increment inhibition count
+    ///    - Queue partially inhibited neighbors for reprocessing
+    ///    - Deactivate fully inhibited neighbors
+    ///
+    /// 6. Unlock mutexes in reverse order
+    ///
+    /// Iteration Control (prepare_next task):
+    /// --------------------------------------
+    /// - Swap columnsToProcess with minorlyInhibitedColumns
+    /// - Continue iterating if columns remain and iteration limit not reached
+    /// - Maximum iterations = desiredLocalActivity
     ///
     ///-----------------------------------------------------------------------------
     void InhibitionCalculator::calculate_inhibition_for_column(
@@ -478,24 +515,13 @@ namespace inhibition
 
             //-----------------------------------------------------------------
             // Build neighbourhood and lock the related mutexes
-            // For stricter local activity enforcement, we need to lock not just
-            // immediate neighbors, but also neighbors-of-neighbors to safely
-            // check if activation would violate the constraint.
+            
             //-----------------------------------------------------------------
             std::vector<int> colsToLock = neighbourColsLists[i];
             colsToLock.insert(colsToLock.end(),
                               colInNeighboursLists[i].begin(),
                               colInNeighboursLists[i].end());
             colsToLock.push_back(i);
-            
-            // For stricter local activity, also include neighbors of columns that have
-            // this column in their neighborhood (needed for the constraint check)
-            for (int j : colInNeighboursLists[i]) {
-                colsToLock.insert(colsToLock.end(),
-                                  neighbourColsLists[j].begin(),
-                                  neighbourColsLists[j].end());
-            }
-            
             std::sort(colsToLock.begin(), colsToLock.end());
             colsToLock.erase(std::unique(colsToLock.begin(),
                                          colsToLock.end()), colsToLock.end());
@@ -564,39 +590,6 @@ namespace inhibition
                 // Column is above threshold if threshold is -1 (no limit) or overlap >= threshold
                 if (threshold < 0.0f || overlapGrid[i] >= threshold) {
                     shouldActivate = true;
-                }
-            }
-
-            // Additional check: verify that activating this column won't cause any
-            // neighbor's neighborhood to exceed the desiredLocalActivity limit.
-            // For each column j that has column i in its neighborhood (j in colInNeighboursLists[i]):
-            // - If j is active and already has (desiredLocalActivity - 1) active neighbors,
-            //   then activating i would make j's neighborhood have desiredLocalActivity + 1 active
-            //   (j itself + its existing active neighbors + i), violating the constraint.
-            if (shouldActivate) {
-                for (int j : colInNeighboursLists[i]) {
-                    if (columnActive_[j].load() == 1) {
-                        // Count active neighbors of j (excluding i since i isn't active yet)
-                        int activeNeighborsOfJ = 0;
-                        for (int jNeighbor : neighbourColsLists[j]) {
-                            if (jNeighbor != i && columnActive_[jNeighbor].load() == 1) {
-                                activeNeighborsOfJ++;
-                            }
-                        }
-                        // If j already has (desiredLocalActivity - 1) active neighbors,
-                        // activating i would push j's neighborhood over the limit
-                        // (j + activeNeighborsOfJ + i = 1 + (desiredLocalActivity-1) + 1 = desiredLocalActivity + 1)
-                        if (activeNeighborsOfJ >= desiredLocalActivity - 1) {
-                            shouldActivate = false;
-                            if (this->debug_) {
-                                LOG(DEBUG, "    Col " + std::to_string(i) +
-                                           " blocked: neighbor " + std::to_string(j) +
-                                           " already has " + std::to_string(activeNeighborsOfJ) +
-                                           " active neighbors");
-                            }
-                            break;
-                        }
-                    }
                 }
             }
 

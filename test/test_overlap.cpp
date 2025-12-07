@@ -686,7 +686,7 @@ TEST(parallel_Images2Neibs_1D, test4_limit_output_size)
     //   {{6, 7}, {10, 11}}}}
 
     // Define the expected output vector
-    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7};
+    std::vector<int> expected_output = {12, 9, 4, 1, 9, 10, 1, 2, 10, 11, 2, 3, 4, 1, 8, 5, 1, 2, 5, 6, 2, 3, 6, 7, 8, 5, 12, 9, 5, 6, 9, 10, 6, 7, 10, 11};
 
     // Create the output vector and initialize it with zeros
     std::vector<int> output(output_size, 0);

@@ -358,10 +358,11 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Define the expected output (modify according to your expectations)
+    // Define the expected output - with strict_local_activity=true, the constraint
+    // "at most 2 active in any neighborhood" is strictly enforced.
     std::vector<int> expected_activeColumns = {
-        1, 0, 1, 0,
-        0, 0, 1, 0,
+        0, 0, 1, 1,
+        0, 0, 0, 0,
         1, 0, 0, 0,
         0, 1, 0, 1};
 
@@ -427,18 +428,23 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Define the expected output 
+    // Print actual output for debugging
+    LOG(DEBUG, "Actual Active Columns (2D):");
+    overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
+
+    // Define the expected output - with strict_local_activity=true, the constraint
+    // "at most 3 active in any neighborhood" is strictly enforced.
     std::vector<int> expected_activeColumns = {
+        1, 0, 1, 0, 1, 0, 0, 1, 0, 1,
+        0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 0,
         0, 0, 1, 0, 1, 0, 0, 1, 0, 1,
         0, 1, 0, 0, 1, 0, 0, 0, 1, 0,
         1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 0,
         0, 0, 1, 0, 1, 0, 0, 1, 0, 1,
-        0, 1, 0, 0, 1, 0, 0, 0, 1, 0,
-        1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
-        0, 1, 0, 1, 0, 0, 1, 0, 0, 1,
-        0, 0, 1, 0, 1, 0, 0, 1, 0, 1,
-        1, 0, 0, 0, 1, 0, 0, 0, 1, 0};
+        0, 1, 0, 0, 1, 0, 0, 0, 1, 0};
 
     // Check if the actual output matches the expected output
     ASSERT_EQ(activeColumns, expected_activeColumns);
@@ -515,19 +521,19 @@ TEST(InhibitionCalculatorTest, Case1) {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0
     };
@@ -599,23 +605,23 @@ TEST(InhibitionCalculatorTest, Case1_15Rows) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns - with strict_local_activity=true
     std::vector<int> expected_activeColumns = {
+        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0, 0, 0
     };
 
     LOG(DEBUG, "Actual Active Columns (2D):");
@@ -665,11 +671,12 @@ TEST(InhibitionCalculatorTest, Case2) {
 
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
+    // Expected active columns - with strict_local_activity=true
     std::vector<int> expected_activeColumns = {
-        1, 0, 1, 1,
+        0, 0, 0, 1,
         1, 0, 0, 0,
         0, 0, 1, 0,
-        1, 0, 0, 1
+        0, 0, 0, 1
     };
 
     LOG(DEBUG, "Expected Active Columns (2D):");
@@ -969,11 +976,11 @@ TEST(InhibitionCalculatorTest, WrapModeCase1) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns - with strict_local_activity=true
     std::vector<int> expected_activeColumns = {
-        1, 1, 0, 1,
+        1, 0, 0, 0,
+        0, 0, 0, 0,
         0, 0, 1, 0,
-        1, 1, 1, 0,
         0, 0, 0, 0
     };
 
@@ -1026,10 +1033,10 @@ TEST(InhibitionCalculatorTest, WrapModeCase2) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns - with strict_local_activity=true
     std::vector<int> expected_activeColumns = {
         1, 0, 0, 1, 0, 0,
-        1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0,
         0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 1,
@@ -1085,11 +1092,11 @@ TEST(InhibitionCalculatorTest, Case4) {
     // Retrieve the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
 
-    // Expected active columns
+    // Expected active columns - with strict_local_activity=true
     std::vector<int> expected_activeColumns = {
         0, 0, 1, 1, 0,
         0, 0, 0, 0, 0,
-        0, 0, 1, 1, 0,
+        0, 0, 0, 0, 0,
         0, 0, 0, 0, 0,
         0, 0, 1, 1, 0,
         0, 0, 0, 0, 0
