@@ -282,6 +282,33 @@ namespace overlap_utils
         }
     }
 
+    // A function to print out a 1d array of std::atomic<T> elements.
+    // Atomic elements are printed using the load() method (i.e. atomic_element.load()).
+    template <typename T>
+    void print_1d_atomic_array(std::atomic<T>* array, size_t size)
+    {
+        for (size_t i = 0; i < size; ++i)
+        {
+            std::cout << array[i].load() << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // A function to print out a 2d array of std::atomic<T> elements.
+    // Atomic elements are printed using the load() method (i.e. atomic_element.load()).
+    template <typename T>
+    void print_2d_atomic_array(std::atomic<T>* array, const std::pair<int, int> &vec2D_shape)
+    {
+        for (int i = 0; i < vec2D_shape.first; i++)
+        {
+            for (int j = 0; j < vec2D_shape.second; j++)
+            {
+                std::cout << array[i * vec2D_shape.second + j].load() << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
+
     template <typename T>
     std::vector<std::vector<T>> unflattenVector(const std::vector<T> &vec1D, size_t numRows, size_t numCols)
     {

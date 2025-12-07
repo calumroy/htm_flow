@@ -33,7 +33,8 @@ int main(int argc, char *argv[])
     int num_pot_syn = pot_width * pot_height;
     int num_columns = num_column_rows * num_column_cols;
     bool wrap_input = true;
-
+    bool strict_local_activity = false;
+    
     // Inhibition calculation parameters
     int inhibition_width = 30;
     int inhibition_height = 30;
@@ -64,10 +65,10 @@ int main(int argc, char *argv[])
         new_input_mat[i] = dis2(gen);
     }
     // Random data initialization for testing
-    std::vector<int> colOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for overlap grid
+    std::vector<float> colOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for overlap grid
     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    std::vector<int> potColOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for potential overlap grid
+    std::vector<float> potColOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for potential overlap grid
     std::pair<int, int> potColOverlapGridShape = {num_column_rows, num_column_cols};
 
     // Start overlap calculation
@@ -94,15 +95,15 @@ int main(int argc, char *argv[])
     // LOG(INFO, "Input matrix: ");
     // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
     // Print the overlap scores
-    std::vector<int> col_overlap_scores = overlapCalc.get_col_overlaps();
+    std::vector<float> col_overlap_scores = overlapCalc.get_col_overlaps();
     overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
     PRINT_ELAPSED_TIME();
     // Start inhibition calculation
     START_STOPWATCH();
     InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
-                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input);
+                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input, strict_local_activity);
     LOG(INFO, "Starting the inhibition calculation.");
-    inhibitionCalc.calculate_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
+    inhibitionCalc.calculate_inhibition(col_overlap_scores, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
     STOP_STOPWATCH();
 
     // Get and print the active columns
