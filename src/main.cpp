@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
     // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
     // Print the overlap scores
     std::vector<float> col_overlap_scores = overlapCalc.get_col_overlaps();
-    overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
+    //overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
     PRINT_ELAPSED_TIME();
     // Start inhibition calculation
     START_STOPWATCH();
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 
     // Get and print the active columns
     std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
-    overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
+    //overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
     PRINT_ELAPSED_TIME();
     return 0;
 }
