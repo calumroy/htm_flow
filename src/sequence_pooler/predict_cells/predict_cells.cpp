@@ -33,6 +33,14 @@ const std::vector<int8_t>& PredictCellsCalculator::get_seg_active_syn() const {
   return seg_active_syn_;
 }
 
+std::vector<int>& PredictCellsCalculator::get_seg_ind_update_mutable() {
+  return seg_ind_update_;
+}
+
+std::vector<int8_t>& PredictCellsCalculator::get_seg_active_syn_mutable() {
+  return seg_active_syn_;
+}
+
 bool PredictCellsCalculator::check_cell_active(const std::vector<int>& active_cells_time,
                                                int col,
                                                int cell,

@@ -6,6 +6,7 @@
 #include <htm_flow/spatiallearn.hpp>
 #include <htm_flow/sequence_pooler/active_cells.hpp>
 #include <htm_flow/sequence_pooler/predict_cells.hpp>
+#include <htm_flow/sequence_pooler/sequence_learning.hpp>
 #include <htm_flow/sequence_pooler/sequence_types.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     using sequence_pooler::ActiveCellsCalculator;
     using sequence_pooler::PredictCellsCalculator;
     using sequence_pooler::DistalSynapse;
+    using sequence_pooler::SequenceLearningCalculator;
 
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
@@ -57,12 +59,16 @@ int main(int argc, char *argv[])
     // Sequence pooler (active cells) parameters (v1: predictive/segments are stubbed)
     int cells_per_column = 5;
     int max_segments_per_cell = 3;       // keep small for now; full TM wiring comes later
-    int max_synapses_per_segment = 10;    // keep small for now; full TM wiring comes later
+    int max_synapses_per_segment = 20;    // keep small for now; full TM wiring comes later
     int min_num_syn_threshold = 1;
     int min_score_threshold = 1;
     float new_syn_permanence = 0.3f;
     float connect_permanence = 0.2f;
-    int activation_threshold = 1; // Predict-cells: segment is active if > this many connected synapses are on active cells.
+    int activation_threshold = 3; // Predict-cells: segment is active if > this many connected synapses are on active cells.
+
+    // Sequence learning parameters (match spatial learning rates).
+    float sequence_permanence_inc = 0.05f;
+    float sequence_permanence_dec = 0.05f;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -146,6 +152,16 @@ int main(int argc, char *argv[])
         activation_threshold,
     });
 
+    SequenceLearningCalculator seqLearnCalc(SequenceLearningCalculator::Config{
+        num_columns,
+        cells_per_column,
+        max_segments_per_cell,
+        max_synapses_per_segment,
+        connect_permanence,
+        sequence_permanence_inc,
+        sequence_permanence_dec,
+    });
+
     // Distal synapses (randomly initialised once; kept constant across iterations).
     // Shape: (num_columns, cells_per_column, max_segments_per_cell, max_synapses_per_segment)
     const std::size_t distal_syn_count = static_cast<std::size_t>(num_columns) *
@@ -193,6 +209,19 @@ int main(int argc, char *argv[])
         // Grab the already-computed active column indices (no recomputation / no scan).
         const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
 
+        // Spatial learning consumes the SAME potential-inputs buffer produced by overlap
+        // (no patch recomputation, no 2D conversions).
+        START_STOPWATCH();
+        LOG(INFO, "Starting the spatial learning calculation.");
+        spatialLearnCalc.calculate_spatiallearn_1d_active_indices(
+            col_syn_perm,
+            col_syn_perm_shape,
+            overlapCalc.get_col_pot_inputs(),
+            overlapCalc.get_col_pot_inputs_shape(),
+            activeColIndices);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+
         // Sequence pooler: active cells.
         // Uses predictive state computed on the previous timestep.
         START_STOPWATCH();
@@ -215,18 +244,25 @@ int main(int argc, char *argv[])
         STOP_STOPWATCH();
         PRINT_ELAPSED_TIME();
 
-        // Spatial learning consumes the SAME potential-inputs buffer produced by overlap
-        // (no patch recomputation, no 2D conversions).
+        // Sequence pooler: sequence learning (updates distal synapses).
         START_STOPWATCH();
-        LOG(INFO, "Starting the spatial learning calculation.");
-        spatialLearnCalc.calculate_spatiallearn_1d_active_indices(
-            col_syn_perm,
-            col_syn_perm_shape,
-            overlapCalc.get_col_pot_inputs(),
-            overlapCalc.get_col_pot_inputs_shape(),
-            activeColIndices);
+        LOG(INFO, "Starting the sequence-pooler sequence-learning calculation.");
+        seqLearnCalc.calculate_sequence_learning(
+            time_step,
+            activeCellsCalc.get_active_cells_time(),
+            activeCellsCalc.get_learn_cells_time(),
+            predictCellsCalc.get_predict_cells_time(),
+            distal_synapses,
+            activeCellsCalc.get_seg_ind_update_active(),
+            activeCellsCalc.get_seg_active_syn_active(),
+            activeCellsCalc.get_seg_ind_new_syn_active(),
+            activeCellsCalc.get_seg_new_syn_active(),
+            predictCellsCalc.get_seg_ind_update_mutable(),
+            predictCellsCalc.get_seg_active_syn_mutable());
         STOP_STOPWATCH();
         PRINT_ELAPSED_TIME();
+
+
     }
     return 0;
 }

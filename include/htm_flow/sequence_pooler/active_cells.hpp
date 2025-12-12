@@ -65,6 +65,16 @@ public:
   const std::vector<int>& get_active_cells_time() const;
   const std::vector<int>& get_learn_cells_time() const;
 
+  // --- Update-structure tensors for sequence learning (active-cells contribution) ---
+  // segIndUpdateActive: (num_columns, cells_per_column) -> segment index to update, or -1
+  // segActiveSynActive: (num_columns, cells_per_column, max_synapses_per_segment) -> 0/1 list
+  // segIndNewSynActive: (num_columns, cells_per_column) -> segment index to overwrite/create synapses, or -1
+  // segNewSynActive   : (num_columns, cells_per_column, max_synapses_per_segment) -> proposed synapses
+  std::vector<int>& get_seg_ind_update_active();
+  std::vector<int8_t>& get_seg_active_syn_active();
+  std::vector<int>& get_seg_ind_new_syn_active();
+  std::vector<DistalSynapse>& get_seg_new_syn_active();
+
   // Shape helpers
   int num_columns() const { return cfg_.num_columns; }
   int cells_per_column() const { return cfg_.cells_per_column; }
@@ -113,6 +123,13 @@ private:
   // Current timestep outputs as lists of (col, cell) pairs.
   std::vector<std::pair<int, int>> current_active_cells_list_;
   std::vector<std::pair<int, int>> current_learn_cells_list_;
+  std::vector<std::pair<int, int>> prev_learn_cells_list_;
+
+  // Update structures for the sequence learning stage (active-cells side).
+  std::vector<int> seg_ind_update_active_;        // (num_columns*cells_per_column)
+  std::vector<int8_t> seg_active_syn_active_;     // (num_columns*cells_per_column*max_synapses_per_segment)
+  std::vector<int> seg_ind_new_syn_active_;       // (num_columns*cells_per_column)
+  std::vector<DistalSynapse> seg_new_syn_active_; // (num_columns*cells_per_column*max_synapses_per_segment)
 
   // Executor reused across calls (like other calculators).
   tf::Executor executor_;

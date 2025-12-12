@@ -50,6 +50,10 @@ public:
   const std::vector<int>& get_seg_ind_update() const;
   const std::vector<int8_t>& get_seg_active_syn() const;
 
+  // Mutable accessors (used by sequence-learning stage to mark update structures consumed).
+  std::vector<int>& get_seg_ind_update_mutable();
+  std::vector<int8_t>& get_seg_active_syn_mutable();
+
   int num_columns() const { return cfg_.num_columns; }
   int cells_per_column() const { return cfg_.cells_per_column; }
   int max_segments_per_cell() const { return cfg_.max_segments_per_cell; }

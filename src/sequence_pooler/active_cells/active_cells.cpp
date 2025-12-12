@@ -36,6 +36,13 @@ ActiveCellsCalculator::ActiveCellsCalculator(const Config& cfg) : cfg_(cfg) {
   burst_cols_time_.assign(cfg_.num_columns * 2, -1);
   active_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
   learn_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
+
+  // Sequence-learning update structures (active-cells side).
+  seg_ind_update_active_.assign(cfg_.num_columns * cfg_.cells_per_column, -1);
+  seg_active_syn_active_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_synapses_per_segment, 0);
+  seg_ind_new_syn_active_.assign(cfg_.num_columns * cfg_.cells_per_column, -1);
+  seg_new_syn_active_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_synapses_per_segment,
+                             DistalSynapse{0, 0, -1.0f});
 }
 
 const std::vector<std::pair<int, int>>& ActiveCellsCalculator::get_current_active_cells_list() const {
@@ -52,6 +59,19 @@ const std::vector<int>& ActiveCellsCalculator::get_active_cells_time() const {
 
 const std::vector<int>& ActiveCellsCalculator::get_learn_cells_time() const {
   return learn_cells_time_;
+}
+
+std::vector<int>& ActiveCellsCalculator::get_seg_ind_update_active() {
+  return seg_ind_update_active_;
+}
+std::vector<int8_t>& ActiveCellsCalculator::get_seg_active_syn_active() {
+  return seg_active_syn_active_;
+}
+std::vector<int>& ActiveCellsCalculator::get_seg_ind_new_syn_active() {
+  return seg_ind_new_syn_active_;
+}
+std::vector<DistalSynapse>& ActiveCellsCalculator::get_seg_new_syn_active() {
+  return seg_new_syn_active_;
 }
 
 bool ActiveCellsCalculator::check_cell_active(int col, int cell, int time_step) const {
@@ -156,8 +176,16 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
          cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
 
   // Step 1. Reset current timestep outputs.
+  // Keep a copy of the previous timestep's learning cells list so we can propose new synapses.
+  prev_learn_cells_list_ = current_learn_cells_list_;
   current_active_cells_list_.clear();
   current_learn_cells_list_.clear();
+
+  // Reset active-cells update structures for this timestep.
+  std::fill(seg_ind_update_active_.begin(), seg_ind_update_active_.end(), -1);
+  std::fill(seg_active_syn_active_.begin(), seg_active_syn_active_.end(), 0);
+  std::fill(seg_ind_new_syn_active_.begin(), seg_ind_new_syn_active_.end(), -1);
+  std::fill(seg_new_syn_active_.begin(), seg_new_syn_active_.end(), DistalSynapse{0, 0, -1.0f});
 
   struct ColDecision {
     int col = -1;
@@ -244,6 +272,21 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
             const int learn = choose_learning_cell_stub(c, time_step);
             set_learn_cell(c, learn, time_step);
             decisions[static_cast<size_t>(k)].learn_cell = learn;
+
+            // Stub new-synapse proposal:
+            // - Overwrite segment 0 with synapses that connect to learning cells from (t-1).
+            // - If there were no learning cells at (t-1), leave proposals disabled (perm < 0).
+            const int flat = c * cfg_.cells_per_column + learn;
+            seg_ind_new_syn_active_[flat] = 0;
+            DistalSynapse* proposals =
+                &seg_new_syn_active_[flat * cfg_.max_synapses_per_segment];
+            if (!prev_learn_cells_list_.empty()) {
+              // Deterministically cycle through prev learning cells so results are stable.
+              for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
+                const auto& tgt = prev_learn_cells_list_[static_cast<size_t>(syn) % prev_learn_cells_list_.size()];
+                proposals[syn] = DistalSynapse{tgt.first, tgt.second, cfg_.new_syn_permanence};
+              }
+            }
           }
         }
 
