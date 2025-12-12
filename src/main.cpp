@@ -3,8 +3,13 @@
 // // Include the gpu_overlap.hpp header file form the gpu_overlap library
 // #include <overlap/gpu_overlap.hpp>#include <inhibition/inhibition.hpp>
 #include <htm_flow/inhibition.hpp>
+#include <htm_flow/spatiallearn.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
+#include <cstdlib>
+#include <random>
+
+#define NUM_ITERATIONS 3
 
 int main(int argc, char *argv[])
 {
@@ -14,11 +19,9 @@ int main(int argc, char *argv[])
         std::exit(EXIT_FAILURE);
     }
 
-    tf::Executor executor;
-    tf::Taskflow taskflow;
-
     using overlap::OverlapCalculator;
     using inhibition::InhibitionCalculator;
+    using spatiallearn::SpatialLearnCalculator;
 
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
@@ -39,6 +42,11 @@ int main(int argc, char *argv[])
     int inhibition_width = 30;
     int inhibition_height = 30;
     int desired_local_activity = 10;
+
+    // Spatial learning parameters
+    float spatialPermanenceInc = 0.05f;
+    float spatialPermanenceDec = 0.05f;
+    float activeColPermanenceDec = 0.01f;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -71,44 +79,81 @@ int main(int argc, char *argv[])
     std::vector<float> potColOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for potential overlap grid
     std::pair<int, int> potColOverlapGridShape = {num_column_rows, num_column_cols};
 
-    // Start overlap calculation
-    START_STOPWATCH();
-    // Create an instance of the overlap calculation class
-    OverlapCalculator overlapCalc(pot_width,
-                                  pot_height,
-                                  num_column_cols,
-                                  num_column_rows,
-                                  num_input_cols,
-                                  num_input_rows,
-                                  center_pot_synapses,
-                                  connected_perm,
-                                  min_overlap,
-                                  wrap_input);
+    // Create calculator instances once; this is the "pipeline" setup.
+    OverlapCalculator overlapCalc(
+        pot_width,
+        pot_height,
+        num_column_cols,
+        num_column_rows,
+        num_input_cols,
+        num_input_rows,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
 
-    LOG(INFO, "Starting the overlap calculation.");
+    InhibitionCalculator inhibitionCalc(
+        num_column_cols,
+        num_column_rows,
+        inhibition_width,
+        inhibition_height,
+        desired_local_activity,
+        min_overlap,
+        center_pot_synapses,
+        wrap_input,
+        strict_local_activity);
 
-    // Run the overlap calculation on the CPU
-    overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
-    STOP_STOPWATCH();
-   
-    // // Print the input matrix
-    // LOG(INFO, "Input matrix: ");
-    // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
-    // Print the overlap scores
-    std::vector<float> col_overlap_scores = overlapCalc.get_col_overlaps();
-    //overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
-    PRINT_ELAPSED_TIME();
-    // Start inhibition calculation
-    START_STOPWATCH();
-    InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
-                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input, strict_local_activity);
-    LOG(INFO, "Starting the inhibition calculation.");
-    inhibitionCalc.calculate_inhibition(col_overlap_scores, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
-    STOP_STOPWATCH();
+    SpatialLearnCalculator spatialLearnCalc(
+        num_columns,
+        num_pot_syn,
+        spatialPermanenceInc,
+        spatialPermanenceDec,
+        activeColPermanenceDec);
 
-    // Get and print the active columns
-    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
-    //overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
-    PRINT_ELAPSED_TIME();
+    // Run a couple of iterations to demonstrate stateful learning:
+    // `col_syn_perm` persists and is updated by the spatial learning stage.
+
+    for (int t = 0; t < NUM_ITERATIONS; ++t)
+    {
+        LOG(INFO, "=== Iteration " + std::to_string(t) + " ===");
+
+        // New random input each iteration (placeholder for real sensory input).
+        for (int i = 0; i < num_input_rows * num_input_cols; ++i)
+        {
+            new_input_mat[i] = dis2(gen);
+        }
+
+        // Overlap
+        START_STOPWATCH();
+        LOG(INFO, "Starting the overlap calculation.");
+        overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+
+        const std::vector<float> col_overlap_scores = overlapCalc.get_col_overlaps();
+
+        // Inhibition
+        START_STOPWATCH();
+        LOG(INFO, "Starting the inhibition calculation.");
+        inhibitionCalc.calculate_inhibition(col_overlap_scores, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+
+        // Grab the already-computed active column indices (no recomputation / no scan).
+        const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
+
+        // Spatial learning consumes the SAME potential-inputs buffer produced by overlap
+        // (no patch recomputation, no 2D conversions).
+        START_STOPWATCH();
+        LOG(INFO, "Starting the spatial learning calculation.");
+        spatialLearnCalc.calculate_spatiallearn_1d_active_indices(
+            col_syn_perm,
+            col_syn_perm_shape,
+            overlapCalc.get_col_pot_inputs(),
+            overlapCalc.get_col_pot_inputs_shape(),
+            activeColIndices);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+    }
     return 0;
 }

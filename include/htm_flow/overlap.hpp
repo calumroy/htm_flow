@@ -65,6 +65,29 @@ namespace overlap
         /// @return A 1D vector of floats representing the overlap scores for each column (overlap scores plus tiebreaker fractional values).
         std::vector<float> get_col_overlaps();
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_pot_inputs - Returns the potential input (0/1) each column sees.
+        ///
+        /// This is the internal "col_input_pot_syn_" buffer populated by `calculate_overlap`.
+        /// It is a 1D vector simulating a 2D matrix of shape:
+        ///   (numColumns, numPotSynapses) == (columns_width*columns_height, potential_width*potential_height)
+        ///
+        /// This is intended to be fed into downstream calculators (e.g. spatial learning)
+        /// without recomputing the same patches again.
+        ///
+        /// @return A const reference to the flattened potential input matrix.
+        ///-----------------------------------------------------------------------------
+        const std::vector<int>& get_col_pot_inputs() const;
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_pot_inputs_shape - Returns the (rows, cols) shape of `get_col_pot_inputs()`.
+        ///
+        /// @return A pair (numColumns, numPotSynapses)
+        ///-----------------------------------------------------------------------------
+        std::pair<int, int> get_col_pot_inputs_shape() const;
+
     private:
         // // Calculate the potential synapses for a given column
         // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,

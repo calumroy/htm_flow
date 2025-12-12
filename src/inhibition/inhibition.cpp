@@ -12,6 +12,7 @@
 #include "utilities/logger.hpp"
 #include "htm_flow/overlap_utils.hpp"
 #include <cstring>  // for memset
+#include <stdexcept>
 
 namespace inhibition
 {
@@ -331,6 +332,31 @@ namespace inhibition
                 overlap_utils::print_1d_vector(activeColumnsInd_);
             }
         }
+
+        // Validate the produced active column indices list only in debug mode.
+        if (debug_) {
+            std::vector<int> check = activeColumnsInd_;
+            std::sort(check.begin(), check.end());
+
+            // Range check + duplicate detection
+            for (size_t i = 0; i < check.size(); ++i)
+            {
+                if (check[i] < 0 || check[i] >= numColumns_)
+                {
+                    std::string msg = "InhibitionCalculator produced out-of-range active column index: " +
+                                      std::to_string(check[i]) + " (numColumns=" + std::to_string(numColumns_) + ")";
+                    LOG(ERROR, msg);
+                    throw std::runtime_error(msg);
+                }
+                if (i > 0 && check[i] == check[i - 1])
+                {
+                    std::string msg = "InhibitionCalculator produced duplicate active column index: " +
+                                      std::to_string(check[i]);
+                    LOG(ERROR, msg);
+                    throw std::runtime_error(msg);
+                }
+            }
+        }
     }
 
     std::vector<int> InhibitionCalculator::get_active_columns()
@@ -344,6 +370,11 @@ namespace inhibition
         }
 
         return activeColumns;
+    }
+
+    const std::vector<int>& InhibitionCalculator::get_active_column_indices() const
+    {
+        return activeColumnsInd_;
     }
 
     std::vector<int> InhibitionCalculator::neighbours(int pos_x, int pos_y) const

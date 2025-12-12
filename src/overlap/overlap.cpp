@@ -230,6 +230,16 @@ namespace overlap
         return col_overlaps_tie_;
     }
 
+    const std::vector<int>& OverlapCalculator::get_col_pot_inputs() const
+    {
+        return col_input_pot_syn_;
+    }
+
+    std::pair<int, int> OverlapCalculator::get_col_pot_inputs_shape() const
+    {
+        return std::make_pair(num_columns_, potential_width_ * potential_height_);
+    }
+
     void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
@@ -299,7 +309,9 @@ namespace overlap
         f5_task.precede(f6_task);
 
         // dump the graph to a DOT file through std::cout
-        taskflow.dump(std::cout);
+        if (debug) {
+            taskflow.dump(std::cout);
+        }
 
         ///////////////////////////////////////////////////////////////////////////
         // Run the constructed taskflow graph.

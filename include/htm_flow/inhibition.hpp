@@ -53,6 +53,17 @@ namespace inhibition
         /// @return A 1D vector of ints representing the active state (1 for active, 0 for inactive) of each column.
         std::vector<int> get_active_columns();
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_active_column_indices - Returns the indices of active columns from the
+        /// most recent `calculate_inhibition` call.
+        ///
+        /// This does NOT recompute anything; it returns the stored `activeColumnsInd_`.
+        ///
+        /// @return A const reference to the active column index list.
+        ///-----------------------------------------------------------------------------
+        const std::vector<int>& get_active_column_indices() const;
+
     private:
 
 

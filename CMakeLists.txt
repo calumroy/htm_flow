@@ -141,4 +141,7 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
   else()
     target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
   endif()
+
+  # Register the test executable with CTest
+  add_test(NAME ${PROJECT_NAME}_tests COMMAND ${PROJECT_NAME}_tests)
 endif()
