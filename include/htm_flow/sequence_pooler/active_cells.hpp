@@ -5,6 +5,8 @@
 #include <vector>
 #include <taskflow/taskflow.hpp>
 
+#include <htm_flow/sequence_pooler/sequence_types.hpp>
+
 namespace sequence_pooler {
 
 // Active-cells stage of the sequence pooler.
@@ -44,7 +46,14 @@ public:
   // Step 1. Accept the active column indices for this timestep.
   // Step 2. Update internal state (active/learn/burst history).
   // Step 3. Produce output lists for downstream stages.
-  void calculate_active_cells(int time_step, const std::vector<int>& active_col_indices);
+  // Step 1. Accept the active column indices for this timestep.
+  // Step 2. Use predictive/segment state from the previous timestep (if available).
+  // Step 3. Update internal state (active/learn/burst history) and produce outputs.
+  void calculate_active_cells(int time_step,
+                              const std::vector<int>& active_col_indices,
+                              const std::vector<int>& predict_cells_time,
+                              const std::vector<int>& active_segs_time,
+                              const std::vector<DistalSynapse>& distal_synapses);
 
   // --- Outputs / state accessors ---
   const std::vector<std::pair<int, int>>& get_current_active_cells_list() const;
@@ -79,6 +88,15 @@ private:
 
   // v1 stub: choose a deterministic learning cell for a newly-active column.
   int choose_learning_cell_stub(int col, int time_step) const;
+
+  bool check_cell_predicting(const std::vector<int>& predict_cells_time,
+                             int col,
+                             int cell,
+                             int time_step) const;
+  bool check_cell_has_sequence_seg(const std::vector<int>& active_segs_time,
+                                   int col,
+                                   int cell,
+                                   int time_step_minus_1) const;
 
   Config cfg_;
 

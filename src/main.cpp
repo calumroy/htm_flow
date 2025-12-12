@@ -5,6 +5,8 @@
 #include <htm_flow/inhibition.hpp>
 #include <htm_flow/spatiallearn.hpp>
 #include <htm_flow/sequence_pooler/active_cells.hpp>
+#include <htm_flow/sequence_pooler/predict_cells.hpp>
+#include <htm_flow/sequence_pooler/sequence_types.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
 #include <cstdlib>
@@ -24,6 +26,8 @@ int main(int argc, char *argv[])
     using inhibition::InhibitionCalculator;
     using spatiallearn::SpatialLearnCalculator;
     using sequence_pooler::ActiveCellsCalculator;
+    using sequence_pooler::PredictCellsCalculator;
+    using sequence_pooler::DistalSynapse;
 
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
@@ -58,6 +62,7 @@ int main(int argc, char *argv[])
     int min_score_threshold = 1;
     float new_syn_permanence = 0.3f;
     float connect_permanence = 0.2f;
+    int activation_threshold = 1; // Predict-cells: segment is active if > this many connected synapses are on active cells.
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -132,6 +137,29 @@ int main(int argc, char *argv[])
         connect_permanence,
     });
 
+    PredictCellsCalculator predictCellsCalc(PredictCellsCalculator::Config{
+        num_columns,
+        cells_per_column,
+        max_segments_per_cell,
+        max_synapses_per_segment,
+        connect_permanence,
+        activation_threshold,
+    });
+
+    // Distal synapses (randomly initialised once; kept constant across iterations).
+    // Shape: (num_columns, cells_per_column, max_segments_per_cell, max_synapses_per_segment)
+    const std::size_t distal_syn_count = static_cast<std::size_t>(num_columns) *
+                                         static_cast<std::size_t>(cells_per_column) *
+                                         static_cast<std::size_t>(max_segments_per_cell) *
+                                         static_cast<std::size_t>(max_synapses_per_segment);
+    std::vector<DistalSynapse> distal_synapses(distal_syn_count);
+    std::uniform_int_distribution<> col_dis(0, num_columns - 1);
+    std::uniform_int_distribution<> cell_dis(0, cells_per_column - 1);
+    std::uniform_real_distribution<float> perm_dis(0.0f, 1.0f);
+    for (std::size_t i = 0; i < distal_syn_count; ++i) {
+        distal_synapses[i] = DistalSynapse{col_dis(gen), cell_dis(gen), perm_dis(gen)};
+    }
+
     // Run a couple of iterations to demonstrate stateful learning:
     // `col_syn_perm` persists and is updated by the spatial learning stage.
 
@@ -165,10 +193,25 @@ int main(int argc, char *argv[])
         // Grab the already-computed active column indices (no recomputation / no scan).
         const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
 
-        // Sequence pooler: active cells (v1 stub wiring).
+        // Sequence pooler: active cells.
+        // Uses predictive state computed on the previous timestep.
         START_STOPWATCH();
         LOG(INFO, "Starting the sequence-pooler active-cells calculation.");
-        activeCellsCalc.calculate_active_cells(time_step, activeColIndices);
+        activeCellsCalc.calculate_active_cells(time_step,
+                                               activeColIndices,
+                                               predictCellsCalc.get_predict_cells_time(),
+                                               predictCellsCalc.get_active_segs_time(),
+                                               distal_synapses);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+
+        // Sequence pooler: predict cells.
+        // Uses the active-cells state computed on the current timestep.
+        START_STOPWATCH();
+        LOG(INFO, "Starting the sequence-pooler predict-cells calculation.");
+        predictCellsCalc.calculate_predict_cells(time_step,
+                                                 activeCellsCalc.get_active_cells_time(),
+                                                 distal_synapses);
         STOP_STOPWATCH();
         PRINT_ELAPSED_TIME();
 

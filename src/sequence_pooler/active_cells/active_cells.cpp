@@ -5,6 +5,29 @@
 
 namespace sequence_pooler {
 
+bool ActiveCellsCalculator::check_cell_predicting(const std::vector<int>& predict_cells_time,
+                                                  int col,
+                                                  int cell,
+                                                  int time_step) const {
+  const int i0 = idx_cell_time(col, cell, 0);
+  const int i1 = idx_cell_time(col, cell, 1);
+  return (predict_cells_time[i0] == time_step) || (predict_cells_time[i1] == time_step);
+}
+
+bool ActiveCellsCalculator::check_cell_has_sequence_seg(const std::vector<int>& active_segs_time,
+                                                        int col,
+                                                        int cell,
+                                                        int time_step_minus_1) const {
+  // activeSegsTime is a 3D tensor (col, cell, seg) storing the last timestep a segment was active.
+  const int base = (col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell;
+  for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
+    if (active_segs_time[base + seg] == time_step_minus_1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 ActiveCellsCalculator::ActiveCellsCalculator(const Config& cfg) : cfg_(cfg) {
   assert(cfg_.num_columns > 0);
   assert(cfg_.cells_per_column > 0);
@@ -110,15 +133,27 @@ int ActiveCellsCalculator::choose_learning_cell_stub(int /*col*/, int /*time_ste
   return 0;
 }
 
-void ActiveCellsCalculator::calculate_active_cells(int time_step, const std::vector<int>& active_col_indices) {
+void ActiveCellsCalculator::calculate_active_cells(int time_step,
+                                                   const std::vector<int>& active_col_indices,
+                                                   const std::vector<int>& predict_cells_time,
+                                                   const std::vector<int>& active_segs_time,
+                                                   const std::vector<DistalSynapse>& /*distal_synapses*/) {
   // Implementation overview:
   // Step 1. Clear the current output lists (we are computing a fresh timestep).
   // Step 2. In parallel over active columns:
   //         - If the column was active at (time_step-1), keep it stable (or keep bursting).
-  //         - If the column is newly active, "burst" (all cells active) in this v1 wiring.
+  //         - If the column is newly active:
+  //           - If a cell was predicting at (time_step-1) AND has a segment that was active at (time_step-1),
+  //             activate that cell (predicted activation path).
+  //           - Otherwise, burst (all cells active).
   //         - Update the internal time-history tensors (active/learn/burst) for this timestep.
   // Step 3. Build the public output lists from the per-column decisions in a single thread
   //         (avoids concurrent push_back and keeps results deterministic).
+
+  // Shape checks (predictive state is produced by PredictCellsCalculator).
+  assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
+  assert(static_cast<int>(active_segs_time.size()) ==
+         cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
 
   // Step 1. Reset current timestep outputs.
   current_active_cells_list_.clear();
@@ -173,18 +208,43 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step, const std::vec
           }
         } else {
           // Newly active column.
-          // v1 stub: no predictive state and no scoring -> it will burst.
-          set_burst_col(c, time_step);
+          bool active_cell_chosen = false;
+          bool learning_cell_chosen = false;
+
+          // Predicted activation path (matches the python logic at a high level):
+          // If the cell was predictive at (t-1) AND had a sequence segment active at (t-1),
+          // then activate it now and set it as the learning cell.
           for (int i = 0; i < cfg_.cells_per_column; ++i) {
-            set_active_cell(c, i, time_step);
+            if (check_cell_predicting(predict_cells_time, c, i, time_step - 1) &&
+                check_cell_has_sequence_seg(active_segs_time, c, i, time_step - 1)) {
+              active_cell_chosen = true;
+              set_active_cell(c, i, time_step);
+              learning_cell_chosen = true;
+              set_learn_cell(c, i, time_step);
+
+              decisions[static_cast<size_t>(k)].burst = false;
+              decisions[static_cast<size_t>(k)].active_cell = i;
+              decisions[static_cast<size_t>(k)].learn_cell = i;
+              break; // choose the first matching predicted cell for now (deterministic)
+            }
           }
 
-          const int learn = choose_learning_cell_stub(c, time_step);
-          set_learn_cell(c, learn, time_step);
+          if (!active_cell_chosen) {
+            // No prediction -> burst.
+            set_burst_col(c, time_step);
+            for (int i = 0; i < cfg_.cells_per_column; ++i) {
+              set_active_cell(c, i, time_step);
+            }
+            decisions[static_cast<size_t>(k)].burst = true;
+            decisions[static_cast<size_t>(k)].active_cell = -1;
+          }
 
-          decisions[static_cast<size_t>(k)].burst = true;
-          decisions[static_cast<size_t>(k)].active_cell = -1;
-          decisions[static_cast<size_t>(k)].learn_cell = learn;
+          if (!learning_cell_chosen) {
+            // v1 stub: until best-matching cell / scoring is implemented, pick deterministically.
+            const int learn = choose_learning_cell_stub(c, time_step);
+            set_learn_cell(c, learn, time_step);
+            decisions[static_cast<size_t>(k)].learn_cell = learn;
+          }
         }
 
         // Mark column active at this timestep.
