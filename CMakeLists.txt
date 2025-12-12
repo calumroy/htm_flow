@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CXX_STANDARD 17)
 
+# Build the Qt GUI debugger (see htm_gui/).
+option(HTM_FLOW_WITH_GUI "Build Qt6 GUI debugger" ON)
+
 # Cmake option to enable building CUDA GPU section or not. Requires CUDA 11.0 or higher.
 # To use specify -DUSE_GPU=ON when running cmake.
 option(USE_GPU "Enable GPU support" OFF) 
@@ -80,6 +83,7 @@ endif()
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp 
                                   ${PROJECT_SOURCE_DIR}/src/inhibition/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/spatiallearn/*.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/temporal/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/*.cpp)
 
 # Build the Project executable
@@ -98,6 +102,12 @@ if(USE_GPU)
   target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test gpu_overlap)
 else()
   target_link_libraries(${PROJECT_NAME} PRIVATE)
+endif()
+
+if(HTM_FLOW_WITH_GUI)
+  add_subdirectory(htm_gui)
+  target_link_libraries(${PROJECT_NAME} PRIVATE htm_gui)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE HTM_FLOW_WITH_GUI)
 endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

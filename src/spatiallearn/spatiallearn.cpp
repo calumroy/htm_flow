@@ -1,4 +1,4 @@
-#include "spatiallearn.hpp"
+#include <htm_flow/spatiallearn.hpp>
 #include <algorithm>
 // log
 #include <utilities/logger.hpp>

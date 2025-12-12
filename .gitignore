@@ -46,3 +46,9 @@ lib/*
 # ignore taskflow profile files
 *.tfp
 *simple.json
+
+# ignore build_qt directory
+build_qt/*
+
+# ignore build_gui_check directory
+build_gui_check/*
