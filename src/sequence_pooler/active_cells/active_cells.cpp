@@ -497,6 +497,10 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
           // Predicted activation path:
           // If a cell was predictive at (t-1) AND has a sequence segment active at (t-1),
           // activate it now and set it into learning.
+          //
+          // Important: we do NOT break after the first match.
+          // This matches the Python `np_activeCells` behavior: multiple cells in the same
+          // column may be set to learning if multiple sequence segments correctly predicted.
           for (int i = 0; i < cfg_.cells_per_column; ++i) {
             if (check_cell_predicting(predict_cells_time, c, i, time_step - 1) &&
                 check_cell_has_sequence_seg(active_segs_time, c, i, time_step - 1)) {

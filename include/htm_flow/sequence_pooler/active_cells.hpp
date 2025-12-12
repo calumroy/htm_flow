@@ -17,7 +17,9 @@ namespace sequence_pooler {
 //
 // What this component returns:
 // - A variable-length list of active cells: [(col, cell), ...]
-// - A variable-length list of learning cells: [(col, cell), ...] (one per active column)
+// - A variable-length list of learning cells: [(col, cell), ...]
+//   Note: there can be more than one learning cell per active column when multiple
+//   cells correctly predicted via different active (sequence) segments.
 // - Time-history tensors storing the last two timesteps a cell was active / learning.
 //
 // Notes:
