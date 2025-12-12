@@ -21,6 +21,10 @@ const std::vector<int>& PredictCellsCalculator::get_predict_cells_time() const {
   return predict_cells_time_;
 }
 
+std::vector<int>& PredictCellsCalculator::get_predict_cells_time_mutable() {
+  return predict_cells_time_;
+}
+
 const std::vector<int>& PredictCellsCalculator::get_active_segs_time() const {
   return active_segs_time_;
 }

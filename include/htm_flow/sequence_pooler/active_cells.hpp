@@ -64,6 +64,8 @@ public:
   // - learn_cells_time : (num_columns, cells_per_column, 2)
   const std::vector<int>& get_active_cells_time() const;
   const std::vector<int>& get_learn_cells_time() const;
+  // burst_cols_time: (num_columns, 2)
+  const std::vector<int>& get_burst_cols_time() const;
 
   // --- Update-structure tensors for sequence learning (active-cells contribution) ---
   // segIndUpdateActive: (num_columns, cells_per_column) -> segment index to update, or -1

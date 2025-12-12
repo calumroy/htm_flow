@@ -66,6 +66,10 @@ const std::vector<int>& ActiveCellsCalculator::get_learn_cells_time() const {
   return learn_cells_time_;
 }
 
+const std::vector<int>& ActiveCellsCalculator::get_burst_cols_time() const {
+  return burst_cols_time_;
+}
+
 std::vector<int>& ActiveCellsCalculator::get_seg_ind_update_active() {
   return seg_ind_update_active_;
 }

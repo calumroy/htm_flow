@@ -8,6 +8,7 @@
 #include <htm_flow/sequence_pooler/predict_cells.hpp>
 #include <htm_flow/sequence_pooler/sequence_learning.hpp>
 #include <htm_flow/sequence_pooler/sequence_types.hpp>
+#include <htm_flow/temporal_pooler/temporal_pooler.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
 #include <cstdlib>
@@ -30,6 +31,7 @@ int main(int argc, char *argv[])
     using sequence_pooler::PredictCellsCalculator;
     using sequence_pooler::DistalSynapse;
     using sequence_pooler::SequenceLearningCalculator;
+    using temporal_pooler::TemporalPoolerCalculator;
 
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
@@ -69,6 +71,12 @@ int main(int argc, char *argv[])
     // Sequence learning parameters (match spatial learning rates).
     float sequence_permanence_inc = 0.05f;
     float sequence_permanence_dec = 0.05f;
+
+    // Temporal pooler parameters (ported from python TemporalPoolCalculator).
+    // These are separate knobs from sequence-learning; keep them equal by default.
+    float temp_spatial_permanence_inc = spatialPermanenceInc;
+    float temp_seq_permanence_inc = sequence_permanence_inc;
+    int temp_delay_length = 4;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -162,6 +170,20 @@ int main(int argc, char *argv[])
         sequence_permanence_dec,
     });
 
+    TemporalPoolerCalculator temporalPoolCalc(TemporalPoolerCalculator::Config{
+        num_columns,
+        cells_per_column,
+        max_segments_per_cell,
+        max_synapses_per_segment,
+        num_pot_syn,
+        temp_spatial_permanence_inc,
+        temp_seq_permanence_inc,
+        min_num_syn_threshold,
+        new_syn_permanence,
+        connect_permanence,
+        temp_delay_length,
+    });
+
     // Distal synapses (randomly initialised once; kept constant across iterations).
     // Shape: (num_columns, cells_per_column, max_segments_per_cell, max_synapses_per_segment)
     const std::size_t distal_syn_count = static_cast<std::size_t>(num_columns) *
@@ -175,6 +197,10 @@ int main(int argc, char *argv[])
     for (std::size_t i = 0; i < distal_syn_count; ++i) {
         distal_synapses[i] = DistalSynapse{col_dis(gen), cell_dis(gen), perm_dis(gen)};
     }
+
+    // Dense bitfield for temporal proximal pooler (avoid O(num_columns) fill each step).
+    std::vector<uint8_t> col_active01(static_cast<std::size_t>(num_columns), 0);
+    std::vector<int> prev_active_col_indices;
 
     // Run a couple of iterations to demonstrate stateful learning:
     // `col_syn_perm` persists and is updated by the spatial learning stage.
@@ -208,6 +234,15 @@ int main(int argc, char *argv[])
 
         // Grab the already-computed active column indices (no recomputation / no scan).
         const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
+
+        // Build dense active-columns bitfield (0/1) from indices.
+        for (int c : prev_active_col_indices) {
+            col_active01[static_cast<std::size_t>(c)] = 0;
+        }
+        for (int c : activeColIndices) {
+            col_active01[static_cast<std::size_t>(c)] = 1;
+        }
+        prev_active_col_indices = activeColIndices;
 
         // Spatial learning consumes the SAME potential-inputs buffer produced by overlap
         // (no patch recomputation, no 2D conversions).
@@ -259,6 +294,24 @@ int main(int argc, char *argv[])
             activeCellsCalc.get_seg_new_syn_active(),
             predictCellsCalc.get_seg_ind_update_mutable(),
             predictCellsCalc.get_seg_active_syn_mutable());
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
+
+        // Temporal pooler (end of timestep): proximal + distal temporal pooling.
+        START_STOPWATCH();
+        LOG(INFO, "Starting the temporal pooler calculation.");
+        temporalPoolCalc.update_proximal(time_step,
+                                         overlapCalc.get_col_pot_inputs(),
+                                         col_active01,
+                                         col_syn_perm,
+                                         activeCellsCalc.get_burst_cols_time());
+        temporalPoolCalc.update_distal(time_step,
+                                       activeCellsCalc.get_current_learn_cells_list(),
+                                       activeCellsCalc.get_learn_cells_time(),
+                                       predictCellsCalc.get_predict_cells_time_mutable(),
+                                       activeCellsCalc.get_active_cells_time(),
+                                       predictCellsCalc.get_active_segs_time(),
+                                       distal_synapses);
         STOP_STOPWATCH();
         PRINT_ELAPSED_TIME();
 
