@@ -40,6 +40,12 @@ std::uint64_t TemporalPoolerCalculator::splitmix64(std::uint64_t x) {
 }
 
 std::size_t TemporalPoolerCalculator::deterministic_pick(std::uint64_t seed, std::size_t mod) {
+  // We need deterministic "random-like" sampling that is:
+  // - reproducible across runs
+  // - thread-safe (no shared RNG state inside taskflow loops)
+  // - cheap
+  //
+  // This replaces python's `random.sample(list, 1)` usage for synapse endpoints.
   if (mod == 0) {
     return 0;
   }
@@ -49,6 +55,8 @@ std::size_t TemporalPoolerCalculator::deterministic_pick(std::uint64_t seed, std
 bool TemporalPoolerCalculator::check_col_bursting(const std::vector<int>& burst_cols_time,
                                                  int col,
                                                  int time_step) const {
+  // Check if the given column is bursting at `time_step`.
+  // `burst_cols_time` stores the last two timesteps each column was bursting.
   const int i0 = col * 2 + 0;
   const int i1 = col * 2 + 1;
   return (burst_cols_time[static_cast<std::size_t>(i0)] == time_step) ||
@@ -59,6 +67,8 @@ bool TemporalPoolerCalculator::check_cell_time(const std::vector<int>& cells_tim
                                                int col,
                                                int cell,
                                                int time_step) const {
+  // Check if the given cell was in a particular state at `time_step`,
+  // where the state-history tensor stores the last two timesteps for that state.
   const int t0 = cells_time[static_cast<std::size_t>(idx_cell_time(col, cell, 0))];
   const int t1 = cells_time[static_cast<std::size_t>(idx_cell_time(col, cell, 1))];
   return (t0 == time_step) || (t1 == time_step);
@@ -68,6 +78,8 @@ bool TemporalPoolerCalculator::check_cell_predict(const std::vector<int>& predic
                                                   int col,
                                                   int cell,
                                                   int time_step) const {
+  // Check if the given cell was predicting at the timestep given.
+  // Mirrors python `checkCellPredict`.
   const int p0 = predict_cells_time[static_cast<std::size_t>(idx_cell_time(col, cell, 0))];
   const int p1 = predict_cells_time[static_cast<std::size_t>(idx_cell_time(col, cell, 1))];
   return (p0 == time_step) || (p1 == time_step);
@@ -77,6 +89,9 @@ void TemporalPoolerCalculator::set_predict_cell(std::vector<int>& predict_cells_
                                                int col,
                                                int cell,
                                                int time_step) const {
+  // Set the given cell into a predictive state for the given timestep.
+  // The tensor stores the last two predictive timesteps: we overwrite the older entry.
+  // Mirrors python `setPredictCell`.
   const int i0 = idx_cell_time(col, cell, 0);
   const int i1 = idx_cell_time(col, cell, 1);
   if (predict_cells_time[static_cast<std::size_t>(i0)] <= predict_cells_time[static_cast<std::size_t>(i1)]) {
@@ -91,13 +106,17 @@ bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>&
                                                         int col,
                                                         int cell,
                                                         int time_step) const {
+  // Check if a cell is active now AND was predicting one timestep before.
+  // Mirrors python `checkCellActivePredict`.
   const bool cell_active = check_cell_time(active_cells_time, col, cell, time_step);
   const bool was_predict = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
   return cell_active && was_predict;
 }
 
 void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& avg_persist) const {
-  // ARMA-style smoothing (ported intent from python; python forgot to store the result).
+  // Update the average persistence count with an ARMA-style smoothing filter.
+  // Mirrors python `updateAvgPesist`, but *fixes* the python bug where the value
+  // was computed and then discarded.
   if (avg_persist < 0.0f) {
     avg_persist = static_cast<float>(prev_tracking_num);
     return;
@@ -119,6 +138,9 @@ void TemporalPoolerCalculator::update_proximal(int time_step,
   tf::Taskflow taskflow;
 
   // Update permanence values using the previous timestep's buffers.
+  // Why previous buffers?
+  // The temporal proximal rule strengthens synapses that correctly predicted the active input
+  // transition between timesteps, so it needs both (t-1) and (t) activity.
   auto t_update = taskflow.for_each_index(0, cfg_.num_columns, 1, [&](int c) {
     const bool active_now = (col_active01[static_cast<std::size_t>(c)] == 1);
     const bool active_prev = (prev_col_active_[static_cast<std::size_t>(c)] == 1);
@@ -172,7 +194,14 @@ void TemporalPoolerCalculator::update_new_learn_cells_time(
     int time_step,
     const std::vector<std::pair<int, int>>& new_learn_cells_list,
     const std::vector<int>& learn_cells_time) {
-  // Python: update self.newLearnCellsTime for cells that *just entered* learning state.
+  // Update `new_learn_cells_time_` for cells that *just entered* learning state.
+  //
+  // Why track "entry" times separately?
+  // The distal temporal pooler wants a set of cells that *most recently entered* learning
+  // state (not cells that have merely stayed learning for many timesteps). This is used
+  // to choose endpoints for new synapses (a proxy for "recently relevant context").
+  //
+  // Mirrors python logic in `getPrev2NewLearnCells` where `newLearnCellsTime` stores entry times.
   for (const auto& cc : new_learn_cells_list) {
     const int col = cc.first;
     const int cell = cc.second;
@@ -194,11 +223,18 @@ std::vector<std::pair<int, int>> TemporalPoolerCalculator::get_prev2_new_learn_c
     int time_step,
     const std::vector<int>& active_cells_time,
     int num_cells_needed) const {
-  // Ported behavior:
-  // - return at least num_cells_needed of the most-recent learning-entry cells,
-  //   but only those that were NOT active at (time_step-1)
-  // - once we reach num_cells_needed at some latestTimeStep, keep adding other cells
-  //   with that same latestTimeStep then stop.
+  // Find cells that most recently entered learning state, but were NOT active at (time_step-1).
+  //
+  // This mirrors the intent of python `getPrev2NewLearnCells`:
+  // - scan from most recent learning-entry events backwards
+  // - collect at least `num_cells_needed` cells (if available)
+  // - once you hit exactly `num_cells_needed` at some `latest_time_step`, also include any other
+  //   cells that entered learning at that same timestep, then stop.
+  //
+  // Why exclude cells active at (t-1)?
+  // The python comments call these "antepenultimate learning cells" (prev2). The goal is to bias
+  // new synapses toward cells that *entered* learning recently but are not simply the immediately
+  // previous active set, which helps create longer temporal links.
   std::vector<std::pair<int, int>> out;
   out.reserve(static_cast<std::size_t>(num_cells_needed));
 
@@ -246,6 +282,8 @@ int TemporalPoolerCalculator::segment_num_synapses_active_prev2(
     int origin_col,
     int origin_cell,
     int seg) const {
+  // Count how many connected synapses in this segment end on cells in `prev2_set`.
+  // Mirrors python `segmentNumSynapsesActive`.
   int count = 0;
   for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
     const std::size_t idx = idx_distal_synapse(static_cast<std::size_t>(origin_col),
@@ -270,6 +308,11 @@ int TemporalPoolerCalculator::get_best_matching_segment_prev2(const std::vector<
                                                              const std::unordered_set<int>& prev2_set,
                                                              int origin_col,
                                                              int origin_cell) const {
+  // Find the segment with the most connected synapses ending on prev2 learning cells.
+  // Mirrors python `getBestMatchingSegment`.
+  //
+  // Note: like the python code, this is "aggressive": it only uses permanence>connect_permanence
+  // to decide if a synapse exists/connected, and requires >min_num_syn_threshold matches overall.
   int best_seg = 0;
   int best_cnt = -1;
   for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
@@ -292,7 +335,12 @@ void TemporalPoolerCalculator::get_segment_active_synapses(const std::vector<Dis
                                                           int origin_cell,
                                                           int seg,
                                                           int8_t* out01) const {
-  // Python counts active ends without checking connected permanence.
+  // Build a 0/1 list of which synapses in the segment are active at `time_step`.
+  // A synapse is active if its endpoint cell is active at that timestep.
+  // Mirrors python `getSegmentActiveSynapses`.
+  //
+  // Note: the python routine does NOT require permanence>connect_permanence here; it checks
+  // activity of endpoints regardless (we mirror that behavior).
   for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
     const std::size_t idx = idx_distal_synapse(static_cast<std::size_t>(origin_col),
                                                static_cast<std::size_t>(origin_cell),
@@ -350,6 +398,13 @@ void TemporalPoolerCalculator::overwrite_segment_with_prev2(
     int seg,
     const std::vector<std::pair<int, int>>& prev2_cells,
     std::vector<DistalSynapse>& distal_synapses) const {
+  // Fill the segment with a random-like selection of new synapses whose endpoints are
+  // chosen from `prev2_cells` (antepenultimate learning cells).
+  //
+  // Mirrors python `newRandomPrevActiveSynapses` (in this temporal pooler file).
+  //
+  // Implementation detail:
+  // - We use deterministic hashing instead of a shared RNG to remain thread-safe under taskflow.
   if (prev2_cells.empty()) {
     return;
   }

@@ -235,7 +235,21 @@ int main(int argc, char *argv[])
         // Grab the already-computed active column indices (no recomputation / no scan).
         const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
 
-        // Build dense active-columns bitfield (0/1) from indices.
+        // Build a *dense* active-columns bitfield (0/1) from the sparse `activeColIndices` list.
+        //
+        // Why do we do this at all?
+        // - The temporal pooler proximal update runs a parallel loop over ALL columns.
+        // - Inside that loop we need O(1) access to "is this column active?".
+        //   A dense `std::vector<uint8_t>` gives branch-friendly, cache-friendly checks.
+        //
+        // Why not just `std::fill(col_active01.begin(), col_active01.end(), 0)` every timestep?
+        // - `num_columns` can be huge (e.g. 800*800 = 640k). Full clears become noticeable.
+        //
+        // So we do the common sparse trick:
+        // - Clear only the columns that were active last timestep (`prev_active_col_indices`)
+        // - Set only the columns active this timestep (`activeColIndices`)
+        //
+        // This keeps the work ~O(#active columns) instead of O(#all columns).
         for (int c : prev_active_col_indices) {
             col_active01[static_cast<std::size_t>(c)] = 0;
         }
@@ -300,6 +314,14 @@ int main(int argc, char *argv[])
         // Temporal pooler (end of timestep): proximal + distal temporal pooling.
         START_STOPWATCH();
         LOG(INFO, "Starting the temporal pooler calculation.");
+        // NOTE: This is a *separate* learning/persistence stage from `SequenceLearningCalculator`.
+        // It matches the intent of the Python `TemporalPoolCalculator`:
+        // - proximal temporal pooling adjusts proximal permanences using prev/current potential inputs,
+        //   skipping bursting columns.
+        // - distal temporal pooling adjusts distal permanences and extends predictive state via persistence.
+        //
+        // We run it at end-of-timestep so that any changes to `predict_cells_time` affect the NEXT timestep's
+        // `ActiveCellsCalculator` decisions (same temporal relationship as the Python pipeline).
         temporalPoolCalc.update_proximal(time_step,
                                          overlapCalc.get_col_pot_inputs(),
                                          col_active01,
