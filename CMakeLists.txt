@@ -80,6 +80,8 @@ endif()
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp 
                                   ${PROJECT_SOURCE_DIR}/src/inhibition/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/spatiallearn/*.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/*.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/*/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/*.cpp)
 
 # Build the Project executable
@@ -124,6 +126,7 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
                                   ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp 
                                   ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp
                                   ${PROJECT_SOURCE_DIR}/src/spatiallearn/spatiallearn.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/active_cells/active_cells.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/stopwatch.cpp)
 
 

@@ -8,9 +8,9 @@
 #include <random>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>
-#include "inhibition.hpp"
-#include "utilities/logger.hpp"
-#include "htm_flow/overlap_utils.hpp"
+#include <htm_flow/inhibition.hpp>
+#include <utilities/logger.hpp>
+#include <htm_flow/overlap_utils.hpp>
 #include <cstring>  // for memset
 #include <stdexcept>
 

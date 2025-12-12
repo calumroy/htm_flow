@@ -4,6 +4,7 @@
 // #include <overlap/gpu_overlap.hpp>#include <inhibition/inhibition.hpp>
 #include <htm_flow/inhibition.hpp>
 #include <htm_flow/spatiallearn.hpp>
+#include <htm_flow/sequence_pooler/active_cells.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/stopwatch.hpp>
 #include <cstdlib>
@@ -22,6 +23,7 @@ int main(int argc, char *argv[])
     using overlap::OverlapCalculator;
     using inhibition::InhibitionCalculator;
     using spatiallearn::SpatialLearnCalculator;
+    using sequence_pooler::ActiveCellsCalculator;
 
     // Overlap calculation parameters (similar to your existing setup)
     int pot_width = 30;
@@ -47,6 +49,15 @@ int main(int argc, char *argv[])
     float spatialPermanenceInc = 0.05f;
     float spatialPermanenceDec = 0.05f;
     float activeColPermanenceDec = 0.01f;
+
+    // Sequence pooler (active cells) parameters (v1: predictive/segments are stubbed)
+    int cells_per_column = 5;
+    int max_segments_per_cell = 3;       // keep small for now; full TM wiring comes later
+    int max_synapses_per_segment = 10;    // keep small for now; full TM wiring comes later
+    int min_num_syn_threshold = 1;
+    int min_score_threshold = 1;
+    float new_syn_permanence = 0.3f;
+    float connect_permanence = 0.2f;
 
     // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
     // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
@@ -110,12 +121,24 @@ int main(int argc, char *argv[])
         spatialPermanenceDec,
         activeColPermanenceDec);
 
+    ActiveCellsCalculator activeCellsCalc(ActiveCellsCalculator::Config{
+        num_columns,
+        cells_per_column,
+        max_segments_per_cell,
+        max_synapses_per_segment,
+        min_num_syn_threshold,
+        min_score_threshold,
+        new_syn_permanence,
+        connect_permanence,
+    });
+
     // Run a couple of iterations to demonstrate stateful learning:
     // `col_syn_perm` persists and is updated by the spatial learning stage.
 
     for (int t = 0; t < NUM_ITERATIONS; ++t)
     {
         LOG(INFO, "=== Iteration " + std::to_string(t) + " ===");
+        const int time_step = t + 1;
 
         // New random input each iteration (placeholder for real sensory input).
         for (int i = 0; i < num_input_rows * num_input_cols; ++i)
@@ -141,6 +164,13 @@ int main(int argc, char *argv[])
 
         // Grab the already-computed active column indices (no recomputation / no scan).
         const std::vector<int>& activeColIndices = inhibitionCalc.get_active_column_indices();
+
+        // Sequence pooler: active cells (v1 stub wiring).
+        START_STOPWATCH();
+        LOG(INFO, "Starting the sequence-pooler active-cells calculation.");
+        activeCellsCalc.calculate_active_cells(time_step, activeColIndices);
+        STOP_STOPWATCH();
+        PRINT_ELAPSED_TIME();
 
         // Spatial learning consumes the SAME potential-inputs buffer produced by overlap
         // (no patch recomputation, no 2D conversions).
