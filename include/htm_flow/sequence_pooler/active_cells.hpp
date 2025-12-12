@@ -20,12 +20,11 @@ namespace sequence_pooler {
 // - A variable-length list of learning cells: [(col, cell), ...] (one per active column)
 // - Time-history tensors storing the last two timesteps a cell was active / learning.
 //
-// Notes (current wiring stage):
-// - The full temporal memory inputs (predictive state, active segments, distal synapses)
-//   are not connected yet in this C++ pipeline.
-// - For now, newly-active columns "burst" (all cells active) and the learning cell is
-//   chosen deterministically. This keeps the plumbing correct and lets later calculators
-//   plug in without changing the public interface.
+// Notes:
+// - This stage is fully wired to receive `predict_cells_time`, `active_segs_time`, and
+//   `distal_synapses`.
+// - The implementation includes the scoring + best-matching-cell logic used to select
+//   learning cells and create update structures for the sequence-learning stage.
 class ActiveCellsCalculator {
 public:
   struct Config {
@@ -43,12 +42,11 @@ public:
 
   // Update active/learn states for the given timestep.
   //
-  // Step 1. Accept the active column indices for this timestep.
-  // Step 2. Update internal state (active/learn/burst history).
-  // Step 3. Produce output lists for downstream stages.
-  // Step 1. Accept the active column indices for this timestep.
-  // Step 2. Use predictive/segment state from the previous timestep (if available).
-  // Step 3. Update internal state (active/learn/burst history) and produce outputs.
+  // Step 1. Read the active column indices for this timestep.
+  // Step 2. Use predictive + sequence-segment state from (time_step-1) to decide
+  //         predicted activations; otherwise use bursting / alternative sequence scoring.
+  // Step 3. Emit update structures (segment update + new synapse proposals) for the
+  //         sequence-learning stage.
   void calculate_active_cells(int time_step,
                               const std::vector<int>& active_col_indices,
                               const std::vector<int>& predict_cells_time,
@@ -88,6 +86,7 @@ private:
   bool check_cell_active(int col, int cell, int time_step) const;
   bool check_cell_learn(int col, int cell, int time_step) const;
   bool check_col_bursting(int col, int time_step) const;
+  bool check_col_prev_active(int col) const;
 
   void set_active_cell(int col, int cell, int time_step);
   void set_learn_cell(int col, int cell, int time_step);
@@ -95,9 +94,6 @@ private:
 
   int find_active_cell(int col, int time_step) const; // returns first active cell, or -1
   int find_learn_cell(int col, int time_step) const;  // returns first learn cell, or -1
-
-  // v1 stub: choose a deterministic learning cell for a newly-active column.
-  int choose_learning_cell_stub(int col, int time_step) const;
 
   bool check_cell_predicting(const std::vector<int>& predict_cells_time,
                              int col,
@@ -108,10 +104,54 @@ private:
                                    int cell,
                                    int time_step_minus_1) const;
 
+  // --- Scoring / best-matching logic (ported from the Python implementation) ---
+  int segment_num_synapses_active(const std::vector<DistalSynapse>& distal_synapses,
+                                  int origin_col,
+                                  int origin_cell,
+                                  int seg,
+                                  int time_step,
+                                  bool on_cell) const;
+  int get_best_matching_segment(const std::vector<DistalSynapse>& distal_synapses,
+                                int origin_col,
+                                int origin_cell,
+                                int time_step,
+                                bool on_cell) const; // -1 if none active enough
+  int segment_highest_score(const std::vector<DistalSynapse>& distal_synapses,
+                            int origin_col,
+                            int origin_cell,
+                            int seg) const;
+  void update_active_cell_scores(const std::vector<uint8_t>& active_cols,
+                                 const std::vector<DistalSynapse>& distal_synapses,
+                                 int time_step);
+  int find_num_segs(const std::vector<DistalSynapse>& distal_synapses,
+                    int origin_col,
+                    int origin_cell) const;
+  int find_least_used_seg(const std::vector<int>& active_segs_time,
+                          int origin_col,
+                          int origin_cell) const;
+  // Returns: (cell, seg, bestCellFound)
+  std::tuple<int, int, bool> get_best_matching_cell(const std::vector<DistalSynapse>& distal_synapses,
+                                                    const std::vector<int>& active_segs_time,
+                                                    int origin_col,
+                                                    int time_step) const;
+  void get_segment_active_synapses(const std::vector<DistalSynapse>& distal_synapses,
+                                   int origin_col,
+                                   int origin_cell,
+                                   int seg,
+                                   int time_step,
+                                   int8_t* out01) const;
+  void new_random_prev_learn_synapses(const std::vector<DistalSynapse>& distal_synapses,
+                                      int origin_col,
+                                      int origin_cell,
+                                      int seg,
+                                      int time_step,
+                                      bool keep_connected_syn,
+                                      DistalSynapse* out_new_syn) const;
+
   Config cfg_;
 
-  // Track last timestep a column was active (replaces python prevActiveCols bit-array).
-  std::vector<int> col_last_active_time_; // shape: (num_columns)
+  // Previous timestep active-columns bitfield (0/1), as produced by inhibition.
+  std::vector<uint8_t> prev_active_cols_; // shape: (num_columns)
 
   // Track last 2 timesteps a column was bursting (all cells active).
   std::vector<int> burst_cols_time_; // shape: (num_columns, 2)
@@ -124,6 +164,10 @@ private:
   std::vector<std::pair<int, int>> current_active_cells_list_;
   std::vector<std::pair<int, int>> current_learn_cells_list_;
   std::vector<std::pair<int, int>> prev_learn_cells_list_;
+
+  // Score buffers for alternative sequence selection.
+  std::vector<int> cells_score_;              // (num_columns*cells_per_column)
+  std::vector<int> col_highest_scored_cell_;  // (num_columns) -> cell index, or -1
 
   // Update structures for the sequence learning stage (active-cells side).
   std::vector<int> seg_ind_update_active_;        // (num_columns*cells_per_column)
