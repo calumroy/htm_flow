@@ -1,33 +1,5 @@
 #pragma once
 
-// Umbrella header kept for convenience.
-//
-// New suite files should prefer including the specific modules below when it
-// improves readability.
-
-#include "tp_metrics.hpp"
-#include "tp_inputs.hpp"
-#include "tp_harness.hpp"
-#include "tp_suite3_patterns.hpp"
-
-// Legacy monolithic header content kept below for reference only.
-// It is disabled to avoid symbol redefinition now that utilities are split.
-#if 0
-
-#pragma once
-
-// Umbrella header kept for convenience.
-//
-// New suite files should prefer including the specific modules below when it
-// improves readability.
-
-#include "tp_metrics.hpp"
-#include "tp_inputs.hpp"
-#include "tp_harness.hpp"
-#include "tp_suite3_patterns.hpp"
-
-#pragma once
-
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -47,136 +19,7 @@
 namespace temporal_pooling_test_utils {
 
 // -----------------------------------------------------------------------------
-// Metrics (ported from the legacy Python suites)
-// -----------------------------------------------------------------------------
-
-// A minimal C++ port of:
-// - HTM/utilities/measureTemporalPooling.py
-//
-// Measures "how much successive outputs change" using:
-//   percent = |prev ∩ curr| / |prev|
-// and maintains a running average across calls.
-class TemporalPoolingMeasure {
-public:
-  double temporalPoolingPercent(const std::vector<uint8_t>& grid01) {
-    if (!prev_.empty()) {
-      int prev_active = 0;
-      int both_active = 0;
-      for (std::size_t i = 0; i < grid01.size(); ++i) {
-        const bool p = (prev_[i] != 0);
-        const bool c = (grid01[i] != 0);
-        prev_active += p ? 1 : 0;
-        both_active += (p && c) ? 1 : 0;
-      }
-      const double percent = (prev_active > 0) ? (static_cast<double>(both_active) / static_cast<double>(prev_active))
-                                               : 0.0;
-      // Running average matches Python:
-      // temporalAverage = (percentTemp + temporalAverage*(numInputGrids-1))/numInputGrids
-      temporal_average_ =
-          (percent + temporal_average_ * static_cast<double>(num_grids_ - 1)) / static_cast<double>(num_grids_);
-    }
-    prev_ = grid01;
-    ++num_grids_;
-    return temporal_average_;
-  }
-
-private:
-  std::vector<uint8_t> prev_;
-  double temporal_average_ = 0.0;
-  int num_grids_ = 0;
-};
-
-// A minimal C++ port of:
-// - HTM/utilities/sdrFunctions.py (similarInputGrids)
-inline double similarityPercent(const std::vector<uint8_t>& a01, const std::vector<uint8_t>& b01) {
-  int a_active = 0;
-  int both_active = 0;
-  for (std::size_t i = 0; i < a01.size(); ++i) {
-    const bool a = (a01[i] != 0);
-    const bool b = (b01[i] != 0);
-    a_active += a ? 1 : 0;
-    both_active += (a && b) ? 1 : 0;
-  }
-  return (a_active > 0) ? (static_cast<double>(both_active) / static_cast<double>(a_active)) : 0.0;
-}
-
-// -----------------------------------------------------------------------------
-// Deterministic input generators (inspired by Python simpleVerticalLineInputs)
-// -----------------------------------------------------------------------------
-
-class VerticalLineInputs {
-public:
-  enum class Pattern {
-    LeftToRight,
-    RightToLeft,
-    EvenPositions,
-    OddPositions,
-  };
-
-  VerticalLineInputs(int width, int height, int seq_len)
-      : width_(width), height_(height), seq_len_(seq_len), pat_(Pattern::LeftToRight), idx_(0) {
-    EXPECT_GT(width_, 0);
-    EXPECT_GT(height_, 0);
-    EXPECT_GT(seq_len_, 0);
-  }
-
-  void setPattern(Pattern p) {
-    pat_ = p;
-    idx_ = 0;
-  }
-
-  void setIndex(int i) { idx_ = i % seq_len_; }
-
-  int seqLen() const { return seq_len_; }
-
-  // Deterministic "sequenceProbability" analogue:
-  // - 1.0 => always in-sequence
-  // - 0.0 => always random index (deterministic RNG)
-  void setSequenceProbability(double p) { seq_prob_ = p; }
-
-  std::vector<int> next(std::mt19937& rng) {
-    int chosen = idx_;
-    std::uniform_real_distribution<double> u01(0.0, 1.0);
-    if (u01(rng) > seq_prob_) {
-      std::uniform_int_distribution<int> pick(0, seq_len_ - 1);
-      chosen = pick(rng);
-    }
-
-    std::vector<int> grid(static_cast<std::size_t>(width_ * height_), 0);
-    const int x = x_for_index(chosen);
-    for (int y = 0; y < height_; ++y) {
-      grid[static_cast<std::size_t>(y * width_ + x)] = 1;
-    }
-
-    idx_ = (idx_ + 1) % seq_len_;
-    return grid;
-  }
-
-private:
-  int x_for_index(int t) const {
-    switch (pat_) {
-      case Pattern::LeftToRight:
-        return t % width_;
-      case Pattern::RightToLeft:
-        return (width_ - 1 - (t % width_));
-      case Pattern::EvenPositions:
-        return (2 * (t % width_)) % width_;
-      case Pattern::OddPositions:
-        return (2 * (t % width_) + 1) % width_;
-    }
-    return 0;
-  }
-
-  int width_;
-  int height_;
-  int seq_len_;
-  Pattern pat_;
-  int idx_;
-  double seq_prob_ = 1.0;
-};
-
-// -----------------------------------------------------------------------------
-// End-to-end pipeline harness (mirrors htm_flow/src/main.cpp, but small + deterministic)
+// End-to-end pipeline harnesses (mirror htm_flow/src/main.cpp, but deterministic)
 // -----------------------------------------------------------------------------
 
 class HtmPipelineHarness {
@@ -191,8 +34,6 @@ public:
     int col_cols = 12;
 
     // Potential pool size
-    // For the vertical-line inputs used in tests, increasing pot_h makes overlap
-    // more input-driven (line intersects more rows), improving pattern differentiation.
     int pot_h = 12;
     int pot_w = 4;
 
@@ -389,7 +230,6 @@ public:
                                       distal_synapses_);
   }
 
-  // A dense 0/1 vector of length num_columns (col_rows*col_cols) representing active columns.
   std::vector<int> activeColumnsInt01() {
     const std::vector<int> active_cols = inhibition_calc_.get_active_columns();
     std::vector<int> out(active_cols.size(), 0);
@@ -399,7 +239,6 @@ public:
     return out;
   }
 
-  // A dense 0/1 vector of length (num_columns*cells_per_column) for learning cells at a given timestep.
   std::vector<uint8_t> learnCells01(int time_step) const {
     const std::vector<int>& lc = active_cells_calc_.get_learn_cells_time();
     std::vector<uint8_t> out(static_cast<std::size_t>(num_columns_ * cfg_.cells_per_column), 0);
@@ -417,7 +256,6 @@ public:
 
   std::mt19937& rng() { return rng_; }
   const Config& cfg() const { return cfg_; }
-  int numColumns() const { return num_columns_; }
 
 private:
   Config cfg_;
@@ -443,9 +281,6 @@ private:
   std::mt19937 rng_;
 };
 
-// Two-layer HTM-like pipeline:
-// - Layer 0 takes external sensory input.
-// - Layer 1 takes Layer 0's *active columns* as its input grid.
 class TwoLayerHtmHarness {
 public:
   struct Config {
@@ -455,8 +290,10 @@ public:
   };
 
   explicit TwoLayerHtmHarness(Config cfg)
-      : cfg_(cfg), rng_(cfg_.rng_seed), l0_(withSeed(cfg_.l0, cfg_.rng_seed)), l1_(withSeed(cfg_.l1, cfg_.rng_seed + 1u)) {
-    // Ensure layer-1 input shape matches layer-0 column grid shape.
+      : cfg_(cfg),
+        rng_(cfg_.rng_seed),
+        l0_(withSeed(cfg_.l0, cfg_.rng_seed)),
+        l1_(withSeed(cfg_.l1, cfg_.rng_seed + 1u)) {
     EXPECT_EQ(l1_.cfg().input_rows, l0_.cfg().col_rows);
     EXPECT_EQ(l1_.cfg().input_cols, l0_.cfg().col_cols);
   }
@@ -467,10 +304,11 @@ public:
     l1_.step(time_step, l0_out);
   }
 
-  const HtmPipelineHarness& layer0() const { return l0_; }
-  const HtmPipelineHarness& layer1() const { return l1_; }
   HtmPipelineHarness& layer0() { return l0_; }
   HtmPipelineHarness& layer1() { return l1_; }
+  const HtmPipelineHarness& layer0() const { return l0_; }
+  const HtmPipelineHarness& layer1() const { return l1_; }
+
   std::mt19937& rng() { return rng_; }
 
 private:
@@ -485,7 +323,7 @@ private:
   HtmPipelineHarness l1_;
 };
 
-// Helper: run N steps with a provided input generator; time_step starts at start_time_step.
+// Run N steps with an injected step function and input generator.
 template <typename StepFn, typename InputFn>
 inline void runSteps(int start_time_step, int num_steps, StepFn&& step_fn, InputFn&& next_input) {
   for (int dt = 0; dt < num_steps; ++dt) {
@@ -495,6 +333,4 @@ inline void runSteps(int start_time_step, int num_steps, StepFn&& step_fn, Input
 }
 
 } // namespace temporal_pooling_test_utils
-
-#endif // 0
 

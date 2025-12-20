@@ -1,4 +1,6 @@
-#include "test_utils/temporal_pooling_test_utils.hpp"
+#include "test_utils/tp_harness.hpp"
+#include "test_utils/tp_inputs.hpp"
+#include "test_utils/tp_metrics.hpp"
 
 #include <algorithm>
 #include <random>
