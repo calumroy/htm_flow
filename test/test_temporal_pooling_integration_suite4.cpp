@@ -18,7 +18,17 @@ inline std::vector<uint8_t> representativeOverCycle(TwoLayerHtmHarness& htm,
                                                     VerticalLineInputs& inputs,
                                                     int& time_step,
                                                     int seq_len) {
-  // Majority-vote representative of the top layer over one cycle.
+  // Build a single representative SDR for "what this pattern looks like" at the *top* layer,
+  // by running one full input cycle and aggregating the per-step learn-cells outputs.
+  //
+  // Why do we need a representative at all?
+  // - The input is a SEQUENCE (a cycle of vertical lines at different x positions).
+  // - The pooled representation for a whole sequence is not one timestep; it is the
+  //   stable-ish set of cells that tend to be involved across the cycle.
+  //
+  // Why majority vote?
+  // - We want something stable (robust to a single bursty/odd timestep).
+  // - This is a simple, deterministic way to collapse a cycle into one SDR for comparisons.
   std::vector<std::vector<uint8_t>> samples;
   samples.reserve(static_cast<std::size_t>(seq_len));
   for (int i = 0; i < seq_len; ++i) {
@@ -45,16 +55,43 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
   /*
   Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_tempEquality
 
-  What we are testing (and why):
-  - In Suite4, the focus is on higher-layer pooling with multiple patterns.
-  - Two input patterns that do not share features should produce pooled outputs
-    that have low overlap (they should remain distinct).
+  What we are testing (and why this test is structured this way):
+  - Goal: show that "temporal pooling" can form for multiple patterns WITHOUT collapsing them
+    into one indistinguishable representation.
+  - If two input patterns do not share any input features, then a sane higher-level pooled
+    representation should also have low overlap between them.
 
-  C++ adaptation:
-  - We use two deterministic vertical-line patterns that are disjoint at the input level:
-    EvenPositions vs OddPositions.
-  - We measure similarity on the top layer of a 2-layer hierarchy.
+  What exactly is the "pattern" here?
+  - A pattern is a repeating SEQUENCE of vertical-line inputs over a fixed cycle length.
+  - EvenPositions: the vertical line appears only at even x positions across the cycle.
+  - OddPositions: the vertical line appears only at odd x positions across the cycle.
+  - Those two sets are disjoint, so at the raw-input level they share (almost) no active bits.
+
+  Why a 2-layer hierarchy?
+  - Python Suite4 measured a higher layer's learning cells (`getLearningCellsOutput`) to see the
+    pooled representation in a "top layer".
+  - In htm_flow we approximate depth by stacking two full pipelines:
+      layer0(active_columns) -> layer1(input_grid)
+    and we measure layer1's learning cells as the "pooled" representation.
+
+  What do we measure and why?
+  - We compute a representative top-layer SDR for each pattern (one per cycle) and compare them
+    with `similarityPercent = |A ∩ B| / |A|`.
+  - If the system keeps patterns distinct, this similarity should be bounded away from 1.
+
+  Why the threshold is not tiny (0.60 instead of, say, 0.10):
+  - Temporal pooling + persistence can reuse some cells across contexts.
+  - Small models and tie-breakers can introduce shared structure.
+  - The important thing is: "not almost identical", not "perfectly disjoint".
   */
+
+  // Step-by-step:
+  // 1) Build a deterministic 2-layer feed-forward HTM (no feedback).
+  // 2) Train on Pattern 1 long enough for its pooled representation to emerge.
+  // 3) Capture Pattern 1’s top-layer representative SDR over one full cycle.
+  // 4) Train on Pattern 2 long enough for its pooled representation to emerge.
+  // 5) Capture Pattern 2’s top-layer representative SDR over one full cycle.
+  // 6) Assert that the two representatives do not overlap "too much".
 
   TwoLayerHtmHarness::Config cfg;
   cfg.l0 = HtmPipelineHarness::Config{};
@@ -99,12 +136,29 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
 
 TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinct) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py (general “different patterns stay different” intent)
+  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_temporalDiff
+  (and the general "different patterns should remain different" intent throughout Suite4)
 
-  What we are testing (and why):
-  - Even after both patterns are learned, switching patterns should not collapse them into
-    one identical representation.
+  What we are testing:
+  - After the system has seen BOTH patterns, each pattern should still map to a distinct
+    pooled representation at the top layer.
+
+  Why this is a separate test from test_tempEquality:
+  - The first test trains pattern1 then pattern2 and immediately compares.
+  - This test explicitly emphasizes "after both are learned", i.e. we allow both to shape the model
+    before we evaluate distinctness.
+
+  What would make this test fail (useful failure modes):
+  - The top layer becomes dominated by persistence / tie-breakers and always picks the same cells.
+  - The model is too small / too sparse and ends up with an almost-constant learning set.
   */
+
+  // Step-by-step:
+  // 1) Train on EvenPositions for a while.
+  // 2) Train on OddPositions for a while.
+  // 3) Capture representative pooled SDR for EvenPositions.
+  // 4) Capture representative pooled SDR for OddPositions.
+  // 5) Assert they are not (nearly) identical.
 
   TwoLayerHtmHarness::Config cfg;
   cfg.l0 = HtmPipelineHarness::Config{};
@@ -155,18 +209,38 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
   /*
   Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_tempDiffPooled
 
-  What we are testing (and why):
-  - The Python test suggests that if the *transition* between two different patterns
-    happens enough, the system can “pool” over that larger macro-sequence too.
-  - In practice, this means that after many alternations, the top-layer output during
-    pattern A and pattern B can become much more similar than it originally was.
+  What we are testing:
+  - Temporal pooling is not only about pooling WITHIN a single pattern/sequence.
+    In the Python suite, after enough alternations between Pattern 1 and Pattern 2, the
+    *transition itself* can become predictable / "pooled", producing a more stable top output.
 
-  C++ adaptation:
-  - We alternate EvenPositions and OddPositions many times.
-  - We measure:
-    - pooling percent during each pattern (should be high)
-    - similarity between the final top representations for each pattern (should increase)
+  Concrete interpretation in this C++ test:
+  - Before alternation training:
+    - EvenPositions and OddPositions should produce somewhat different top representations.
+  - After alternation training:
+    - The system has learned the macro-sequence "...Even cycle... -> ...Odd cycle... -> ...Even cycle...".
+    - So the top representations for Even and Odd are allowed to become more similar than they were initially.
+
+  What signals do we measure?
+  - (A) Temporal pooling percent on the TOP layer’s learning-cells output while replaying each pattern.
+        This checks that each pattern is still being pooled (stability within pattern remains).
+  - (B) Similarity between the representative SDRs for Even vs Odd, before and after alternation training.
+        This checks that the alternation training did not make things less consistent.
+
+  Why we only assert "similarity should not decrease":
+  - The exact “should become one stable pattern” requirement in Python is very parameter-sensitive,
+    especially across different implementations.
+  - This assertion still tests the *directional* claim (alternation doesn’t make the two patterns diverge more),
+    without locking us into brittle >0.9 thresholds that may fail under deterministic tie-breaks.
   */
+
+  // Step-by-step:
+  // 1) Train on EvenPositions alone, capture "early" top representation.
+  // 2) Train on OddPositions alone, capture "early" top representation.
+  // 3) Alternate Even and Odd many times to teach the macro transition.
+  // 4) Re-run Even then Odd and measure:
+  //    - pooling percent on each (stability within pattern)
+  //    - similarity between final Even and final Odd (transition pooling direction)
 
   TwoLayerHtmHarness::Config cfg;
   cfg.l0 = HtmPipelineHarness::Config{};

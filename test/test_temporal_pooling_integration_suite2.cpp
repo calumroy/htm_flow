@@ -18,10 +18,19 @@ namespace {
 inline std::vector<uint8_t> avgOfSamples(const std::vector<std::vector<uint8_t>>& samples) {
   // Return a representative SDR by OR'ing across samples.
   //
+  // What problem is this solving?
+  // - Our "pattern" is not a single frame; it is a SEQUENCE over a cycle length (seq_len).
+  // - The system output can vary slightly at each timestep (especially near pattern switches).
+  // - We want ONE stable-ish summary SDR so we can do meaningful comparisons like:
+  //     "pattern A now" vs "pattern A later"  (recall)
+  //     "pattern A" vs "pattern B"            (differentiation)
+  //
   // Why OR instead of majority-vote?
-  // - These HTM-like representations can be extremely sparse.
-  // - Majority vote often collapses to an all-zero vector, which makes similarity tests meaningless.
-  // - OR preserves the "set of features that ever participate" over a cycle.
+  // - These learn-cells outputs can be very sparse and bursty.
+  // - Majority vote can collapse to all-zeros, which then makes overlap/similarity comparisons
+  //   meaningless (everything looks identical).
+  // - OR preserves the union of features that participate across the cycle, which is closer to
+  //   the Python suite's intent of capturing the "temporally pooled pattern" for the whole sequence.
   if (samples.empty()) return {};
   const std::size_t n = samples[0].size();
   std::vector<uint8_t> out(n, 0);
@@ -37,11 +46,27 @@ inline std::vector<uint8_t> avgOfSamples(const std::vector<std::vector<uint8_t>>
 
 TEST(TemporalPoolingIntegrationSuite2, test_case1_repeating_sequence_pools) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_case1
+  Provenance (legacy behavior being ported):
+  - Python: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_case1
 
-  This is the same “repeating sequence should pool” story as Suite1, but it exists as a
-  separate suite in the legacy tests. We keep it separate in C++ as well.
+  What we are testing:
+  - If we repeatedly present the SAME input sequence, the model should learn temporal structure and
+    produce a representation that changes less over time (i.e., it "pools" over the sequence).
+
+  How we measure "pools":
+  - We use TemporalPoolingMeasure on the learn-cells output:
+      temporalPoolingPercent = running average of |prev ∩ curr| / |prev|
+    A higher value means successive outputs overlap more (more stability).
+
+  Why learn-cells output:
+  - It is the closest analogue to what the Python suite examines at the tested layer:
+    a sparse set of cells representing the temporally pooled state (not raw input bits).
   */
+
+  // Step-by-step:
+  // 1) Warm up the model by replaying a deterministic repeating sequence.
+  // 2) Run for a few more cycles and compute temporalPoolingPercent each step.
+  // 3) Expect the running average to be "reasonably high".
   HtmPipelineHarness htm(HtmPipelineHarness::Config{});
 
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
@@ -69,11 +94,28 @@ TEST(TemporalPoolingIntegrationSuite2, test_case1_repeating_sequence_pools) {
 
 TEST(TemporalPoolingIntegrationSuite2, test_case4_pooling_increases_with_depth_two_layer) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_case4
+  Provenance:
+  - Python: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_case4
 
-  Same intent as Suite1's depth test; Suite2 repeats it with slightly different params in Python.
-  We keep the same two-layer approximation in C++.
+  What we are testing:
+  - Temporal pooling should increase with depth: higher-level representations should be at least as
+    stable as lower-level representations (often more stable).
+
+  Why a 2-layer hierarchy in C++:
+  - The Python project has multiple layers inside a region.
+  - htm_flow does not have an identical "region with N internal layers" concept, so we approximate
+    depth using two full pipelines in series:
+      layer0(active columns) -> layer1(input grid)
+
+  What we measure:
+  - We compute the temporal pooling metric for learn-cells at layer0 and layer1 over the same
+    evaluation window, and require layer1 to not be less stable than layer0 (within a small tolerance).
   */
+
+  // Step-by-step:
+  // 1) Build a deterministic two-layer feed-forward stack.
+  // 2) Warm up on a repeating sequence long enough for pooling to emerge.
+  // 3) During evaluation, track pooling in both layers and compare.
   TwoLayerHtmHarness::Config cfg;
   cfg.l0 = HtmPipelineHarness::Config{};
   cfg.l1 = HtmPipelineHarness::Config{};
@@ -115,21 +157,43 @@ TEST(TemporalPoolingIntegrationSuite2, test_case4_pooling_increases_with_depth_t
 
 TEST(TemporalPoolingIntegrationSuite2, test_multiPattern_differentiation_and_recall) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_multiPattern
+  Provenance:
+  - Python: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py::test_multiPattern
 
-  What we are testing (and why):
-  - Temporal pooling should form for multiple distinct input patterns.
-  - The pooled representations should remain distinct (pattern A != pattern B).
-  - If we switch away and later switch back, the old pooled pattern should be recalled.
+  What we are testing:
+  - The model can learn temporally pooled representations for MULTIPLE patterns.
+  - Those representations remain distinct (pattern A ≠ pattern B).
+  - If we switch away and later switch back, the model "recalls" the previous pooled state for that pattern.
 
-  Note:
-  - The Python test compares temporal pooling percents per layer and requires the “same pattern”
-    to match within ~5% across separate runs.
-  - In C++, we make this more direct by comparing the SDRs themselves using similarityPercent:
-    - A vs A_again: high similarity
-    - B vs B_again: high similarity
-    - A vs B: low similarity
+  What is a "pattern" here?
+  - Each pattern is a repeating SEQUENCE of vertical-line inputs over a fixed cycle length.
+  - Pattern A: LeftToRight (line sweeps left->right)
+  - Pattern B: RightToLeft (line sweeps right->left)
+
+  What representation do we compare?
+  - We compare a representative SDR of the learn-cells output aggregated over ONE cycle.
+  - This is a practical analogue to the Python suite's approach of storing per-input SDRs and
+    comparing "same pattern at different times" vs "different patterns".
+
+  What does similarityPercent mean?
+  - similarityPercent(A,B) = |A ∩ B| / |A|
+  - We use it for:
+    - recall: A1 vs A2 should overlap (non-zero overlap is a minimum sanity check)
+    - differentiation: A vs B should not be almost identical
+
+  Important note about strictness:
+  - These integration tests run a small, deterministic configuration.
+  - Exact similarity thresholds can be brittle across parameter changes.
+  - So we assert the *qualitative* behaviors (non-degenerate recall + non-collapse) rather than
+    locking to very tight numeric values.
   */
+
+  // Step-by-step:
+  // 1) Train on Pattern A long enough for a pooled representation to form; capture representative A1.
+  // 2) Train on Pattern B long enough for a pooled representation to form; capture representative B1.
+  // 3) Switch back to A briefly; capture representative A2 (recall).
+  // 4) Switch back to B briefly; capture representative B2 (recall).
+  // 5) Assert: A1 overlaps A2, B1 overlaps B2, and A1 is not almost identical to B1.
 
   HtmPipelineHarness htm(HtmPipelineHarness::Config{});
 

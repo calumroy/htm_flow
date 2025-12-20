@@ -19,8 +19,19 @@ inline std::vector<uint8_t> runAndCaptureOneCycleTopLearn(TwoLayerHtmHarness& ht
                                                           CustomSdrInputs& inputs,
                                                           int& time_step,
                                                           int seq_len) {
-  // Capture the top-layer learn-cells outputs over one sequence cycle,
-  // then return a representative by majority vote.
+  // Build one "representative" SDR for the whole sequence by aggregating the TOP layer output
+  // across one full cycle.
+  //
+  // Why do we need this?
+  // - Suite3's patterns are SEQUENCES (e.g. A->B->C), not single static images.
+  // - Temporal pooling is about learning a stable representation over the sequence.
+  // - So we need a single summary representation for comparisons like:
+  //     pattern X at time T0  vs  pattern X at time T1     (recall/stability)
+  //     pattern X             vs  pattern Y               (separation)
+  //
+  // Why majority vote here?
+  // - For these tiny sequence lengths (3 steps), majority vote tends to keep cells that
+  //   are consistently involved across the sequence and drop one-off burst artifacts.
   std::vector<std::vector<uint8_t>> samples;
   samples.reserve(static_cast<std::size_t>(seq_len));
   for (int i = 0; i < seq_len; ++i) {
@@ -45,20 +56,43 @@ inline std::vector<uint8_t> runAndCaptureOneCycleTopLearn(TwoLayerHtmHarness& ht
 
 TEST(TemporalPoolingIntegrationSuite3, test_tempEquality_two_patterns_recall_and_separation) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite3.py::test_tempEquality
+  Provenance:
+  - Python: HTM/tests/temporalPooling/test_temporalPoolingSuite3.py::test_tempEquality
 
-  What we are testing (and why):
-  - The legacy Python suite used image sequences (DEF and ABC) and tested that:
-    1) Each pattern forms a stable temporally pooled representation over its own sequence.
-    2) The pooled representations for different patterns remain distinct.
-    3) If we switch away and later switch back, the same pattern is recalled.
+  What Suite3 is about (conceptually):
+  - The original Python suite feeds IMAGE sequences (read from disk) into a multi-layer HTM and checks:
+    (1) each sequence becomes temporally pooled (stable-ish top representation),
+    (2) different sequences pool to different top representations,
+    (3) switching away and switching back recalls the earlier pooled representation.
 
-  C++ adaptation:
-  - We do NOT read image files. We hardcode a small set of binary patterns that preserve the
-    *relationships* (ABC and DEF are different sequences).
-  - We observe the top layer of a 2-layer hierarchy (layer0 -> layer1) to mirror the
-    “higher layer output” behavior from the Python suite.
+  C++ adaptation details (so you do NOT need to read Python to understand the test):
+  - We do not use image files; we hardcode small 8x8 binary patterns that act like "letters".
+  - We form sequences DEF and ABC (3 steps each).
+  - We approximate a "higher layer" by using a 2-layer feed-forward hierarchy:
+      layer0(active columns) -> layer1(input grid)
+    and we measure layer1 learn-cells output as the pooled representation.
+
+  What we measure and why it maps to the intent:
+  - We compute a representative SDR for each pattern by running one full cycle and aggregating
+    layer1 learn-cells outputs.
+  - We compare representatives using similarityPercent = |A ∩ B| / |A|.
+    - recall: repDEF(before) should overlap repDEF(after)
+    - separation: repDEF should not overlap repABC too much
+
+  Why the numeric thresholds are "moderate" (not super tight):
+  - These are integration tests over a small deterministic configuration, not a tuned benchmark.
+  - The goal is to catch regressions where outputs collapse or everything becomes identical,
+    without making CI brittle.
   */
+
+  // Step-by-step:
+  // 1) Configure a small deterministic 2-layer hierarchy suitable for 8x8 inputs.
+  //    (pot_h/pot_w must be <= input dims to avoid invalid neighborhoods)
+  // 2) Train on DEF and capture representative repDEF1.
+  // 3) Train on ABC and capture representative repABC1.
+  // 4) Switch back to DEF, train more, capture repDEF2 (recall).
+  // 5) Switch back to ABC, train more, capture repABC2 (recall).
+  // 6) Assert: DEF recalls itself, ABC recalls itself, and DEF != ABC.
 
   Suite3Patterns pats;
 
@@ -147,13 +181,31 @@ TEST(TemporalPoolingIntegrationSuite3, test_tempEquality_two_patterns_recall_and
 
 TEST(TemporalPoolingIntegrationSuite3, test_temporalDiff_shared_element_produces_intermediate_similarity) {
   /*
-  Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite3.py::test_temporalDiff
+  Provenance:
+  - Python: HTM/tests/temporalPooling/test_temporalPoolingSuite3.py::test_temporalDiff
 
-  What we are testing (and why):
-  - In the Python suite, ABC and DEC share exactly one element (C), so after learning,
-    their temporally pooled outputs are expected to be partially similar (not identical,
-    not completely different).
+  What we are testing:
+  - Two sequences that share ONE element should have pooled representations that are:
+    - not identical (because the sequences differ),
+    - not completely unrelated (because they share some structure).
+
+  How we set that up in C++:
+  - We build two 3-step sequences:
+      ABC and DEC
+    which share the final element C.
+  - After training each sequence, we capture a representative top-layer SDR for each.
+  - We then assert the similarity is bounded away from both extremes.
+
+  Why this is a reasonable proxy:
+  - If the temporal pooling stage is doing anything meaningful, shared input structure tends
+    to produce some shared higher-level structure (some overlap), but not total collapse.
   */
+
+  // Step-by-step:
+  // 1) Configure the same small deterministic 2-layer hierarchy for 8x8 inputs.
+  // 2) Train on ABC; capture representative repABC.
+  // 3) Train on DEC; capture representative repDEC.
+  // 4) Assert similarity(repABC, repDEC) is neither ~0 nor ~1.
 
   Suite3Patterns pats;
 
