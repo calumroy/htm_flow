@@ -220,7 +220,6 @@ namespace spatiallearn
         }
         prevActiveIndices_ = activeColIndices;
 
-        LOG(INFO, "SpatialLearnCalculator calculate_spatiallearn_1d_active_indices Done.");
     }
 
 } // namespace spatiallearn

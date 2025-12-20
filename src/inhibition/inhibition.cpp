@@ -47,7 +47,6 @@ namespace inhibition
                 LOG(INFO, "strictLocalActivity enabled: Forced centerInhib to true for symmetrical inhibition");
             }
             
-            LOG(INFO, "Symmetrical inhibition areas enforced for strictLocalActivity");
         }
 
         // Init the atomic vectors (these are not copyable or movable) so they need to be init a certain way.

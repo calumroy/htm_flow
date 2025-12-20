@@ -54,7 +54,6 @@ namespace overlap
         // Make the column input potential synapse tie breaker matrix.
         parallel_make_col_tie_breaker(col_tie_breaker_, columns_height_, columns_width_);
 
-        LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
 
     void OverlapCalculator::make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size)
@@ -347,9 +346,11 @@ namespace overlap
             // Print the tie breaker values
             LOG(INFO, "col_tie_breaker_ shape: " + std::to_string(col_tie_breaker_.size()));
             overlap_utils::print_2d_vector(col_tie_breaker_, {columns_height_, columns_width_});
+
+            LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
         }
 
-        LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
+        
     }
 
 } // namespace overlap
