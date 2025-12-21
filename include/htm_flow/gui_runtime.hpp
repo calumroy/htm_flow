@@ -87,6 +87,7 @@ public:
   htm_gui::ProximalSynapseQuery query_proximal(int column_x, int column_y) const override;
   int num_segments(int column_x, int column_y, int cell) const override;
   htm_gui::DistalSynapseQuery query_distal(int column_x, int column_y, int cell, int segment) const override;
+  int activation_threshold() const override { return cfg_.activation_threshold; }
   std::string name() const override { return "htm_flow"; }
 
 private:

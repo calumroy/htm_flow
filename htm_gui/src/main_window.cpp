@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include <QAction>
+#include <QDockWidget>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
@@ -14,7 +15,6 @@
 #include <QPlainTextEdit>
 #include <QStatusBar>
 #include <QToolBar>
-#include <QVBoxLayout>
 #include <QWidget>
 
 #include "views.hpp"
@@ -367,21 +367,19 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   layout->addWidget(input_view_, 1);
   layout->addWidget(columns_view_, 1);
 
-  // Right panel: cells view + distal synapse permanence list.
-  auto* right = new QWidget(this);
-  auto* right_layout = new QVBoxLayout(right);
-  right_layout->setContentsMargins(0, 0, 0, 0);
-  right_layout->setSpacing(6);
+  // Right side: keep the cells view in the main layout.
+  layout->addWidget(cells_view_, 0);
 
-  right_layout->addWidget(cells_view_, 0);
-
+  // Distal synapse panel: dockable + floatable so you can move/resize it independently.
   distal_text_ = new QPlainTextEdit(this);
   distal_text_->setReadOnly(true);
-  distal_text_->setMinimumWidth(340);
   distal_text_->setPlaceholderText("Select a column, then click a cell and choose a segment to view distal synapses.");
-  right_layout->addWidget(distal_text_, 1);
 
-  layout->addWidget(right, 0);
+  distal_dock_ = new QDockWidget("Distal synapses", this);
+  distal_dock_->setObjectName("DistalSynapsesDock");
+  distal_dock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+  distal_dock_->setWidget(distal_text_);
+  addDockWidget(Qt::RightDockWidgetArea, distal_dock_);
 
   setCentralWidget(central);
 
@@ -560,24 +558,68 @@ void MainWindow::updateDistalSynapsePanel() {
     if (s.connected) ++connected_count;
   }
 
+  QString syn_lines;
+
+  const int grid_w = snapshot_.columns_shape.cols;
+  const int grid_h = snapshot_.columns_shape.rows;
+
+  // Is the selected cell currently predictive (per snapshot)?
+  bool cell_predictive = false;
+  if (selected_cell_ >= 0 && selected_cell_ < 64 && selected_col_x_ >= 0 && selected_col_y_ >= 0 && grid_w > 0) {
+    const int src_col_idx = htm_gui::flatten_xy(selected_col_x_, selected_col_y_, grid_w);
+    if (src_col_idx >= 0 && src_col_idx < int(snapshot_.column_cell_masks.size())) {
+      const auto masks = snapshot_.column_cell_masks[src_col_idx];
+      cell_predictive = (masks.predictive & (std::uint64_t(1) << selected_cell_)) != 0;
+    }
+  }
+
+  // Does THIS selected segment have enough connected synapses targeting active cells to be considered active?
+  const int threshold = runtime_.activation_threshold();
+  int active_connected = 0;
+
+  int i = 0;
+  for (const auto& s : syns) {
+    bool dst_active = false;
+    if (s.dst_column_x >= 0 && s.dst_column_x < grid_w && s.dst_column_y >= 0 && s.dst_column_y < grid_h && s.dst_cell >= 0 &&
+        s.dst_cell < 64) {
+      const int col_idx = htm_gui::flatten_xy(s.dst_column_x, s.dst_column_y, grid_w);
+      if (col_idx >= 0 && col_idx < int(snapshot_.column_cell_masks.size())) {
+        const auto masks = snapshot_.column_cell_masks[col_idx];
+        dst_active = (masks.active & (std::uint64_t(1) << s.dst_cell)) != 0;
+      }
+    }
+
+    if (s.connected && dst_active) {
+      ++active_connected;
+    }
+
+    // Legend:
+    // - conn: permanence >= connect threshold (as provided by runtime_.query_distal)
+    // - tgt_active: whether the synapse points to a currently active cell in the *current* snapshot
+    syn_lines += QString("%1) dst=(%2,%3) cell=%4  perm=%5  conn=%6  tgt_active=%7\n")
+                     .arg(i++, 2)
+                     .arg(s.dst_column_x, 4)
+                     .arg(s.dst_column_y, 4)
+                     .arg(s.dst_cell, 2)
+                     .arg(QString::number(s.permanence, 'f', 4))
+                     .arg(s.connected ? "Y" : "N")
+                     .arg(dst_active ? "Y" : "N");
+  }
+
+  const bool segment_active = active_connected > threshold;
   QString out;
   out += QString("Src column (%1,%2)  cell=%3  seg=%4\n")
              .arg(selected_col_x_)
              .arg(selected_col_y_)
              .arg(selected_cell_)
              .arg(selected_segment_);
+  out += QString("Cell predictive (now): %1\n").arg(cell_predictive ? "Y" : "N");
+  out += QString("Selected segment active: %1  (active_connected=%2  threshold=%3)\n\n")
+             .arg(segment_active ? "Y" : "N")
+             .arg(active_connected)
+             .arg(threshold);
   out += QString("Synapses: %1  connected: %2\n\n").arg(int(syns.size())).arg(connected_count);
-
-  int i = 0;
-  for (const auto& s : syns) {
-    out += QString("%1) dst=(%2,%3) cell=%4  perm=%5  %6\n")
-               .arg(i++, 2)
-               .arg(s.dst_column_x, 4)
-               .arg(s.dst_column_y, 4)
-               .arg(s.dst_cell, 2)
-               .arg(QString::number(s.permanence, 'f', 4))
-               .arg(s.connected ? "connected" : "weak");
-  }
+  out += syn_lines;
 
   distal_text_->setPlainText(out);
 }

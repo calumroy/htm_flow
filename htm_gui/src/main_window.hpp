@@ -59,6 +59,7 @@ private:
   ImageView* columns_view_{nullptr};
   ImageView* cells_view_{nullptr};
   QPlainTextEdit* distal_text_{nullptr};
+  QDockWidget* distal_dock_{nullptr};
 };
 
 }  // namespace htm_gui::qt
