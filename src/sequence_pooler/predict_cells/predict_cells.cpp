@@ -133,10 +133,19 @@ void PredictCellsCalculator::calculate_predict_cells(int time_step,
          static_cast<std::size_t>(cfg_.num_columns) * cfg_.cells_per_column *
              cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment);
 
-  // We overwrite seg update tensors each timestep (like the python version).
-  std::fill(seg_ind_update_.begin(), seg_ind_update_.end(), -1);
-  // seg_active_syn_ is only meaningful where seg_ind_update_ != -1; still clear for clarity.
-  std::fill(seg_active_syn_.begin(), seg_active_syn_.end(), 0);
+  // IMPORTANT: do NOT clear `seg_ind_update_` / `seg_active_syn_` each timestep.
+  //
+  // These are "update structures" that must persist until the sequence-learning stage consumes them.
+  // This matches the python implementation:
+  // - predict-cells stage writes update structures when a cell *enters* predictive state
+  // - sequence-learning stage later consumes them when that cell either:
+  //     * enters learning (positive reinforcement), or
+  //     * makes an incorrect prediction (negative reinforcement)
+  //
+  // If we clear them here every timestep, then a prediction made at (t-1) will have its update
+  // structures erased at t before sequence-learning can apply the permanence update. The observable
+  // symptom is exactly what you reported: distal permanence values never meaningfully increase or
+  // decrease (often appearing "stuck" near the new-synapse permanence like 0.3).
 
   // Implementation overview:
   // Step 1. For each column, scan all cells and segments and compute "prediction level"
