@@ -18,7 +18,10 @@ void usage(const char* prog) {
             << "Options:\n"
             << "  --steps N   Run N steps in headless mode (default: " << NUM_ITERATIONS << ")\n"
             << "  --gui       Start the Qt debugger (requires building with -DHTM_FLOW_WITH_GUI=ON)\n"
-            << "  --log       Print per-stage timing logs (useful with --gui)\n";
+            << "  --log       Print per-stage timing logs (useful with --gui)\n\n"
+            << "Notes:\n"
+            << "  Input is a deterministic moving vertical line (like the temporal pooling tests),\n"
+            << "  not per-step random bits.\n";
 }
 
 }  // namespace

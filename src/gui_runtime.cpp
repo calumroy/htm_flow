@@ -27,6 +27,7 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
       num_pot_syn_(cfg_.pot_width * cfg_.pot_height),
       num_columns_(cfg_.num_column_rows * cfg_.num_column_cols),
       gen_(std::random_device{}()),
+      line_inputs_(cfg_.num_input_cols, cfg_.num_input_rows, cfg_.num_input_cols),
       input_(std::make_shared<std::vector<int>>(static_cast<std::size_t>(cfg_.num_input_rows) *
                                                 static_cast<std::size_t>(cfg_.num_input_cols))),
       col_syn_perm_(static_cast<std::size_t>(num_columns_) * static_cast<std::size_t>(num_pot_syn_)),
@@ -116,10 +117,8 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
     v = perm01_(gen_);
   }
 
-  // Initialize input randomly once.
-  for (auto& v : *input_) {
-    v = bit01_(gen_);
-  }
+  // Initialize input with a deterministic moving-line stimulus.
+  *input_ = line_inputs_.next(gen_);
 
   // Initialize distal synapses randomly once.
   const std::size_t distal_syn_count =
@@ -159,10 +158,8 @@ void HtmFlowRuntime::step_once() {
     LOG(INFO, "=== Iteration " + std::to_string(timestep_ - 1) + " ===");
   }
 
-  // New random input each timestep (placeholder for real sensory input).
-  for (auto& v : *input_) {
-    v = bit01_(gen_);
-  }
+  // Deterministic moving-line input each timestep.
+  *input_ = line_inputs_.next(gen_);
 
   const std::pair<int, int> col_syn_perm_shape = {num_columns_, num_pot_syn_};
   const std::pair<int, int> input_shape = {cfg_.num_input_rows, cfg_.num_input_cols};

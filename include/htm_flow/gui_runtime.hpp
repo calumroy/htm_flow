@@ -9,6 +9,8 @@
 
 #include <htm_gui/runtime.hpp>
 
+#include <utilities/sdr_inputs.hpp>
+
 #include <htm_flow/inhibition.hpp>
 #include <htm_flow/overlap.hpp>
 #include <htm_flow/overlap_utils.hpp>
@@ -29,22 +31,22 @@ class HtmFlowRuntime final : public htm_gui::IHtmRuntime {
 public:
   struct Config {
     // Overlap / proximal topology
-    int pot_width = 30;
-    int pot_height = 30;
+    int pot_width = 4;
+    int pot_height = 4;
     bool center_pot_synapses = false;
 
-    int num_input_rows = 1200;
-    int num_input_cols = 1200;
-    int num_column_rows = 800;
-    int num_column_cols = 800;
+    int num_input_rows = 12;
+    int num_input_cols = 12;
+    int num_column_rows = 20;
+    int num_column_cols = 20;
 
     float connected_perm = 0.3f;
     int min_overlap = 3;
     bool wrap_input = true;
 
     // Inhibition
-    int inhibition_width = 30;
-    int inhibition_height = 30;
+    int inhibition_width = 6;
+    int inhibition_height = 6;
     int desired_local_activity = 10;
     bool strict_local_activity = false;
 
@@ -104,6 +106,9 @@ private:
   mutable std::mt19937 gen_;
   mutable std::uniform_int_distribution<int> bit01_{0, 1};
   mutable std::uniform_real_distribution<float> perm01_{0.0f, 1.0f};
+
+  // Input source (deterministic moving vertical line)
+  utilities::VerticalLineInputs line_inputs_;
 
   // Main state buffers
   std::shared_ptr<std::vector<int>> input_;       // size: num_input_rows*num_input_cols
