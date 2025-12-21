@@ -9,6 +9,8 @@
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
+#include <QLabel>
+#include <QPainter>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QWidget>
@@ -26,6 +28,197 @@ QColor yellow() { return QColor(0xFF, 0xD0, 0x00); }
 QColor light_red() { return QColor(0xFF, 0x60, 0x60); }
 QColor light_green() { return QColor(0x00, 0xFF, 0x00, 0x80); }
 QColor transp_blue() { return QColor(0x00, 0x00, 0xFF, 0x30); }
+
+QImage renderColumnsWithCellOverlay(const htm_gui::Snapshot& s,
+                                   int max_w,
+                                   int max_h,
+                                   int sel_x,
+                                   int sel_y,
+                                   const std::optional<htm_gui::DistalSynapseQuery>* distal_overlay,
+                                   bool show_cell_overlay) {
+  const int src_w = s.columns_shape.cols;
+  const int src_h = s.columns_shape.rows;
+
+  if (src_w <= 0 || src_h <= 0) {
+    QImage img(1, 1, QImage::Format_ARGB32);
+    img.fill(red());
+    return img;
+  }
+
+  // If the logical grid is bigger than our max output, fall back to the legacy downsample path.
+  if (!show_cell_overlay || src_w > max_w || src_h > max_h) {
+    const int out_w = std::max(1, std::min(max_w, src_w));
+    const int out_h = std::max(1, std::min(max_h, src_h));
+
+    std::unordered_set<int> active;
+    active.reserve(s.active_column_indices.size());
+    for (int idx : s.active_column_indices) active.insert(idx);
+
+    QImage img(out_w, out_h, QImage::Format_ARGB32);
+    for (int oy = 0; oy < out_h; ++oy) {
+      const int sy = (oy * src_h) / out_h;
+      for (int ox = 0; ox < out_w; ++ox) {
+        const int sx = (ox * src_w) / out_w;
+        const int idx = htm_gui::flatten_xy(sx, sy, src_w);
+        img.setPixelColor(ox, oy, active.count(idx) ? green() : red());
+      }
+    }
+
+    // Distal overlay targets (connected) as single pixels.
+    if (distal_overlay && distal_overlay->has_value()) {
+      for (const auto& syn : distal_overlay->value().synapses) {
+        if (syn.dst_column_x < 0 || syn.dst_column_x >= src_w || syn.dst_column_y < 0 || syn.dst_column_y >= src_h) {
+          continue;
+        }
+        const int px = (syn.dst_column_x * out_w) / src_w;
+        const int py = (syn.dst_column_y * out_h) / src_h;
+        if (px < 0 || px >= out_w || py < 0 || py >= out_h) {
+          continue;
+        }
+        if (syn.connected) {
+          img.setPixelColor(px, py, blue());
+        }
+      }
+    }
+
+    // Selected column highlight as a cross.
+    if (sel_x >= 0 && sel_y >= 0) {
+      const int px = (sel_x * out_w) / src_w;
+      const int py = (sel_y * out_h) / src_h;
+      for (int dx = -2; dx <= 2; ++dx) {
+        const int x = px + dx;
+        if (x >= 0 && x < out_w && py >= 0 && py < out_h) img.setPixelColor(x, py, yellow());
+      }
+      for (int dy = -2; dy <= 2; ++dy) {
+        const int y = py + dy;
+        if (px >= 0 && px < out_w && y >= 0 && y < out_h) img.setPixelColor(px, y, yellow());
+      }
+    }
+
+    return img;
+  }
+
+  // Tile rendering: each logical column becomes a tile of `tile_px` pixels.
+  const int tile_px = std::max(2, std::min(max_w / src_w, max_h / src_h));
+  const int out_w = std::max(1, src_w * tile_px);
+  const int out_h = std::max(1, src_h * tile_px);
+
+  std::unordered_set<int> active;
+  active.reserve(s.active_column_indices.size());
+  for (int idx : s.active_column_indices) active.insert(idx);
+
+  QImage img(out_w, out_h, QImage::Format_ARGB32);
+  img.fill(QColor(0, 0, 0, 0));
+
+  QPainter painter(&img);
+  painter.setRenderHint(QPainter::Antialiasing, false);
+  painter.setPen(Qt::NoPen);
+
+  const int cells = s.cells_per_column;
+  const bool can_draw_cells = (cells > 0 && cells <= 64 && int(s.column_cell_masks.size()) >= src_w * src_h);
+  const int side = can_draw_cells ? int(std::ceil(std::sqrt(double(cells)))) : 0;
+
+  for (int sy = 0; sy < src_h; ++sy) {
+    for (int sx = 0; sx < src_w; ++sx) {
+      const int col_idx = htm_gui::flatten_xy(sx, sy, src_w);
+      const int x0 = sx * tile_px;
+      const int y0 = sy * tile_px;
+
+      painter.setBrush(active.count(col_idx) ? green() : red());
+      painter.drawRect(x0, y0, tile_px, tile_px);
+
+      if (!can_draw_cells) {
+        continue;
+      }
+
+      const auto masks = s.column_cell_masks[static_cast<std::size_t>(col_idx)];
+
+      // Inner area for cell glyphs.
+      const int pad = 1;
+      const int inner = std::max(0, tile_px - 2 * pad);
+      if (inner <= 0) {
+        continue;
+      }
+
+      for (int c = 0; c < cells; ++c) {
+        const int gx = c % side;
+        const int gy = c / side;
+
+        // Distribute pixels evenly across the inner area.
+        const int cx0 = x0 + pad + (gx * inner) / side;
+        const int cy0 = y0 + pad + (gy * inner) / side;
+        const int cx1 = x0 + pad + ((gx + 1) * inner) / side;
+        const int cy1 = y0 + pad + ((gy + 1) * inner) / side;
+
+        const int cw = std::max(1, cx1 - cx0);
+        const int ch = std::max(1, cy1 - cy0);
+
+        const std::uint64_t bit = (std::uint64_t(1) << c);
+        const bool is_pred = (masks.predictive & bit) != 0;
+        const bool is_act = (masks.active & bit) != 0;
+        const bool is_learn = (masks.learning & bit) != 0;
+
+        // Predictive: black outer square (dominant signal).
+        if (is_pred) {
+          painter.setBrush(black());
+          painter.drawRect(cx0, cy0, cw, ch);
+        }
+
+        // Active: blue inner square (can overlay predictive and show active even when not predictive).
+        if (is_act) {
+          const int inset = std::max(1, std::min(cw, ch) / 4);
+          const int ix0 = cx0 + inset;
+          const int iy0 = cy0 + inset;
+          const int iw = std::max(1, cw - 2 * inset);
+          const int ih = std::max(1, ch - 2 * inset);
+          painter.setBrush(blue());
+          painter.drawRect(ix0, iy0, iw, ih);
+        }
+
+        // Learning: dark-green dot in the center.
+        if (is_learn) {
+          const int dot = std::max(1, std::min(cw, ch) / 3);
+          const int dx0 = cx0 + (cw - dot) / 2;
+          const int dy0 = cy0 + (ch - dot) / 2;
+          painter.setBrush(dark_green());
+          painter.drawRect(dx0, dy0, dot, dot);
+        }
+      }
+    }
+  }
+
+  painter.setBrush(Qt::NoBrush);
+
+  // Distal overlay targets: draw a thin blue outline around the destination column tile.
+  if (distal_overlay && distal_overlay->has_value()) {
+    QPen pen(blue());
+    pen.setWidth(2);
+    painter.setPen(pen);
+    for (const auto& syn : distal_overlay->value().synapses) {
+      if (!syn.connected) {
+        continue;
+      }
+      if (syn.dst_column_x < 0 || syn.dst_column_x >= src_w || syn.dst_column_y < 0 || syn.dst_column_y >= src_h) {
+        continue;
+      }
+      const int x0 = syn.dst_column_x * tile_px;
+      const int y0 = syn.dst_column_y * tile_px;
+      painter.drawRect(x0 + 1, y0 + 1, tile_px - 2, tile_px - 2);
+    }
+  }
+
+  // Selected column highlight: thick yellow outline.
+  if (sel_x >= 0 && sel_y >= 0) {
+    QPen pen(yellow());
+    pen.setWidth(3);
+    painter.setPen(pen);
+    const int x0 = sel_x * tile_px;
+    const int y0 = sel_y * tile_px;
+    painter.drawRect(x0 + 1, y0 + 1, tile_px - 2, tile_px - 2);
+  }
+
+  return img;
+}
 
 class FrozenWindow final : public QMainWindow {
 public:
@@ -84,40 +277,7 @@ private:
   }
 
   static QImage renderColumnsRaw(const htm_gui::Snapshot& s, int max_w, int max_h, int sel_x, int sel_y) {
-    const int src_w = s.columns_shape.cols;
-    const int src_h = s.columns_shape.rows;
-
-    const int out_w = std::max(1, std::min(max_w, src_w));
-    const int out_h = std::max(1, std::min(max_h, src_h));
-
-    std::unordered_set<int> active;
-    active.reserve(s.active_column_indices.size());
-    for (int idx : s.active_column_indices) active.insert(idx);
-
-    QImage img(out_w, out_h, QImage::Format_ARGB32);
-    for (int oy = 0; oy < out_h; ++oy) {
-      const int sy = (oy * src_h) / out_h;
-      for (int ox = 0; ox < out_w; ++ox) {
-        const int sx = (ox * src_w) / out_w;
-        const int idx = htm_gui::flatten_xy(sx, sy, src_w);
-        img.setPixelColor(ox, oy, active.count(idx) ? green() : red());
-      }
-    }
-
-    if (sel_x >= 0 && sel_y >= 0) {
-      const int px = (sel_x * out_w) / src_w;
-      const int py = (sel_y * out_h) / src_h;
-      for (int dx = -2; dx <= 2; ++dx) {
-        const int x = px + dx;
-        if (x >= 0 && x < out_w && py >= 0 && py < out_h) img.setPixelColor(x, py, yellow());
-      }
-      for (int dy = -2; dy <= 2; ++dy) {
-        const int y = py + dy;
-        if (px >= 0 && px < out_w && y >= 0 && y < out_h) img.setPixelColor(px, y, yellow());
-      }
-    }
-
-    return img;
+    return renderColumnsWithCellOverlay(s, max_w, max_h, sel_x, sel_y, nullptr, true);
   }
 
   static QImage renderCellsRaw(const htm_gui::Snapshot& s, int col_x, int col_y, int max_size) {
@@ -214,6 +374,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   auto* show_active = new QAction("Active Cells", this);
   auto* show_pred = new QAction("Predict Cells", this);
   auto* show_learn = new QAction("Learn Cells", this);
+  auto* toggle_overlay = new QAction("Cell overlay", this);
   auto* mark = new QAction("Mark", this);
   tb->addAction(step_one);
   tb->addAction(step_n);
@@ -221,6 +382,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   tb->addAction(show_active);
   tb->addAction(show_pred);
   tb->addAction(show_learn);
+  tb->addAction(toggle_overlay);
   tb->addSeparator();
   tb->addAction(mark);
 
@@ -231,8 +393,21 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   connect(show_learn, &QAction::triggered, this, &MainWindow::showLearnCells);
   connect(mark, &QAction::triggered, this, &MainWindow::markState);
 
+  toggle_overlay->setCheckable(true);
+  toggle_overlay->setChecked(show_cell_overlay_);
+  connect(toggle_overlay, &QAction::toggled, this, [this](bool checked) {
+    show_cell_overlay_ = checked;
+    refresh();
+  });
+
   connect(columns_view_, &ImageView::clicked, this, &MainWindow::onColumnClicked);
   connect(cells_view_, &ImageView::clicked, this, &MainWindow::onCellClicked);
+
+  auto* legend = new QLabel(this);
+  legend->setText(
+      "Columns: green=active red=inactive yellow=selected blue=distal target  |  Cells: black=predictive blue=active dark green=learning");
+  legend->setToolTip("Per-column overlay: black outer=pred, blue inner=active, dark-green dot=learning.");
+  statusBar()->addPermanentWidget(legend);
 
   statusBar()->showMessage("Ready");
   refresh();
@@ -401,64 +576,8 @@ QImage MainWindow::renderInput(const htm_gui::Snapshot& s, int max_w, int max_h)
 }
 
 QImage MainWindow::renderColumns(const htm_gui::Snapshot& s, int max_w, int max_h) const {
-  const int src_w = s.columns_shape.cols;
-  const int src_h = s.columns_shape.rows;
-
-  const int out_w = std::max(1, std::min(max_w, src_w));
-  const int out_h = std::max(1, std::min(max_h, src_h));
-
-  std::unordered_set<int> active;
-  active.reserve(s.active_column_indices.size());
-  for (int idx : s.active_column_indices) {
-    active.insert(idx);
-  }
-
-  QImage img(out_w, out_h, QImage::Format_ARGB32);
-  for (int oy = 0; oy < out_h; ++oy) {
-    const int sy = (oy * src_h) / out_h;
-    for (int ox = 0; ox < out_w; ++ox) {
-      const int sx = (ox * src_w) / out_w;
-      const int idx = htm_gui::flatten_xy(sx, sy, src_w);
-      img.setPixelColor(ox, oy, active.count(idx) ? green() : red());
-    }
-  }
-
-  // Overlay distal synapse targets (connected) if a segment is selected.
-  if (distal_overlay_.has_value()) {
-    for (const auto& syn : distal_overlay_->synapses) {
-      if (syn.dst_column_x < 0 || syn.dst_column_x >= src_w || syn.dst_column_y < 0 || syn.dst_column_y >= src_h) {
-        continue;
-      }
-      const int px = (syn.dst_column_x * out_w) / src_w;
-      const int py = (syn.dst_column_y * out_h) / src_h;
-      if (px < 0 || px >= out_w || py < 0 || py >= out_h) {
-        continue;
-      }
-      if (syn.connected) {
-        img.setPixelColor(px, py, blue());
-      }
-    }
-  }
-
-  // Highlight selected column if it maps to a pixel in the downsample.
-  if (selected_col_x_ >= 0 && selected_col_y_ >= 0) {
-    const int px = (selected_col_x_ * out_w) / src_w;
-    const int py = (selected_col_y_ * out_h) / src_h;
-    for (int dx = -2; dx <= 2; ++dx) {
-      const int x = px + dx;
-      if (x >= 0 && x < out_w && py >= 0 && py < out_h) {
-        img.setPixelColor(x, py, yellow());
-      }
-    }
-    for (int dy = -2; dy <= 2; ++dy) {
-      const int y = py + dy;
-      if (px >= 0 && px < out_w && y >= 0 && y < out_h) {
-        img.setPixelColor(px, y, yellow());
-      }
-    }
-  }
-
-  return img;
+  return renderColumnsWithCellOverlay(
+      s, max_w, max_h, selected_col_x_, selected_col_y_, &distal_overlay_, show_cell_overlay_);
 }
 
 QImage MainWindow::renderCells(const htm_gui::Snapshot& s, int col_x, int col_y, int max_size) const {

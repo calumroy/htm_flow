@@ -50,6 +50,7 @@ private:
   CellDisplayMode cell_mode_{CellDisplayMode::Active};
   std::optional<htm_gui::DistalSynapseQuery> distal_overlay_;
   std::vector<QWidget*> marked_windows_;
+  bool show_cell_overlay_{true};
 
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};
