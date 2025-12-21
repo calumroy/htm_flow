@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_CXX_STANDARD 17)
 
 # Build the Qt GUI debugger (see htm_gui/).
-option(HTM_FLOW_WITH_GUI "Build Qt6 GUI debugger" ON)
+# Default OFF so headless builds do not require Qt to be installed.
+option(HTM_FLOW_WITH_GUI "Build Qt6 GUI debugger" OFF)
 
 # Cmake option to enable building CUDA GPU section or not. Requires CUDA 11.0 or higher.
 # To use specify -DUSE_GPU=ON when running cmake.
@@ -88,7 +89,16 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/*.cpp)
 
 # Build the Project executable
-add_executable(${PROJECT_NAME} ./src/main.cpp ${SRC_FILES})
+add_executable(${PROJECT_NAME}
+  ./src/main.cpp
+  ./src/gui_runtime.cpp
+  ${SRC_FILES}
+)
+
+# `HtmFlowRuntime` depends on the GUI interface headers (no Qt dependency).
+if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
+  target_include_directories(${PROJECT_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
+endif()
 
 # Required for CUDA debugging in Visual Studio Code. This adds a -G flag to compilation.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
