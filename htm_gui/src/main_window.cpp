@@ -565,11 +565,15 @@ void MainWindow::updateDistalSynapsePanel() {
 
   // Is the selected cell currently predictive (per snapshot)?
   bool cell_predictive = false;
+  bool cell_active = false;
+  bool cell_learning = false;
   if (selected_cell_ >= 0 && selected_cell_ < 64 && selected_col_x_ >= 0 && selected_col_y_ >= 0 && grid_w > 0) {
     const int src_col_idx = htm_gui::flatten_xy(selected_col_x_, selected_col_y_, grid_w);
     if (src_col_idx >= 0 && src_col_idx < int(snapshot_.column_cell_masks.size())) {
       const auto masks = snapshot_.column_cell_masks[src_col_idx];
       cell_predictive = (masks.predictive & (std::uint64_t(1) << selected_cell_)) != 0;
+      cell_active = (masks.active & (std::uint64_t(1) << selected_cell_)) != 0;
+      cell_learning = (masks.learning & (std::uint64_t(1) << selected_cell_)) != 0;
     }
   }
 
@@ -613,7 +617,10 @@ void MainWindow::updateDistalSynapsePanel() {
              .arg(selected_col_y_)
              .arg(selected_cell_)
              .arg(selected_segment_);
-  out += QString("Cell predictive (now): %1\n").arg(cell_predictive ? "Y" : "N");
+  out += QString("Cell state (now): active=%1  predictive=%2  learning=%3\n")
+             .arg(cell_active ? "Y" : "N")
+             .arg(cell_predictive ? "Y" : "N")
+             .arg(cell_learning ? "Y" : "N");
   out += QString("Selected segment active: %1  (active_connected=%2  threshold=%3)\n\n")
              .arg(segment_active ? "Y" : "N")
              .arg(active_connected)
