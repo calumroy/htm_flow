@@ -72,6 +72,7 @@ public:
     float temp_spatial_perm_inc = 0.05f;
     float temp_seq_perm_inc = 0.05f;
     int temp_delay_length = 4;
+    bool temp_enable_persistence = true;
 
     // Determinism
     std::uint32_t rng_seed = 123u;
@@ -147,6 +148,7 @@ public:
             cfg_.new_syn_permanence,
             cfg_.connect_permanence,
             cfg_.temp_delay_length,
+            cfg_.temp_enable_persistence,
         }),
         rng_(cfg_.rng_seed) {
     col_syn_perm_.assign(static_cast<std::size_t>(num_columns_ * num_pot_syn_), 0.0f);

@@ -9,6 +9,8 @@
 
 #include <htm_gui/runtime.hpp>
 
+class QPlainTextEdit;
+
 namespace htm_gui::qt {
 
 class ImageView;
@@ -38,6 +40,7 @@ private:
   QImage renderInput(const htm_gui::Snapshot& s, int max_w, int max_h) const;
   QImage renderColumns(const htm_gui::Snapshot& s, int max_w, int max_h) const;
   QImage renderCells(const htm_gui::Snapshot& s, int col_x, int col_y, int max_size) const;
+  void updateDistalSynapsePanel();
 
   htm_gui::IHtmRuntime& runtime_;
   htm_gui::Snapshot snapshot_;
@@ -55,6 +58,7 @@ private:
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};
   ImageView* cells_view_{nullptr};
+  QPlainTextEdit* distal_text_{nullptr};
 };
 
 }  // namespace htm_gui::qt

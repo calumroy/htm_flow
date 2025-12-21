@@ -90,12 +90,13 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
           cfg_.max_segments_per_cell,
           cfg_.max_synapses_per_segment,
           num_pot_syn_,
-          cfg_.spatial_permanence_inc,
-          cfg_.sequence_permanence_inc,
+          cfg_.temp_spatial_permanence_inc,
+          cfg_.temp_sequence_permanence_inc,
           cfg_.min_num_syn_threshold,
           cfg_.new_syn_permanence,
           cfg_.connect_permanence,
           cfg_.temp_delay_length,
+          cfg_.temp_enable_persistence,
       }) {
   if (cfg_.num_input_rows <= 0 || cfg_.num_input_cols <= 0 || cfg_.num_column_rows <= 0 || cfg_.num_column_cols <= 0 ||
       cfg_.pot_width <= 0 || cfg_.pot_height <= 0) {

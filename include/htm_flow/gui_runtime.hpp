@@ -31,29 +31,29 @@ class HtmFlowRuntime final : public htm_gui::IHtmRuntime {
 public:
   struct Config {
     // Overlap / proximal topology
-    int pot_width = 4;
-    int pot_height = 4;
+    int pot_width = 10;
+    int pot_height = 10;
     bool center_pot_synapses = false;
 
-    int num_input_rows = 12;
-    int num_input_cols = 12;
-    int num_column_rows = 20;
-    int num_column_cols = 20;
+    int num_input_rows = 50;
+    int num_input_cols = 50;
+    int num_column_rows = 30;
+    int num_column_cols = 30;
 
     float connected_perm = 0.3f;
     int min_overlap = 3;
     bool wrap_input = true;
 
     // Inhibition
-    int inhibition_width = 6;
-    int inhibition_height = 6;
+    int inhibition_width = 8;
+    int inhibition_height = 8;
     int desired_local_activity = 10;
     bool strict_local_activity = false;
 
     // Spatial learning
     float spatial_permanence_inc = 0.05f;
-    float spatial_permanence_dec = 0.05f;
-    float active_col_permanence_dec = 0.01f;
+    float spatial_permanence_dec = 0.1f;
+    float active_col_permanence_dec = 0.05f;
 
     // Sequence pooler (active/predict/learn)
     int cells_per_column = 5;
@@ -63,13 +63,16 @@ public:
     int min_score_threshold = 1;
     float new_syn_permanence = 0.3f;
     float connect_permanence = 0.2f;
-    int activation_threshold = 3;
+    int activation_threshold = 6;
 
     float sequence_permanence_inc = 0.05f;
-    float sequence_permanence_dec = 0.05f;
+    float sequence_permanence_dec = 0.1f;
 
     // Temporal pooler
     int temp_delay_length = 4;
+    bool temp_enable_persistence = false;
+    float temp_spatial_permanence_inc = 0.00f;
+    float temp_sequence_permanence_inc = 0.00f;
 
     // Headless logging (matches the old `main.cpp` style output)
     bool log_timings = false;

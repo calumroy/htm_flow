@@ -143,6 +143,7 @@ if(BUILD_TESTS)
   
   # Enable testing for your project
   enable_testing()
+  include(GoogleTest)
 
 # Add all the cpp files in the test directory and include the necessary source files
 file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp 
@@ -171,6 +172,6 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
     target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
   endif()
 
-  # Register the test executable with CTest
-  add_test(NAME ${PROJECT_NAME}_tests COMMAND ${PROJECT_NAME}_tests)
+  # Register individual gtest TEST() cases with CTest so `ctest -R <pattern>` works.
+  gtest_discover_tests(${PROJECT_NAME}_tests DISCOVERY_TIMEOUT 30)
 endif()

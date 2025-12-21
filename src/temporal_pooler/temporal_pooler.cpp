@@ -117,6 +117,10 @@ void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& 
   // Update the average persistence count with an ARMA-style smoothing filter.
   // Mirrors python `updateAvgPesist`, but *fixes* the python bug where the value
   // was computed and then discarded.
+  //
+  // `delay_length` controls smoothing (larger => slower changes).
+  // This average is only *used* to seed a finite persistence countdown when
+  // `cfg_.enable_persistence` is true.
   if (avg_persist < 0.0f) {
     avg_persist = static_cast<float>(prev_tracking_num);
     return;
@@ -472,33 +476,51 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const int cell = flat % cfg_.cells_per_column;
 
     const bool active_predict = check_cell_active_predict(active_cells_time, predict_cells_time, col, cell, time_step);
+    const bool was_active_prev = check_cell_time(active_cells_time, col, cell, time_step - 1);
+    const bool was_predict_prev = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
 
-    if (active_predict) {
-      cells_tracking_num_[static_cast<std::size_t>(flat)] += 1;
-    } else {
-      // If the prediction streak ended but the cell is still active, update avg persistence.
-      if (cells_tracking_num_[static_cast<std::size_t>(flat)] > 0 &&
-          check_cell_time(active_cells_time, col, cell, time_step)) {
-        update_avg_persist(cells_tracking_num_[static_cast<std::size_t>(flat)],
-                           cells_avg_persist_[static_cast<std::size_t>(flat)]);
+    // -------------------------------------------------------------------------
+    // Persistence (optional): extend predictive state briefly even without a segment.
+    //
+    // This is deliberately decaying (countdown-based). Without a countdown, the condition
+    // "(was_predict_prev || was_active_prev)" can become an absorbing state where once a cell
+    // predicts it keeps predicting forever, even if distal support disappears.
+    // -------------------------------------------------------------------------
+    if (cfg_.enable_persistence) {
+      if (active_predict) {
+        cells_tracking_num_[static_cast<std::size_t>(flat)] += 1;
+        // While the cell is in an active-predict streak, we are not "coasting" on persistence.
+        cells_persistence_[static_cast<std::size_t>(flat)] = 0;
+      } else {
+        // If the prediction streak ended but the cell is still active, update avg persistence.
+        if (cells_tracking_num_[static_cast<std::size_t>(flat)] > 0 &&
+            check_cell_time(active_cells_time, col, cell, time_step)) {
+          update_avg_persist(cells_tracking_num_[static_cast<std::size_t>(flat)],
+                             cells_avg_persist_[static_cast<std::size_t>(flat)]);
+        }
+
+        // If a streak just ended, seed a finite "persistence countdown" based on the learned average.
+        if (cells_tracking_num_[static_cast<std::size_t>(flat)] > 0) {
+          const float avg = cells_avg_persist_[static_cast<std::size_t>(flat)];
+          const int countdown = (avg > 0.0f) ? static_cast<int>(std::lround(avg)) : 0;
+          cells_persistence_[static_cast<std::size_t>(flat)] = countdown;
+        }
+
+        cells_tracking_num_[static_cast<std::size_t>(flat)] = 0;
       }
+
+      // Apply the countdown: while pers>0, keep the cell predicting at this timestep.
+      int& pers = cells_persistence_[static_cast<std::size_t>(flat)];
+      if (pers > 0 && (was_predict_prev || was_active_prev)) {
+        if (!check_cell_predict(predict_cells_time, col, cell, time_step)) {
+          set_predict_cell(predict_cells_time, col, cell, time_step);
+        }
+        pers -= 1;
+      }
+    } else {
+      // Persistence disabled: make sure internal counters can't accidentally influence state.
       cells_tracking_num_[static_cast<std::size_t>(flat)] = 0;
-    }
-
-    // persistence = avg - tracking (clamped to >= 0)
-    const float avg = cells_avg_persist_[static_cast<std::size_t>(flat)];
-    const float raw = avg - static_cast<float>(cells_tracking_num_[static_cast<std::size_t>(flat)]);
-    int pers = (raw > 0.0f) ? static_cast<int>(raw) : 0;
-    cells_persistence_[static_cast<std::size_t>(flat)] = pers;
-
-    // Extend predictive state for persistence window if:
-    // - was predicting OR active at t-1
-    // - persistence > 0
-    // - not currently predicting
-    if ((check_cell_predict(predict_cells_time, col, cell, time_step - 1) ||
-         check_cell_time(active_cells_time, col, cell, time_step - 1)) &&
-        pers > 0 && !check_cell_predict(predict_cells_time, col, cell, time_step)) {
-      set_predict_cell(predict_cells_time, col, cell, time_step);
+      cells_persistence_[static_cast<std::size_t>(flat)] = 0;
     }
 
     // If active predictive now, reinforce/create synapses connected to prev2 learning cells.

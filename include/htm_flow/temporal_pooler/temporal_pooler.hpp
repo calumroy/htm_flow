@@ -46,7 +46,25 @@ public:
 
     // delay_length is a parameter for updating the average persistence count.
     // It determines how quickly the average persistence count changes (smoothing factor).
+    //
+    // Important:
+    // - This does NOT directly enable/disable persistence. It only affects the smoothing of the average.
+    // - To disable persistence-based *predictive extension* (while keeping distal reinforcement), use
+    //   `enable_persistence = false`.
     int delay_length = 1;
+
+    // If true, extend predictive state for a short "persistence window" even when no segment is active.
+    //
+    // Motivation / intent (matches python `np_temporal.py`):
+    // - Cells that have been correctly predicted for several consecutive steps tend to stay active for a while.
+    // - We track streak length ("active_predict" streak) and learn a smoothed average.
+    // - When a streak ends, we allow the cell to remain predictive for a small number of steps ("coast"),
+    //   which helps temporal continuity through brief gaps/noise.
+    //
+    // If false:
+    // - The temporal pooler still reinforces / creates distal synapses for active-predict cells.
+    // - But it will NOT mutate `predict_cells_time` to keep cells predicting just due to persistence.
+    bool enable_persistence = true;
   };
 
   explicit TemporalPoolerCalculator(const Config& cfg);

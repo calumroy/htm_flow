@@ -197,3 +197,65 @@ TEST(TemporalPooler, distal_persistence_extends_predictive_state) {
   EXPECT_TRUE(p0 == 2 || p1 == 2);
 }
 
+TEST(TemporalPooler, distal_persistence_does_not_become_sticky_without_activity) {
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/1,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/1,
+      /*spatial_permanence_inc=*/0.0f,
+      /*seq_permanence_inc=*/0.1f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.3f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  std::vector<DistalSynapse> distal(1 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  std::vector<int> learn_cells_time(1 * 2 * 2, -1);
+  std::vector<int> active_cells_time(1 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(1 * 2 * 2, -1);
+  std::vector<int> active_segs_time(1 * 2 * 1, -1);
+
+  // t=1: create a single-step active_predict streak for (0,0).
+  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
+  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 0;
+  tp.update_distal(/*time_step=*/1,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  // t=2: cell is active but was not predicted at t=1 => streak ends and persistence should extend.
+  active_cells_time[idx_cell_time(2, 0, 0, 1)] = 2;
+  tp.update_distal(/*time_step=*/2,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+  {
+    const int p0 = predict_cells_time[idx_cell_time(2, 0, 0, 0)];
+    const int p1 = predict_cells_time[idx_cell_time(2, 0, 0, 1)];
+    EXPECT_TRUE(p0 == 2 || p1 == 2);
+  }
+
+  // t=3: cell is NOT active. Persistence should not keep the cell predicting indefinitely.
+  tp.update_distal(/*time_step=*/3,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+  {
+    const int p0 = predict_cells_time[idx_cell_time(2, 0, 0, 0)];
+    const int p1 = predict_cells_time[idx_cell_time(2, 0, 0, 1)];
+    EXPECT_FALSE(p0 == 3 || p1 == 3);
+  }
+}
+

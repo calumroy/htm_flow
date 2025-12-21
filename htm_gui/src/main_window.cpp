@@ -11,8 +11,10 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include "views.hpp"
@@ -364,7 +366,22 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
 
   layout->addWidget(input_view_, 1);
   layout->addWidget(columns_view_, 1);
-  layout->addWidget(cells_view_, 0);
+
+  // Right panel: cells view + distal synapse permanence list.
+  auto* right = new QWidget(this);
+  auto* right_layout = new QVBoxLayout(right);
+  right_layout->setContentsMargins(0, 0, 0, 0);
+  right_layout->setSpacing(6);
+
+  right_layout->addWidget(cells_view_, 0);
+
+  distal_text_ = new QPlainTextEdit(this);
+  distal_text_->setReadOnly(true);
+  distal_text_->setMinimumWidth(340);
+  distal_text_->setPlaceholderText("Select a column, then click a cell and choose a segment to view distal synapses.");
+  right_layout->addWidget(distal_text_, 1);
+
+  layout->addWidget(right, 0);
 
   setCentralWidget(central);
 
@@ -435,6 +452,8 @@ void MainWindow::refresh() {
   } else {
     cells_view_->setImage(QImage());
   }
+
+  updateDistalSynapsePanel();
 
   const std::string msg = "t=" + std::to_string(snapshot_.timestep) +
                           " active_cols=" + std::to_string(snapshot_.active_column_indices.size()) +
@@ -511,6 +530,56 @@ void MainWindow::showPredictCells() {
 void MainWindow::showLearnCells() {
   cell_mode_ = CellDisplayMode::Learning;
   refresh();
+}
+
+void MainWindow::updateDistalSynapsePanel() {
+  if (!distal_text_) {
+    return;
+  }
+
+  if (selected_col_x_ < 0 || selected_col_y_ < 0) {
+    distal_text_->setPlainText("No column selected.\n\nClick a column, then click a cell and choose a segment.");
+    return;
+  }
+
+  if (!distal_overlay_.has_value() || selected_cell_ < 0 || selected_segment_ < 0) {
+    distal_text_->setPlainText(QString("Column (%1,%2)\n\nSelect a cell + segment to view distal synapses.")
+                                   .arg(selected_col_x_)
+                                   .arg(selected_col_y_));
+    return;
+  }
+
+  // Sort by permanence descending for quick visual inspection.
+  auto syns = distal_overlay_->synapses;
+  std::sort(syns.begin(), syns.end(), [](const htm_gui::DistalSynapseInfo& a, const htm_gui::DistalSynapseInfo& b) {
+    return a.permanence > b.permanence;
+  });
+
+  int connected_count = 0;
+  for (const auto& s : syns) {
+    if (s.connected) ++connected_count;
+  }
+
+  QString out;
+  out += QString("Src column (%1,%2)  cell=%3  seg=%4\n")
+             .arg(selected_col_x_)
+             .arg(selected_col_y_)
+             .arg(selected_cell_)
+             .arg(selected_segment_);
+  out += QString("Synapses: %1  connected: %2\n\n").arg(int(syns.size())).arg(connected_count);
+
+  int i = 0;
+  for (const auto& s : syns) {
+    out += QString("%1) dst=(%2,%3) cell=%4  perm=%5  %6\n")
+               .arg(i++, 2)
+               .arg(s.dst_column_x, 4)
+               .arg(s.dst_column_y, 4)
+               .arg(s.dst_cell, 2)
+               .arg(QString::number(s.permanence, 'f', 4))
+               .arg(s.connected ? "connected" : "weak");
+  }
+
+  distal_text_->setPlainText(out);
 }
 
 void MainWindow::markState() {
