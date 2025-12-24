@@ -52,7 +52,7 @@ public:
 
     // Spatial learning
     float spatial_permanence_inc = 0.05f;
-    float spatial_permanence_dec = 0.1f;
+    float spatial_permanence_dec = 0.05f;
     float active_col_permanence_dec = 0.05f;
 
     // Sequence pooler (active/predict/learn)
@@ -66,13 +66,13 @@ public:
     int activation_threshold = 6;
 
     float sequence_permanence_inc = 0.05f;
-    float sequence_permanence_dec = 0.1f;
+    float sequence_permanence_dec = 0.05f;
 
     // Temporal pooler
     int temp_delay_length = 4;
-    bool temp_enable_persistence = false;
-    float temp_spatial_permanence_inc = 0.00f;
-    float temp_sequence_permanence_inc = 0.00f;
+    bool temp_enable_persistence = true;
+    float temp_spatial_permanence_inc = 0.01f;
+    float temp_sequence_permanence_inc = 0.01f;
 
     // Headless logging (matches the old `main.cpp` style output)
     bool log_timings = false;

@@ -1,3 +1,11 @@
+/*
+ * Sequence Learning Regression Tests
+ * ===================================
+ *
+ * These tests verify critical invariants in the sequence learning subsystem,
+ * particularly around the interaction between predict-cells and sequence-learning.
+ */
+
 #include <gtest/gtest.h>
 
 #include <htm_flow/sequence_pooler/predict_cells.hpp>
@@ -18,6 +26,35 @@ inline int idx_cell_time(int cells_per_col, int col, int cell, int slot) {
 } // namespace
 
 TEST(SequenceLearningRegression, predict_update_struct_persists_and_reinforces_on_learning) {
+  /*
+  What we are testing (and why this test exists):
+  - This is a REGRESSION test for a bug where predict-cells cleared its "update structures"
+    at the start of each timestep, preventing sequence learning from consuming them.
+  - The sequence learning algorithm relies on update structures created when a cell ENTERS
+    the predictive state. These structures record which segment/synapses caused prediction.
+  - If these structures are cleared before sequence learning runs, positive reinforcement
+    (incrementing synapse permanences) cannot occur for correctly predicted cells.
+
+  The core invariant being tested:
+  - When a cell becomes predictive at time T, and then enters learning at time T+1,
+    the update structures from T must still be available for sequence learning at T+1.
+  - Sequence learning should consume these structures and reinforce the responsible synapses.
+
+  Why a minimal topology (1 column, 1 cell, 1 segment, 2 synapses):
+  - Eliminates confounding factors from column competition or cell selection.
+  - Makes the cause-and-effect chain unambiguous: if permanence increases, it must be
+    because the update structure was correctly preserved and consumed.
+
+  Test steps:
+  1. Create a minimal network: 1 column, 1 cell, 1 segment with 2 synapses (perm=0.3).
+  2. At t=1: Make the cell active. Run predict-cells to put the cell into predictive state.
+     -> This creates an update structure recording that segment 0 caused prediction.
+  3. At t=2: Make the cell enter learning state (learn_now && !learn_prev).
+     -> Run sequence learning, which should find and consume the update structure from t=1.
+     -> Positive reinforcement should increment synapse permanences above 0.3.
+  4. Assert: At least one synapse has permanence > 0.3, proving the update was consumed.
+  */
+
   // Topology: single column, single cell, single segment, two synapses.
   const int num_columns = 1;
   const int cells_per_column = 1;
@@ -105,5 +142,6 @@ TEST(SequenceLearningRegression, predict_update_struct_persists_and_reinforces_o
   }
   EXPECT_GT(max_perm, 0.3f);
 }
+
 
 
