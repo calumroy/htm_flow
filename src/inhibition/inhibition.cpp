@@ -17,6 +17,134 @@
 namespace inhibition
 {
 
+    void InhibitionCalculator::parallel_potential_overlap_fill(const std::vector<float>& potColOverlapGrid,
+                                                              std::mutex& activeColumnsMutex)
+    {
+        std::vector<int> candidates;
+        candidates.reserve(static_cast<size_t>(numColumns_));
+
+        auto rebuild_candidates = [&]() {
+            candidates.clear();
+            for (int i = 0; i < numColumns_; ++i) {
+                if (columnActive_[i].load() != 0) continue;
+                if (inhibitedCols_[i].load() != 0) continue;
+                if (potColOverlapGrid[static_cast<size_t>(i)] < static_cast<float>(minPotentialOverlap_)) continue;
+                candidates.push_back(i);
+            }
+        };
+
+        rebuild_candidates();
+
+        // Iterate a bounded number of times; each iteration can add more winners.
+        // We stop early if no new activations occur.
+        for (int iter = 0; iter < desiredLocalActivity_ && !candidates.empty(); ++iter) {
+            std::atomic<int> activated_this_iter{0};
+
+            tf::Taskflow pot_tf;
+            tf::Executor pot_exec;
+
+            pot_tf.for_each(candidates.begin(), candidates.end(), [&](int i) {
+                if (i < 0 || i >= numColumns_) return;
+                if (columnActive_[i].load() != 0) return;
+                if (inhibitedCols_[i].load() != 0) return;
+
+                const float my_overlap = potColOverlapGrid[static_cast<size_t>(i)];
+                if (my_overlap < static_cast<float>(minPotentialOverlap_)) {
+                    inhibitedCols_[i].store(1);
+                    return;
+                }
+
+                // Lock neighborhood (same deadlock-safe scheme as the other parallel path).
+                std::vector<int> colsToLock = neighbourColsLists_[i];
+                colsToLock.insert(colsToLock.end(),
+                                  colInNeighboursLists_[i].begin(),
+                                  colInNeighboursLists_[i].end());
+                colsToLock.push_back(i);
+                std::sort(colsToLock.begin(), colsToLock.end());
+                colsToLock.erase(std::unique(colsToLock.begin(), colsToLock.end()), colsToLock.end());
+
+                for (int col : colsToLock) {
+                    if (col >= 0 && col < numColumns_) columnMutexes_[col].lock();
+                }
+
+                // Re-check under lock.
+                if (columnActive_[i].load() != 0 || inhibitedCols_[i].load() != 0) {
+                    for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it) {
+                        if (*it >= 0 && *it < numColumns_) columnMutexes_[*it].unlock();
+                    }
+                    return;
+                }
+
+                // Treat existing active columns as consuming local-activity slots.
+                int active_already = 0;
+                for (int nb : colsToLock) {
+                    if (nb == i) continue;
+                    if (nb >= 0 && nb < numColumns_ && columnActive_[nb].load() != 0) {
+                        ++active_already;
+                    }
+                }
+                const int slots = desiredLocalActivity_ - active_already;
+                if (slots <= 0) {
+                    inhibitedCols_[i].store(1);
+                    for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it) {
+                        if (*it >= 0 && *it < numColumns_) columnMutexes_[*it].unlock();
+                    }
+                    return;
+                }
+
+                // Build eligible set within the locked neighborhood.
+                std::vector<float> eligibleOverlaps;
+                eligibleOverlaps.reserve(colsToLock.size());
+                for (int nb : colsToLock) {
+                    if (nb < 0 || nb >= numColumns_) continue;
+                    if (columnActive_[nb].load() != 0) continue;
+                    if (inhibitedCols_[nb].load() != 0) continue;
+                    const float ov = potColOverlapGrid[static_cast<size_t>(nb)];
+                    if (ov >= static_cast<float>(minPotentialOverlap_)) {
+                        eligibleOverlaps.push_back(ov);
+                    }
+                }
+
+                float threshold = -1.0f; // -1 => no limit
+                if (eligibleOverlaps.size() >= static_cast<size_t>(slots)) {
+                    // Find the slots-th highest overlap among eligible.
+                    std::nth_element(eligibleOverlaps.begin(),
+                                     eligibleOverlaps.begin() + (slots - 1),
+                                     eligibleOverlaps.end(),
+                                     std::greater<float>());
+                    threshold = eligibleOverlaps[static_cast<size_t>(slots - 1)];
+                }
+
+                const bool shouldActivate = (threshold < 0.0f) || (my_overlap >= threshold);
+                if (shouldActivate) {
+                    columnActive_[i].store(1);
+                    inhibitedCols_[i].store(0);
+                    {
+                        std::lock_guard<std::mutex> lk(activeColumnsMutex);
+                        if (std::find(activeColumnsInd_.begin(), activeColumnsInd_.end(), i) == activeColumnsInd_.end()) {
+                            activeColumnsInd_.push_back(i);
+                        }
+                    }
+                    ++activated_this_iter;
+                } else {
+                    // If we didn't win locally, mark inhibited so we don't spin forever.
+                    inhibitedCols_[i].store(1);
+                }
+
+                for (auto it = colsToLock.rbegin(); it != colsToLock.rend(); ++it) {
+                    if (*it >= 0 && *it < numColumns_) columnMutexes_[*it].unlock();
+                }
+            });
+
+            pot_exec.run(pot_tf).wait();
+
+            if (activated_this_iter.load() == 0) {
+                break;
+            }
+            rebuild_candidates();
+        }
+    }
+
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
                                                int desiredLocalActivity, int minOverlap, int minPotentialOverlap, bool centerInhib, bool wrapMode, 
                                                bool strictLocalActivity, bool debug, bool useTieBreaker)
@@ -229,12 +357,16 @@ namespace inhibition
             // Use the slower serial sorted implementation
             calculate_serial_sort_inhibition(colOverlapGrid, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
         } else {
-            // Use the original parallel implementation
+            // Parallel implementation:
+            // - Pass 1 (connected overlap): existing parallel threshold/competition algorithm.
+            // - Pass 2 (potential overlap): parallel "fill" pass that only considers columns
+            //   that are still inactive + not inhibited after pass 1 (Python-like semantics),
+            //   and treats existing active columns as consuming local-activity slots.
             tf::Taskflow taskflow;
             tf::Executor executor;
 
             // Define the taskflow structure for the inhibition calculation
-            tf::Taskflow tf1, tf2;
+            tf::Taskflow tf1;
             std::mutex activeColumnsMutex;
 
             // Add fast parallel clearing tasks to the main taskflow
@@ -273,20 +405,8 @@ namespace inhibition
                                             iterationCount_,
                                             columnsToProcess_);
 
-            // Process columns with potential overlap grid
-            calculate_inhibition_for_column(potColOverlapGrid,
-                                            activeColumnsInd_,
-                                            neighbourColsLists_, colInNeighboursLists_,
-                                            desiredLocalActivity_, minPotentialOverlap_,
-                                            activeColumnsMutex, tf2,
-                                            inhibitionCounts_, minorlyInhibitedColumns_,
-                                            minorlyInhibitedMutex_, needsReprocessing_,
-                                            iterationCount_,
-                                            columnsToProcess_);
-
             // Set the order of the tasks using tf::Task objects
             tf::Task f1_task = taskflow.composed_of(tf1).name("ProcessOverlap");
-            tf::Task f2_task = taskflow.composed_of(tf2).name("ProcessPotentialOverlap");
             
             // Establish task dependencies: clearing tasks must complete before processing tasks
             clearColumnActive.precede(f1_task);
@@ -296,15 +416,17 @@ namespace inhibition
             // Add tie breaker dependencies if enabled
             if (useTieBreaker_) {
                 addTieBreakerCol.precede(f1_task);
-                addTieBreakerPot.precede(f2_task);
+                addTieBreakerPot.precede(f1_task);
             }
-            
-            // Ensure f1 precedes f2 (existing dependency)
-            f1_task.precede(f2_task);    
 
             // Run the constructed taskflow graph
             tf::Future<void> fu = executor.run(taskflow);
             fu.wait(); // Block until the execution completes
+
+            ///////////////////////////////////////////////////////////////////////////
+            // Pass 2: potential-overlap fill (parallel)
+            ///////////////////////////////////////////////////////////////////////////
+            parallel_potential_overlap_fill(potColOverlapGrid, activeColumnsMutex);
         
             // Print the results using LOG and overlap_utils functions
             if (debug_) {

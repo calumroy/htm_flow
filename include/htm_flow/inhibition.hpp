@@ -214,6 +214,23 @@ namespace inhibition
         void calculate_serial_sort_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                               const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// parallel_potential_overlap_fill
+        ///
+        /// Parallel “fill” pass over potential-overlap scores (Python-like semantics):
+        /// - Only considers columns that are still inactive and not inhibited after pass-1.
+        /// - Treats already-active neighbors as consuming desiredLocalActivity slots.
+        /// - Iteratively activates additional winners until convergence / bound.
+        ///
+        /// This is used only in the non-strict, parallel inhibition path.
+        ///
+        /// @param[in] potColOverlapGrid The potential-overlap scores (flattened 2D grid).
+        /// @param[in] activeColumnsMutex Mutex protecting `activeColumnsInd_`.
+        ///-----------------------------------------------------------------------------
+        void parallel_potential_overlap_fill(const std::vector<float>& potColOverlapGrid,
+                                             std::mutex& activeColumnsMutex);
+
         // Member variables
         int width_;                  // Width of the grid of columns
         int height_;                 // Height of the grid of columns
