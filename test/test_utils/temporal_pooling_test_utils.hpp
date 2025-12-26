@@ -340,7 +340,8 @@ public:
     overlap_calc_.calculate_overlap(col_syn_perm_, col_syn_perm_shape_, input_grid01, input_shape_);
     const std::vector<float> col_overlap_scores = overlap_calc_.get_col_overlaps();
 
-    inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape_, col_overlap_scores, col_grid_shape_);
+    inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape_,
+                                          overlap_calc_.get_col_pot_overlaps(), col_grid_shape_);
     const std::vector<int>& active_col_indices = inhibition_calc_.get_active_column_indices();
 
     for (int c : prev_active_col_indices_) {

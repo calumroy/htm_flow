@@ -88,6 +88,18 @@ namespace overlap
         ///-----------------------------------------------------------------------------
         std::pair<int, int> get_col_pot_inputs_shape() const;
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_col_pot_overlaps - Returns the potential overlap score for each column.
+        ///
+        /// This is the internal `col_pot_overlaps_` buffer populated by `calculate_overlap`.
+        /// It represents (for each column) how many potential synapses align with active
+        /// input bits (plus any tie-breaking fractional contribution applied upstream).
+        ///
+        /// @return A const reference to the per-column potential overlap scores.
+        ///-----------------------------------------------------------------------------
+        const std::vector<float>& get_col_pot_overlaps() const;
+
     private:
         // // Calculate the potential synapses for a given column
         // inline std::vector<std::tuple<int, int>> calculate_pot_syn(int column,

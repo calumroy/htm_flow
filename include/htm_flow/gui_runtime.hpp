@@ -42,12 +42,20 @@ public:
 
     float connected_perm = 0.3f;
     int min_overlap = 3;
+    // Minimum overlap threshold for the *potential-overlap* fallback pass.
+    // This is what allows bootstrapping learning when all permanences start at 0
+    // (so connected-overlap is ~0 everywhere).
+    // NOTE: Setting this to 0 allows columns with *zero* potential overlap to be considered.
+    // In the parallel inhibition implementation, that can create degenerate “everyone ties at 0”
+    // behavior. A safer default is 1, which still enables bootstrapping from zero permanence
+    // (because any column seeing at least one active bit in its potential pool can compete).
+    int min_potential_overlap = 1;
     bool wrap_input = true;
 
     // Inhibition
     int inhibition_width = 8;
     int inhibition_height = 8;
-    int desired_local_activity = 10;
+    int desired_local_activity = 6;
     bool strict_local_activity = false;
 
     // Spatial learning
@@ -117,7 +125,7 @@ private:
   // Main state buffers
   std::shared_ptr<std::vector<int>> input_;       // size: num_input_rows*num_input_cols
   std::vector<float> col_syn_perm_;               // size: num_columns*num_pot_syn
-  std::vector<float> pot_col_overlap_grid_;       // size: num_columns (placeholder)
+  std::vector<float> pot_col_overlap_grid_;       // size: num_columns (filled from OverlapCalculator each step)
   std::vector<uint8_t> col_active01_;             // size: num_columns
   std::vector<int> prev_active_col_indices_;      // sparse list
   std::vector<int> active_col_indices_;           // sparse list (from inhibition)

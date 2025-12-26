@@ -52,6 +52,7 @@ public:
     // Overlap thresholds
     float connected_perm = 0.3f;
     int min_overlap = 3;
+    int min_potential_overlap = 0;
 
     // Spatial learning
     float spatial_perm_inc = 0.10f;
@@ -83,6 +84,7 @@ public:
                          /*potentialInhibHeight=*/cfg_.inhib_h,
                          /*desiredLocalActivity=*/cfg_.desired_local_activity,
                          /*minOverlap=*/cfg_.min_overlap,
+                         /*minPotentialOverlap=*/cfg_.min_potential_overlap,
                          /*centerInhib=*/true,
                          /*wrapMode=*/cfg_.wrap_input,
                          /*strictLocalActivity=*/true,
@@ -117,7 +119,8 @@ public:
     overlap_calc_.calculate_overlap(col_syn_perm_, col_syn_perm_shape_, input_grid01, input_shape_);
     const std::vector<float> col_overlap_scores = overlap_calc_.get_col_overlaps();
 
-    inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape_, col_overlap_scores, col_grid_shape_);
+    inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape_,
+                                          overlap_calc_.get_col_pot_overlaps(), col_grid_shape_);
     const std::vector<int>& active_col_indices = inhibition_calc_.get_active_column_indices();
 
     spatial_learn_calc_.calculate_spatiallearn_1d_active_indices(col_syn_perm_,

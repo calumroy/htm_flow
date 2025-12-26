@@ -76,7 +76,9 @@ TEST(SpatialPoolingIntegrationSuite3, test_case1_similar_sequences_outputs_simil
     without being overly brittle.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness::Config cfg;
+  cfg.min_potential_overlap = cfg.min_overlap;
+  SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
   const int h = sp.cfg().input_rows;
   const int seqLen = w;
@@ -147,7 +149,9 @@ TEST(SpatialPoolingIntegrationSuite3, test_case2_two_different_dotted_lines_outp
   - After training, we capture a cycle for each and compute average Jaccard similarity.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness::Config cfg;
+  cfg.min_potential_overlap = cfg.min_overlap;
+  SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
   const int h = sp.cfg().input_rows;
   const int seqLen = w;
@@ -201,7 +205,9 @@ TEST(SpatialPoolingIntegrationSuite3, test_case3_three_different_dotted_lines_al
   - After training, capture one cycle from each and compute pairwise similarities.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness::Config cfg;
+  cfg.min_potential_overlap = cfg.min_overlap;
+  SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
   const int h = sp.cfg().input_rows;
   const int seqLen = w;
@@ -271,7 +277,9 @@ TEST(SpatialPoolingIntegrationSuite3, test_case4_different_style_dotted_lines_se
   - Train and assert low average similarity.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness::Config cfg;
+  cfg.min_potential_overlap = cfg.min_overlap;
+  SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
   const int h = sp.cfg().input_rows;
   const int seqLen = w;

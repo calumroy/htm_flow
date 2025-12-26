@@ -239,6 +239,11 @@ namespace overlap
         return std::make_pair(num_columns_, potential_width_ * potential_height_);
     }
 
+    const std::vector<float>& OverlapCalculator::get_col_pot_overlaps() const
+    {
+        return col_pot_overlaps_;
+    }
+
     void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.

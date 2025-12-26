@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -49,6 +51,7 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
                        cfg_.inhibition_height,
                        cfg_.desired_local_activity,
                        cfg_.min_overlap,
+                       cfg_.min_potential_overlap,
                        cfg_.center_pot_synapses,
                        cfg_.wrap_input,
                        cfg_.strict_local_activity),
@@ -113,10 +116,10 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
   step_x_ = steps.first;
   step_y_ = steps.second;
 
-  // Initialize proximal permanence values randomly once.
-  for (auto& v : col_syn_perm_) {
-    v = perm01_(gen_);
-  }
+  // Initialize proximal permanence values deterministically.
+  // Note: starting all permanences at 0.0 means no synapses are initially "connected"
+  // when `connected_perm > 0`, so overlap/activity may be zero until parameters change.
+  std::fill(col_syn_perm_.begin(), col_syn_perm_.end(), 0.0f);
 
   // Initialize input with a deterministic moving-line stimulus.
   *input_ = line_inputs_.next(gen_);
@@ -176,6 +179,10 @@ void HtmFlowRuntime::step_once() {
     PRINT_ELAPSED_TIME();
   }
   const std::vector<float> col_overlap_scores = overlap_calc_.get_col_overlaps();
+  // Use the real potential-overlap scores (Python-style bootstrapping path), not a placeholder.
+  // This allows columns to become active and learn even when all proximal permanences start at 0.
+  pot_col_overlap_grid_.assign(overlap_calc_.get_col_pot_overlaps().begin(),
+                               overlap_calc_.get_col_pot_overlaps().end());
 
   // Inhibition
   const std::pair<int, int> col_grid_shape = {cfg_.num_column_rows, cfg_.num_column_cols};
@@ -183,12 +190,26 @@ void HtmFlowRuntime::step_once() {
     START_STOPWATCH();
     LOG(INFO, "Starting the inhibition calculation.");
   }
-  inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape, pot_col_overlap_grid_, col_grid_shape);
+  inhibition_calc_.calculate_inhibition(col_overlap_scores,
+                                        col_grid_shape,
+                                        pot_col_overlap_grid_,
+                                        col_grid_shape,
+                                        /*use_serial_sort_calc=*/true);
   if (cfg_.log_timings) {
     STOP_STOPWATCH();
     PRINT_ELAPSED_TIME();
   }
   active_col_indices_ = inhibition_calc_.get_active_column_indices();
+  if (cfg_.log_timings) {
+    const float pot_max =
+        pot_col_overlap_grid_.empty() ? 0.0f : *std::max_element(pot_col_overlap_grid_.begin(), pot_col_overlap_grid_.end());
+    const float pot_min =
+        pot_col_overlap_grid_.empty() ? 0.0f : *std::min_element(pot_col_overlap_grid_.begin(), pot_col_overlap_grid_.end());
+    LOG(INFO, "Active columns: " + std::to_string(active_col_indices_.size()) + " / " + std::to_string(num_columns_) +
+                  " (min_overlap=" + std::to_string(cfg_.min_overlap) +
+                  ", min_potential_overlap=" + std::to_string(cfg_.min_potential_overlap) + ")");
+    LOG(INFO, "Potential-overlap stats: min=" + std::to_string(pot_min) + " max=" + std::to_string(pot_max));
+  }
 
   // Dense active columns bitfield (O(#active) updates, not O(#all columns) clear).
   for (int c : prev_active_col_indices_) {
@@ -212,6 +233,21 @@ void HtmFlowRuntime::step_once() {
   if (cfg_.log_timings) {
     STOP_STOPWATCH();
     PRINT_ELAPSED_TIME();
+    // Proximal permanence quick stats (helps debug bootstrapping from 0).
+    double sum = 0.0;
+    float mn = std::numeric_limits<float>::infinity();
+    float mx = -std::numeric_limits<float>::infinity();
+    std::size_t nz = 0;
+    for (float p : col_syn_perm_) {
+      sum += static_cast<double>(p);
+      mn = std::min(mn, p);
+      mx = std::max(mx, p);
+      nz += (p != 0.0f) ? 1u : 0u;
+    }
+    const double mean = col_syn_perm_.empty() ? 0.0 : (sum / static_cast<double>(col_syn_perm_.size()));
+    LOG(INFO, "Proximal permanence stats: min=" + std::to_string(mn) + " max=" + std::to_string(mx) +
+                  " mean=" + std::to_string(mean) + " nonzero=" + std::to_string(nz) + "/" +
+                  std::to_string(col_syn_perm_.size()));
   }
 
   // Sequence pooler: active cells uses predictive state from previous timestep.

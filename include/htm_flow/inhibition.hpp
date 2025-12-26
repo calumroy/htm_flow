@@ -28,7 +28,7 @@ namespace inhibition
     public:
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                             int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
+                             int desiredLocalActivity, int minOverlap, int minPotentialOverlap, bool centerInhib, bool wrapMode, 
                              bool strictLocalActivity = true, bool debug = false, bool useTieBreaker = false);
 
         ///-----------------------------------------------------------------------------
@@ -221,7 +221,8 @@ namespace inhibition
         int potentialWidth_;         // Width of the inhibition neighborhood
         int potentialHeight_;        // Height of the inhibition neighborhood
         int desiredLocalActivity_;   // Desired number of active columns within an inhibition neighborhood
-        int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
+        int minOverlap_;             // Minimum *connected-overlap* score required for activation
+        int minPotentialOverlap_;    // Minimum *potential-overlap* score required for fallback activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
         bool debug_;                // Whether to print debug messages, this slows down the inhibition calculation.

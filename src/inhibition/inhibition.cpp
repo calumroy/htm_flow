@@ -18,11 +18,11 @@ namespace inhibition
 {
 
     InhibitionCalculator::InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                                               int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
+                                               int desiredLocalActivity, int minOverlap, int minPotentialOverlap, bool centerInhib, bool wrapMode, 
                                                bool strictLocalActivity, bool debug, bool useTieBreaker)
         : width_(width), height_(height), numColumns_(width * height),
           potentialWidth_(potentialInhibWidth), potentialHeight_(potentialInhibHeight),
-          desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap),
+          desiredLocalActivity_(desiredLocalActivity), minOverlap_(minOverlap), minPotentialOverlap_(minPotentialOverlap),
           centerInhib_(centerInhib), wrapMode_(wrapMode), strictLocalActivity_(strictLocalActivity),
           activeColumnsInd_(),
           columnMutexes_(numColumns_),
@@ -277,7 +277,7 @@ namespace inhibition
             calculate_inhibition_for_column(potColOverlapGrid,
                                             activeColumnsInd_,
                                             neighbourColsLists_, colInNeighboursLists_,
-                                            desiredLocalActivity_, minOverlap_,
+                                            desiredLocalActivity_, minPotentialOverlap_,
                                             activeColumnsMutex, tf2,
                                             inhibitionCounts_, minorlyInhibitedColumns_,
                                             minorlyInhibitedMutex_, needsReprocessing_,
@@ -877,7 +877,7 @@ namespace inhibition
                                             serialInhibitedCols_, serialColumnActive_, 
                                             serialNumColsActInNeigh_, activeColumnsInd_, 
                                             neighbourColsLists_, colInNeighboursLists_, 
-                                            desiredLocalActivity_, minOverlap_);
+                                            desiredLocalActivity_, minPotentialOverlap_);
         }).name("ProcessPotOverlap");
 
         // Set the order of the tasks using tf::Task objects

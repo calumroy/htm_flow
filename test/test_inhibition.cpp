@@ -317,6 +317,7 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = false;
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -346,6 +347,7 @@ TEST(InhibitionCalculatorTest, BasicInhibitionCalculation)
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -380,6 +382,7 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
     int inhibition_height = 3;
     int desired_local_activity = 3;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = false;
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -418,6 +421,7 @@ TEST(InhibitionCalculatorTest, LargeInhibitionCalculation)
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -458,6 +462,7 @@ TEST(InhibitionCalculatorTest, Case1) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -500,6 +505,7 @@ TEST(InhibitionCalculatorTest, Case1) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -554,6 +560,7 @@ TEST(InhibitionCalculatorTest, Case1_15Rows) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -591,6 +598,7 @@ TEST(InhibitionCalculatorTest, Case1_15Rows) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -640,6 +648,7 @@ TEST(InhibitionCalculatorTest, Case2) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -662,6 +671,7 @@ TEST(InhibitionCalculatorTest, Case2) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -692,6 +702,7 @@ TEST(InhibitionCalculatorTest, Case3) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -717,6 +728,7 @@ TEST(InhibitionCalculatorTest, Case3) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -756,6 +768,7 @@ TEST(InhibitionCalculatorTest, Case3_NonStrict) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = false;  // Non-strict mode uses parallel implementation
@@ -782,6 +795,7 @@ TEST(InhibitionCalculatorTest, Case3_NonStrict) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -825,6 +839,7 @@ TEST(InhibitionCalculatorTest, Case3_Determinism) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -860,6 +875,7 @@ TEST(InhibitionCalculatorTest, Case3_Determinism) {
             inhibition_height,
             desired_local_activity,
             min_overlap,
+            min_potential_overlap,
             center_pot_synapses,
             wrapMode,
             strict_local_activity,
@@ -940,6 +956,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase1) {
     int inhibition_height = 2;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = false;  
     bool wrapMode = true;
     bool strict_local_activity = true;
@@ -964,6 +981,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase1) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -995,6 +1013,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase2) {
     int inhibition_height = 4;
     int desired_local_activity = 4;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = false;  
     bool wrapMode = true;
     bool strict_local_activity = true;
@@ -1021,6 +1040,7 @@ TEST(InhibitionCalculatorTest, WrapModeCase2) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -1054,6 +1074,7 @@ TEST(InhibitionCalculatorTest, Case4) {
     int inhibition_height = 2;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -1080,6 +1101,7 @@ TEST(InhibitionCalculatorTest, Case4) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -1113,6 +1135,7 @@ TEST(InhibitionCalculatorTest, Case5) {
     int inhibition_height = 2;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  // centerInhib = 1
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -1136,6 +1159,7 @@ TEST(InhibitionCalculatorTest, Case5) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -1166,6 +1190,7 @@ TEST(InhibitionCalculatorTest, LargeInput) {
     int inhibition_height = 20;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  
     bool wrapMode = true;
     bool strict_local_activity = false;
@@ -1195,6 +1220,7 @@ TEST(InhibitionCalculatorTest, LargeInput) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -1235,6 +1261,7 @@ TEST(InhibitionCalculatorTest, RunTime) {
     int inhibition_height = 10;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;  
     bool wrapMode = false;
     bool strict_local_activity = false;
@@ -1258,6 +1285,7 @@ TEST(InhibitionCalculatorTest, RunTime) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
@@ -1287,6 +1315,7 @@ TEST(InhibitionCalculatorTest, SerialSortedVsParallel) {
     int inhibition_height = 3;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = true;
     bool wrapMode = false;
     bool strict_local_activity = true;
@@ -1310,6 +1339,7 @@ TEST(InhibitionCalculatorTest, SerialSortedVsParallel) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -1326,6 +1356,7 @@ TEST(InhibitionCalculatorTest, SerialSortedVsParallel) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity,
@@ -1353,6 +1384,7 @@ TEST(InhibitionCalculatorTest, SerialSortedBasicTest) {
     int inhibition_height = 2;
     int desired_local_activity = 2;
     int min_overlap = 1;
+    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
     bool center_pot_synapses = false;
     bool wrapMode = false;
     bool strict_local_activity = false;
@@ -1380,6 +1412,7 @@ TEST(InhibitionCalculatorTest, SerialSortedBasicTest) {
         inhibition_height,
         desired_local_activity,
         min_overlap,
+        min_potential_overlap,
         center_pot_synapses,
         wrapMode,
         strict_local_activity);
