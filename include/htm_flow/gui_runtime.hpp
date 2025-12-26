@@ -59,8 +59,8 @@ public:
     int cells_per_column = 5;
     int max_segments_per_cell = 3;
     int max_synapses_per_segment = 20;
-    int min_num_syn_threshold = 1;
-    int min_score_threshold = 1;
+    int min_num_syn_threshold = 5;
+    int min_score_threshold = 5;
     float new_syn_permanence = 0.3f;
     float connect_permanence = 0.2f;
     int activation_threshold = 6;

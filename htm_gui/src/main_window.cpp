@@ -437,6 +437,35 @@ void MainWindow::refresh() {
     return;
   }
 
+  // Keep selection consistent with the new snapshot, and refresh the distal synapse query so the panel stays up-to-date
+  // across step updates.
+  const int grid_w = snapshot_.columns_shape.cols;
+  const int grid_h = snapshot_.columns_shape.rows;
+
+  if (selected_col_x_ < 0 || selected_col_y_ < 0 || selected_col_x_ >= grid_w || selected_col_y_ >= grid_h) {
+    selected_col_x_ = -1;
+    selected_col_y_ = -1;
+    selected_cell_ = -1;
+    selected_segment_ = -1;
+    distal_overlay_.reset();
+  }
+
+  if (selected_cell_ >= 0 && selected_cell_ >= snapshot_.cells_per_column) {
+    selected_cell_ = -1;
+    selected_segment_ = -1;
+    distal_overlay_.reset();
+  }
+
+  if (selected_col_x_ >= 0 && selected_col_y_ >= 0 && selected_cell_ >= 0 && selected_segment_ >= 0) {
+    const int nsegs = runtime_.num_segments(selected_col_x_, selected_col_y_, selected_cell_);
+    if (nsegs <= 0 || selected_segment_ >= nsegs) {
+      selected_segment_ = -1;
+      distal_overlay_.reset();
+    } else {
+      distal_overlay_ = runtime_.query_distal(selected_col_x_, selected_col_y_, selected_cell_, selected_segment_);
+    }
+  }
+
   input_view_->setLogicalGrid(snapshot_.input_shape.cols, snapshot_.input_shape.rows);
   columns_view_->setLogicalGrid(snapshot_.columns_shape.cols, snapshot_.columns_shape.rows);
 
