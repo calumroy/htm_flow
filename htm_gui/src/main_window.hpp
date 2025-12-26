@@ -40,6 +40,7 @@ private:
   QImage renderInput(const htm_gui::Snapshot& s, int max_w, int max_h) const;
   QImage renderColumns(const htm_gui::Snapshot& s, int max_w, int max_h) const;
   QImage renderCells(const htm_gui::Snapshot& s, int col_x, int col_y, int max_size) const;
+  void updateProximalSynapsePanel();
   void updateDistalSynapsePanel();
 
   htm_gui::IHtmRuntime& runtime_;
@@ -51,6 +52,7 @@ private:
   int selected_segment_{-1};
   int cells_side_{0};
   CellDisplayMode cell_mode_{CellDisplayMode::Active};
+  std::optional<htm_gui::ProximalSynapseQuery> proximal_query_;
   std::optional<htm_gui::DistalSynapseQuery> distal_overlay_;
   std::vector<QWidget*> marked_windows_;
   bool show_cell_overlay_{true};
@@ -58,6 +60,8 @@ private:
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};
   ImageView* cells_view_{nullptr};
+  QPlainTextEdit* proximal_text_{nullptr};
+  QDockWidget* proximal_dock_{nullptr};
   QPlainTextEdit* distal_text_{nullptr};
   QDockWidget* distal_dock_{nullptr};
 };

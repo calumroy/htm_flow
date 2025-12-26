@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
+#include <QKeySequence>
 #include <QLabel>
 #include <QPainter>
 #include <QPlainTextEdit>
@@ -381,6 +382,17 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   distal_dock_->setWidget(distal_text_);
   addDockWidget(Qt::RightDockWidgetArea, distal_dock_);
 
+  // Proximal synapse panel: dockable + floatable (mirrors distal panel).
+  proximal_text_ = new QPlainTextEdit(this);
+  proximal_text_->setReadOnly(true);
+  proximal_text_->setPlaceholderText("Select a column to view its proximal (potential) synapses.");
+
+  proximal_dock_ = new QDockWidget("Proximal synapses", this);
+  proximal_dock_->setObjectName("ProximalSynapsesDock");
+  proximal_dock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+  proximal_dock_->setWidget(proximal_text_);
+  addDockWidget(Qt::RightDockWidgetArea, proximal_dock_);
+
   setCentralWidget(central);
 
   auto* tb = addToolBar("Controls");
@@ -391,6 +403,11 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   auto* show_learn = new QAction("Learn Cells", this);
   auto* toggle_overlay = new QAction("Cell overlay", this);
   auto* mark = new QAction("Mark", this);
+
+  // Space bar steps the simulation (global within the app window).
+  step_one->setShortcut(QKeySequence(Qt::Key_Space));
+  step_one->setShortcutContext(Qt::ApplicationShortcut);
+
   tb->addAction(step_one);
   tb->addAction(step_n);
   tb->addSeparator();
@@ -447,6 +464,7 @@ void MainWindow::refresh() {
     selected_col_y_ = -1;
     selected_cell_ = -1;
     selected_segment_ = -1;
+    proximal_query_.reset();
     distal_overlay_.reset();
   }
 
@@ -454,6 +472,12 @@ void MainWindow::refresh() {
     selected_cell_ = -1;
     selected_segment_ = -1;
     distal_overlay_.reset();
+  }
+
+  if (selected_col_x_ >= 0 && selected_col_y_ >= 0) {
+    proximal_query_ = runtime_.query_proximal(selected_col_x_, selected_col_y_);
+  } else {
+    proximal_query_.reset();
   }
 
   if (selected_col_x_ >= 0 && selected_col_y_ >= 0 && selected_cell_ >= 0 && selected_segment_ >= 0) {
@@ -480,6 +504,7 @@ void MainWindow::refresh() {
     cells_view_->setImage(QImage());
   }
 
+  updateProximalSynapsePanel();
   updateDistalSynapsePanel();
 
   const std::string msg = "t=" + std::to_string(snapshot_.timestep) +
@@ -509,6 +534,7 @@ void MainWindow::onColumnClicked(int x, int y) {
   selected_col_y_ = y;
   selected_cell_ = -1;
   selected_segment_ = -1;
+  proximal_query_.reset();
   distal_overlay_.reset();
   refresh();
 }
@@ -557,6 +583,53 @@ void MainWindow::showPredictCells() {
 void MainWindow::showLearnCells() {
   cell_mode_ = CellDisplayMode::Learning;
   refresh();
+}
+
+void MainWindow::updateProximalSynapsePanel() {
+  if (!proximal_text_) {
+    return;
+  }
+
+  if (selected_col_x_ < 0 || selected_col_y_ < 0) {
+    proximal_text_->setPlainText("No column selected.\n\nClick a column to view its proximal synapses.");
+    return;
+  }
+
+  if (!proximal_query_.has_value()) {
+    proximal_query_ = runtime_.query_proximal(selected_col_x_, selected_col_y_);
+  }
+
+  auto syns = proximal_query_->synapses;
+  std::sort(syns.begin(), syns.end(), [](const htm_gui::ProximalSynapseInfo& a, const htm_gui::ProximalSynapseInfo& b) {
+    return a.permanence > b.permanence;
+  });
+
+  int connected_count = 0;
+  int input_on_count = 0;
+  for (const auto& s : syns) {
+    if (s.connected) ++connected_count;
+    if (s.input_value) ++input_on_count;
+  }
+
+  QString out;
+  out += QString("Column (%1,%2)\n").arg(selected_col_x_).arg(selected_col_y_);
+  out += QString("Synapses: %1  connected: %2  input_on: %3\n\n").arg(int(syns.size())).arg(connected_count).arg(input_on_count);
+
+  // Legend:
+  // - conn: runtime-provided connected flag (perm >= connected threshold)
+  // - input: current input bit at that location
+  int i = 0;
+  for (const auto& s : syns) {
+    out += QString("%1) in=(%2,%3)  perm=%4  conn=%5  input=%6\n")
+               .arg(i++, 3)
+               .arg(s.input_x, 4)
+               .arg(s.input_y, 4)
+               .arg(QString::number(s.permanence, 'f', 4))
+               .arg(s.connected ? "Y" : "N")
+               .arg(s.input_value ? "1" : "0");
+  }
+
+  proximal_text_->setPlainText(out);
 }
 
 void MainWindow::updateDistalSynapsePanel() {
@@ -697,9 +770,8 @@ QImage MainWindow::renderInput(const htm_gui::Snapshot& s, int max_w, int max_h)
   }
 
   // Overlay potential/connected proximal synapses for selected column.
-  if (selected_col_x_ >= 0 && selected_col_y_ >= 0) {
-    const auto q = runtime_.query_proximal(selected_col_x_, selected_col_y_);
-    for (const auto& syn : q.synapses) {
+  if (proximal_query_.has_value() && selected_col_x_ >= 0 && selected_col_y_ >= 0) {
+    for (const auto& syn : proximal_query_->synapses) {
       if (syn.input_x < 0 || syn.input_x >= src_w || syn.input_y < 0 || syn.input_y >= src_h) {
         continue;
       }
