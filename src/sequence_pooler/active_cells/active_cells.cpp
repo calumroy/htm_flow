@@ -243,6 +243,23 @@ int ActiveCellsCalculator::segment_highest_score(const std::vector<DistalSynapse
 void ActiveCellsCalculator::update_active_cell_scores(const std::vector<uint8_t>& active_cols,
                                                       const std::vector<DistalSynapse>& distal_synapses,
                                                       int time_step) {
+  // Compute the score for each cell in columns that just became active.
+  //
+  // Key points:
+  // - Scores are ONLY computed for newly-active columns (prev inactive, now active).
+  // - Scores are only used later if the column was not explicitly predicted.
+  //
+  // Scoring rule (per cell):
+  // 1) Find the best-matching segment on this cell using distal synapses that connect to
+  //    columns that were active at (time_step-1). If no segment has enough active synapses,
+  //    score = 0.
+  // 2) Otherwise, score = 1 + highest score among the segment's synapse endpoints (restricted
+  //    to endpoints in previously-active columns). This propagates "chain strength" forward.
+  //
+  // Interpretation:
+  // - score = 0 : no distal evidence linking this cell to the recent context
+  // - score = 1 : shallow link to recent activity, but no strong upstream chain
+  // - score > 1 : connects to cells that themselves had support, suggesting an ongoing chain
   for (int c = 0; c < cfg_.num_columns; ++c) {
     // Only update scores for columns that changed state from not-active to active.
     if (prev_active_cols_[static_cast<size_t>(c)] == 0 && active_cols[static_cast<size_t>(c)] == 1) {
@@ -515,7 +532,15 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
             }
           }
 
-          // Alternative sequence path (score-based): if no predicted cell, try highest-scored cell.
+          // Alternative-sequence path (score-based):
+          // If nothing explicitly predicted this column, we may still avoid bursting by selecting a
+          // single cell with strong score support from the recent context.
+          //
+          // Concretely:
+          // - `update_active_cell_scores()` computed `cells_score_` for this column when it first became active.
+          // - We pick the cell with the highest score (`col_highest_scored_cell_`).
+          // - If that score is high enough (>= min_score_threshold), we treat the column as belonging to an
+          //   "alternative" temporal chain and activate only that cell instead of bursting.
           const int high_cell = col_highest_scored_cell_[static_cast<size_t>(c)];
           if (high_cell != -1 && !active_cell_chosen) {
             const int flat = c * cfg_.cells_per_column + high_cell;
@@ -525,7 +550,10 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
               learning_cell_chosen = true;
               set_learn_cell(c, high_cell, time_step);
 
-              // Create a new segment by overwriting the least-used segment's synapses.
+              // Learning hook:
+              // Propose a segment overwrite for this cell so the learning stage can wire it to the
+              // recent learning context (previous learning cells). This makes the alternative choice
+              // durable (based on learned synapses) rather than repeatedly re-deriving it from weak evidence.
               const int seg = find_least_used_seg(active_segs_time, c, high_cell);
               seg_ind_new_syn_active_[static_cast<size_t>(flat)] = seg;
               DistalSynapse* out_new =

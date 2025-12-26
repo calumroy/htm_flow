@@ -15,6 +15,22 @@ namespace sequence_pooler {
 // - Given the set of *active columns* at `time_step`, decide which *cells* inside those
 //   columns become active and which become the learning cell.
 //
+// -----------------------------------------------------------------------------
+// Cell scores (why they exist)
+// -----------------------------------------------------------------------------
+// When an active column has no cell that was correctly predicted, the default behavior
+// is to "burst" the column (all cells become active). Bursting represents ambiguity:
+// the model does not yet know which cell should represent this column in the current
+// temporal context.
+//
+// This implementation optionally avoids bursting by assigning each cell a score when
+// its column becomes active. The score is a small integer that tries to capture how
+// strongly the cell is supported by the *recently active context* through distal
+// connections (i.e., whether it can plausibly continue an already-established chain).
+//
+// If the best-scoring cell in a newly-active column exceeds `min_score_threshold`, we
+// activate only that cell (an "alternative sequence") instead of bursting.
+//
 // What this component returns:
 // - A variable-length list of active cells: [(col, cell), ...]
 // - A variable-length list of learning cells: [(col, cell), ...]
@@ -30,13 +46,26 @@ namespace sequence_pooler {
 class ActiveCellsCalculator {
 public:
   struct Config {
+    // --- Shape / topology ---
     int num_columns = 0;
     int cells_per_column = 0;
     int max_segments_per_cell = 0;
     int max_synapses_per_segment = 0;
+
+    // --- Thresholds used by segment matching + alternative-sequence selection ---
+    // More than this many *connected* synapses in a segment must be active for that segment
+    // to be considered a "match" (used when searching for a best-matching segment).
     int min_num_syn_threshold = 0;
+
+    // Minimum score required to select a single "alternative sequence" cell (instead of bursting)
+    // when the column was not predicted.
     int min_score_threshold = 0;
+
+    // --- Distal permanence parameters ---
+    // Starting permanence used when proposing/creating new distal synapses.
     float new_syn_permanence = 0.0f;
+
+    // Permanence threshold above which a distal synapse is considered connected.
     float connect_permanence = 0.0f;
   };
 
@@ -44,11 +73,17 @@ public:
 
   // Update active/learn states for the given timestep.
   //
-  // Step 1. Read the active column indices for this timestep.
-  // Step 2. Use predictive + sequence-segment state from (time_step-1) to decide
-  //         predicted activations; otherwise use bursting / alternative sequence scoring.
-  // Step 3. Emit update structures (segment update + new synapse proposals) for the
-  //         sequence-learning stage.
+  // Implementation outline:
+  // - Compute cell scores for columns that just became active (scores are only used if not predicted).
+  // - For each active column:
+  //   - If the column was already active last timestep, preserve continuity (keep the same active/learn
+  //     cell, or keep bursting if it was bursting).
+  //   - If the column is newly active:
+  //     - If any cell was correctly predicted via an active sequence segment, activate it (can be multiple).
+  //     - Else if an alternative-sequence cell has a score above `min_score_threshold`, activate just that cell.
+  //     - Else burst (all cells active).
+  // - If no learning cell was chosen, select a best-matching cell/segment and emit update structures for
+  //   the sequence-learning stage to reinforce / grow distal connections.
   void calculate_active_cells(int time_step,
                               const std::vector<int>& active_col_indices,
                               const std::vector<int>& predict_cells_time,
@@ -108,7 +143,10 @@ private:
                                    int cell,
                                    int time_step_minus_1) const;
 
-  // --- Scoring / best-matching logic (ported from the Python implementation) ---
+  // --- Scoring / best-matching logic ---
+  //
+  // Key idea: scores propagate through distal connectivity, so a cell receives a higher score
+  // if it connects (via a matching segment) to other cells that themselves have high scores.
   int segment_num_synapses_active(const std::vector<DistalSynapse>& distal_synapses,
                                   int origin_col,
                                   int origin_cell,
