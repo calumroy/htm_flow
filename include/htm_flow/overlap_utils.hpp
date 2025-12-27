@@ -148,6 +148,38 @@ namespace overlap_utils
 
     ///-----------------------------------------------------------------------------
     ///
+    /// parallel_Columns2Neibs_1D  Similar to parallel_Images2Neibs_1D, but the outer loop
+    ///                            iterates over the *output grid* (e.g. cortical columns)
+    ///                            rather than over the input grid.
+    ///
+    /// This is the correct mapping for HTM columns: each output position (col_y, col_x)
+    /// maps to a patch in the input starting at (col_y*step_y, col_x*step_x) (optionally centered),
+    /// with optional wrap-around or zero-padding.
+    ///
+    /// @param[out] output        The output matrix (1D vector) simulating a 4D vector of ints.
+    /// @param[out] output_shape  The shape of the output matrix (out_rows, out_cols, neib_rows, neib_cols).
+    /// @param[in] input          The input matrix (1D vector) simulating a 2D input.
+    /// @param[in] input_shape    The shape of the input matrix (in_rows, in_cols).
+    /// @param[in] neib_shape     The patch shape (neib_rows, neib_cols).
+    /// @param[in] neib_step      The step between output positions in input coords (step_rows, step_cols).
+    /// @param[in] wrap_mode      Wrap indices modulo input dims if true, otherwise zero-pad.
+    /// @param[in] center_neigh   Center the patch around the start position if true.
+    /// @param[out] taskflow      Taskflow graph to append work into.
+    ///-----------------------------------------------------------------------------
+    template <typename T>
+    void parallel_Columns2Neibs_1D(
+        std::vector<T> &output,
+        std::vector<int> &output_shape,
+        const std::vector<T> &input,
+        const std::pair<int, int> &input_shape,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool &wrap_mode,
+        bool &center_neigh,
+        tf::Taskflow &taskflow);
+
+    ///-----------------------------------------------------------------------------
+    ///
     /// parallel_maskTieBreaker   Applies a tie breaker to the input vector.
     ///                           The tie breaker is applied to the input vector element-wise.
     ///                           Multiply the tiebreaker values by the input grid then add them to it.
@@ -633,6 +665,95 @@ namespace overlap_utils
         load_in1_task.precede(main_task);
     }
 
+    // Columns/grid-driven variant: iterates over output rows/cols (e.g. cortical columns),
+    // mapping each output position to a patch in the input using neib_step.
+    template <typename T>
+    void parallel_Columns2Neibs_1D(
+        std::vector<T> &output,
+        std::vector<int> &output_shape,
+        const std::vector<T> &input,
+        const std::pair<int, int> &input_shape,
+        const std::pair<int, int> &neib_shape,
+        const std::pair<int, int> &neib_step,
+        bool &wrap_mode,
+        bool &center_neigh,
+        tf::Taskflow &taskflow)
+    {
+        // Validate neighbourhood fits within input dims (wrap still needs valid dims).
+        if (neib_shape.first > input_shape.first || neib_shape.second > input_shape.second)
+        {
+            throw std::invalid_argument("Neighbourhood shape must not be larger than the input matrix");
+        }
+
+        const int out_rows = static_cast<int>(output_shape.at(0));
+        const int out_cols = static_cast<int>(output_shape.at(1));
+        const int out_channels = neib_shape.first * neib_shape.second;
+        const int expected = out_rows * out_cols * out_channels;
+        assert(static_cast<int>(output.size()) == expected);
+
+        // Avoid divide-by-zero / infinite loops: step must be >= 1 in each dimension.
+        const int step_r = std::max(1, neib_step.first);
+        const int step_c = std::max(1, neib_step.second);
+
+        tf::Task load_in_task =
+            taskflow.emplace([&output, &output_shape, &input, &input_shape, &neib_shape, &wrap_mode, &center_neigh]() {})
+                .name("columns2neibs_inputs");
+
+        // IMPORTANT: capture all computed scalars by value. This task is executed after this function returns.
+        tf::Task main_task = taskflow.for_each_index(0, out_rows, 1,
+                                                     [&output,
+                                                      &input,
+                                                      input_shape,
+                                                      neib_shape,
+                                                      out_cols,
+                                                      out_channels,
+                                                      step_r,
+                                                      step_c,
+                                                      &wrap_mode,
+                                                      &center_neigh](int out_r)
+                                                     {
+            const int start_i = out_r * step_r;
+            for (int out_c = 0; out_c < out_cols; ++out_c)
+            {
+                const int start_j = out_c * step_c;
+                for (int ii = 0; ii < neib_shape.first; ++ii)
+                {
+                    for (int jj = 0; jj < neib_shape.second; ++jj)
+                    {
+                        int x = start_i + ii;
+                        int y = start_j + jj;
+
+                        if (center_neigh)
+                        {
+                            x = start_i + ii - neib_shape.first / 2;
+                            y = start_j + jj - neib_shape.second / 2;
+                        }
+
+                        if (wrap_mode)
+                        {
+                            x = (x + input_shape.first) % input_shape.first;
+                            y = (y + input_shape.second) % input_shape.second;
+                        }
+
+                        const int out_ch = (ii * neib_shape.second) + jj;
+                        const int out_idx = ((out_r * out_cols) + out_c) * out_channels + out_ch;
+
+                        if (x >= 0 && x < input_shape.first && y >= 0 && y < input_shape.second)
+                        {
+                            output[out_idx] = input[x * input_shape.second + y];
+                        }
+                        else
+                        {
+                            output[out_idx] = 0;
+                        }
+                    }
+                }
+            } })
+                                 .name("Columns2Neibs_1D");
+
+        load_in_task.precede(main_task);
+    }
+
     template <typename T>
     void parallel_maskTieBreaker(const std::vector<T> &bool_grid, const std::vector<float> &tieBreaker, std::vector<float> &output, tf::Taskflow &taskflow)
     {
@@ -734,11 +855,14 @@ namespace overlap_utils
         // Work out how large to make the step sizes so all of the
         // inputGrid can be covered as best as possible by the columns
         // potential synapses.
-        int step_x = static_cast<int>(std::round(static_cast<float>(input_width) / static_cast<float>(col_width)));
-        int step_y = static_cast<int>(std::round(static_cast<float>(input_height) / static_cast<float>(col_height)));
+        // Step sizes must be positive. When there are more columns than input cells,
+        // the natural ratio can round to 0 (e.g. 20/60 -> 0.33 -> 0). Clamp to 1 so we
+        // still advance across the input and allow wrap-around to distribute columns.
+        int step_x = std::max(1, static_cast<int>(std::round(static_cast<float>(input_width) / static_cast<float>(col_width))));
+        int step_y = std::max(1, static_cast<int>(std::round(static_cast<float>(input_height) / static_cast<float>(col_height))));
 
         // The step sizes may need to be increased if the potential sizes are too small and don't cover the total input.
-        if (pot_width + (col_width - 1) * step_x < input_width)
+        if (col_width > 1 && pot_width + (col_width - 1) * step_x < input_width)
         {
             // Calculate how many of the input elements cannot be covered with the current step_x value.
             int uncovered_x = (input_width - (pot_width + (col_width - 1) * step_x));
@@ -746,7 +870,7 @@ namespace overlap_utils
             step_x = step_x + static_cast<int>(std::ceil(static_cast<float>(uncovered_x) / static_cast<float>(col_width - 1)));
         }
 
-        if (pot_height + (col_height - 1) * step_y < input_height)
+        if (col_height > 1 && pot_height + (col_height - 1) * step_y < input_height)
         {
             int uncovered_y = (input_height - (pot_height + (col_height - 1) * step_y));
             step_y = step_y + static_cast<int>(std::ceil(static_cast<float>(uncovered_y) / static_cast<float>(col_height - 1)));

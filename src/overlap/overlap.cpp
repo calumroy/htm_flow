@@ -256,8 +256,19 @@ namespace overlap
         const int output_size = num_columns_ * potential_height_ * potential_width_;
         assert(col_inputs.size() == output_size);
 
-        // Call the parallel_Images2Neibs_1D function
-        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape_, inputGrid, inputGrid_shape, neib_shape_, neib_step_, wrap_input_, center_pot_synapses_, taskflow);
+        // IMPORTANT: We must iterate over the *column grid* here, not over the input grid.
+        // If columns_width/height exceed input_width/height (with wrap_input enabled),
+        // columns beyond the input extents should still map to wrapped input patches.
+        overlap_utils::parallel_Columns2Neibs_1D(
+            col_inputs,
+            col_inputs_shape_,
+            inputGrid,
+            inputGrid_shape,
+            neib_shape_,
+            neib_step_,
+            wrap_input_,
+            center_pot_synapses_,
+            taskflow);
     }
 
     void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
