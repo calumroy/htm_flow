@@ -54,6 +54,12 @@ struct ProximalSynapseInfo {
 struct ProximalSynapseQuery {
   int column_x{0};
   int column_y{0};
+  // "Connected overlap" and "potential overlap" for this column (as computed by the runtime).
+  // Typically:
+  // - overlap: count of connected synapses with active input bits
+  // - potential_overlap: count of potential synapses with active input bits
+  float overlap{0.0f};
+  float potential_overlap{0.0f};
   std::vector<ProximalSynapseInfo> synapses;  // potential synapses; connected flagged
 };
 

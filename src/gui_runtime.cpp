@@ -33,6 +33,7 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
       input_(std::make_shared<std::vector<int>>(static_cast<std::size_t>(cfg_.num_input_rows) *
                                                 static_cast<std::size_t>(cfg_.num_input_cols))),
       col_syn_perm_(static_cast<std::size_t>(num_columns_) * static_cast<std::size_t>(num_pot_syn_)),
+      col_overlap_grid_(static_cast<std::size_t>(num_columns_), 0.0f),
       pot_col_overlap_grid_(static_cast<std::size_t>(num_columns_), 1.0f),
       col_active01_(static_cast<std::size_t>(num_columns_), 0),
       overlap_calc_(cfg_.pot_width,
@@ -179,6 +180,7 @@ void HtmFlowRuntime::step_once() {
     PRINT_ELAPSED_TIME();
   }
   const std::vector<float> col_overlap_scores = overlap_calc_.get_col_overlaps();
+  col_overlap_grid_.assign(col_overlap_scores.begin(), col_overlap_scores.end());
   // Use the real potential-overlap scores (Python-style bootstrapping path), not a placeholder.
   // This allows columns to become active and learn even when all proximal permanences start at 0.
   pot_col_overlap_grid_.assign(overlap_calc_.get_col_pot_overlaps().begin(),
@@ -370,6 +372,12 @@ htm_gui::ProximalSynapseQuery HtmFlowRuntime::query_proximal(int column_x, int c
   }
 
   const int col = flatten_col(column_x, column_y);
+  if (col >= 0 && col < int(col_overlap_grid_.size())) {
+    q.overlap = col_overlap_grid_[static_cast<std::size_t>(col)];
+  }
+  if (col >= 0 && col < int(pot_col_overlap_grid_.size())) {
+    q.potential_overlap = pot_col_overlap_grid_[static_cast<std::size_t>(col)];
+  }
   q.synapses.reserve(static_cast<std::size_t>(num_pot_syn_));
 
   const int start_row = column_y * step_y_;

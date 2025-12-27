@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QWidget>
@@ -229,18 +230,22 @@ public:
   explicit FrozenWindow(htm_gui::Snapshot snapshot, QWidget* parent = nullptr) : QMainWindow(parent), snapshot_(std::move(snapshot)) {
     setWindowTitle(QString("Marked state (t=%1)").arg(snapshot_.timestep));
 
-    auto* central = new QWidget(this);
-    auto* layout = new QHBoxLayout(central);
-
     input_view_ = new htm_gui::qt::ImageView(this);
     columns_view_ = new htm_gui::qt::ImageView(this);
     cells_view_ = new htm_gui::qt::ImageView(this);
 
-    layout->addWidget(input_view_, 1);
-    layout->addWidget(columns_view_, 1);
-    layout->addWidget(cells_view_, 0);
+    auto* splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setObjectName("FrozenMainSplitter");
+    splitter->setChildrenCollapsible(false);
+    splitter->setOpaqueResize(true);
+    splitter->addWidget(input_view_);
+    splitter->addWidget(columns_view_);
+    splitter->addWidget(cells_view_);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(2, 0);
 
-    setCentralWidget(central);
+    setCentralWidget(splitter);
     statusBar()->showMessage("Marked (static)");
 
     input_view_->setLogicalGrid(snapshot_.input_shape.cols, snapshot_.input_shape.rows);
@@ -374,18 +379,21 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
     : QMainWindow(parent), runtime_(runtime) {
   setWindowTitle(QString::fromStdString(runtime_.name()));
 
-  auto* central = new QWidget(this);
-  auto* layout = new QHBoxLayout(central);
-
   input_view_ = new ImageView(this);
   columns_view_ = new ImageView(this);
   cells_view_ = new ImageView(this);
 
-  layout->addWidget(input_view_, 1);
-  layout->addWidget(columns_view_, 1);
-
-  // Right side: keep the cells view in the main layout.
-  layout->addWidget(cells_view_, 0);
+  // Use a splitter so the user can resize the three panels interactively.
+  auto* splitter = new QSplitter(Qt::Horizontal, this);
+  splitter->setObjectName("MainSplitter");
+  splitter->setChildrenCollapsible(false);
+  splitter->setOpaqueResize(true);
+  splitter->addWidget(input_view_);
+  splitter->addWidget(columns_view_);
+  splitter->addWidget(cells_view_);
+  splitter->setStretchFactor(0, 1);
+  splitter->setStretchFactor(1, 1);
+  splitter->setStretchFactor(2, 0);
 
   // Distal synapse panel: dockable + floatable so you can move/resize it independently.
   distal_text_ = new QPlainTextEdit(this);
@@ -409,7 +417,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   proximal_dock_->setWidget(proximal_text_);
   addDockWidget(Qt::RightDockWidgetArea, proximal_dock_);
 
-  setCentralWidget(central);
+  setCentralWidget(splitter);
 
   auto* tb = addToolBar("Controls");
   auto* step_one = new QAction("Step", this);
@@ -662,7 +670,13 @@ void MainWindow::updateProximalSynapsePanel() {
 
   QString out;
   out += QString("Column (%1,%2)\n").arg(selected_col_x_).arg(selected_col_y_);
-  out += QString("Synapses: %1  connected: %2  input_on: %3\n\n").arg(int(syns.size())).arg(connected_count).arg(input_on_count);
+  out += QString("Overlap: %1   Potential overlap: %2\n")
+             .arg(QString::number(proximal_query_->overlap, 'f', 2))
+             .arg(QString::number(proximal_query_->potential_overlap, 'f', 2));
+  out += QString("Synapses: %1  connected: %2  input_on: %3\n\n")
+             .arg(int(syns.size()))
+             .arg(connected_count)
+             .arg(input_on_count);
 
   // Legend:
   // - conn: runtime-provided connected flag (perm >= connected threshold)

@@ -31,14 +31,14 @@ class HtmFlowRuntime final : public htm_gui::IHtmRuntime {
 public:
   struct Config {
     // Overlap / proximal topology
-    int pot_width = 10;
-    int pot_height = 10;
+    int pot_width = 4;
+    int pot_height = 4;
     bool center_pot_synapses = false;
 
-    int num_input_rows = 50;
-    int num_input_cols = 50;
-    int num_column_rows = 30;
-    int num_column_cols = 30;
+    int num_input_rows = 20;
+    int num_input_cols = 20;
+    int num_column_rows = 20;
+    int num_column_cols = 40;
 
     float connected_perm = 0.3f;
     int min_overlap = 3;
@@ -65,7 +65,7 @@ public:
 
     // Sequence pooler (active/predict/learn)
     int cells_per_column = 5;
-    int max_segments_per_cell = 3;
+    int max_segments_per_cell = 2;
     int max_synapses_per_segment = 20;
     int min_num_syn_threshold = 5;
     int min_score_threshold = 5;
@@ -125,6 +125,7 @@ private:
   // Main state buffers
   std::shared_ptr<std::vector<int>> input_;       // size: num_input_rows*num_input_cols
   std::vector<float> col_syn_perm_;               // size: num_columns*num_pot_syn
+  std::vector<float> col_overlap_grid_;           // size: num_columns (filled from OverlapCalculator each step)
   std::vector<float> pot_col_overlap_grid_;       // size: num_columns (filled from OverlapCalculator each step)
   std::vector<uint8_t> col_active01_;             // size: num_columns
   std::vector<int> prev_active_col_indices_;      // sparse list
