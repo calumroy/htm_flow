@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include <QAction>
+#include <QApplication>
 #include <QDockWidget>
 #include <QHBoxLayout>
 #include <QImage>
@@ -354,6 +355,21 @@ private:
 
 namespace htm_gui::qt {
 
+namespace {
+
+ImageView* focusedImageView() {
+  QWidget* w = QApplication::focusWidget();
+  while (w) {
+    if (auto* v = dynamic_cast<ImageView*>(w)) {
+      return v;
+    }
+    w = w->parentWidget();
+  }
+  return nullptr;
+}
+
+}  // namespace
+
 MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
     : QMainWindow(parent), runtime_(runtime) {
   setWindowTitle(QString::fromStdString(runtime_.name()));
@@ -402,6 +418,8 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   auto* show_pred = new QAction("Predict Cells", this);
   auto* show_learn = new QAction("Learn Cells", this);
   auto* toggle_overlay = new QAction("Cell overlay", this);
+  auto* zoom_in = new QAction("Zoom In", this);
+  auto* zoom_out = new QAction("Zoom Out", this);
   auto* mark = new QAction("Mark", this);
 
   // Space bar steps the simulation (global within the app window).
@@ -416,6 +434,9 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   tb->addAction(show_learn);
   tb->addAction(toggle_overlay);
   tb->addSeparator();
+  tb->addAction(zoom_in);
+  tb->addAction(zoom_out);
+  tb->addSeparator();
   tb->addAction(mark);
 
   connect(step_one, &QAction::triggered, this, &MainWindow::stepOne);
@@ -424,6 +445,34 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   connect(show_pred, &QAction::triggered, this, &MainWindow::showPredictCells);
   connect(show_learn, &QAction::triggered, this, &MainWindow::showLearnCells);
   connect(mark, &QAction::triggered, this, &MainWindow::markState);
+
+  // Global zoom shortcuts apply to the currently focused ImageView (input / columns / cells).
+  zoom_in->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
+  zoom_in->setShortcutContext(Qt::ApplicationShortcut);
+  zoom_out->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+  zoom_out->setShortcutContext(Qt::ApplicationShortcut);
+
+  connect(zoom_in, &QAction::triggered, this, [this]() {
+    if (auto* v = focusedImageView()) {
+      v->zoomIn();
+    }
+  });
+  connect(zoom_out, &QAction::triggered, this, [this]() {
+    if (auto* v = focusedImageView()) {
+      v->zoomOut();
+    }
+  });
+
+  // Handle the common Ctrl+= for Ctrl++ on many keyboards.
+  auto* zoom_in_alt = new QAction(this);
+  zoom_in_alt->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Equal));
+  zoom_in_alt->setShortcutContext(Qt::ApplicationShortcut);
+  addAction(zoom_in_alt);
+  connect(zoom_in_alt, &QAction::triggered, this, [this]() {
+    if (auto* v = focusedImageView()) {
+      v->zoomIn();
+    }
+  });
 
   toggle_overlay->setCheckable(true);
   toggle_overlay->setChecked(show_cell_overlay_);
