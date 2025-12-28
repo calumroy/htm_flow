@@ -722,8 +722,8 @@ void MainWindow::updateProximalSynapsePanel() {
   QString out;
   out += QString("Column (%1,%2)\n").arg(selected_col_x_).arg(selected_col_y_);
   out += QString("Overlap: %1   Potential overlap: %2\n")
-             .arg(QString::number(proximal_query_->overlap, 'f', 2))
-             .arg(QString::number(proximal_query_->potential_overlap, 'f', 2));
+             .arg(QString::number(proximal_query_->overlap, 'f', 6))
+             .arg(QString::number(proximal_query_->potential_overlap, 'f', 6));
   out += QString("Synapses: %1  connected: %2  input_on: %3\n\n")
              .arg(int(syns.size()))
              .arg(connected_count)
