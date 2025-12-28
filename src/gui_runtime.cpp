@@ -29,7 +29,8 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
       num_pot_syn_(cfg_.pot_width * cfg_.pot_height),
       num_columns_(cfg_.num_column_rows * cfg_.num_column_cols),
       gen_(std::random_device{}()),
-      line_inputs_(cfg_.num_input_cols, cfg_.num_input_rows, cfg_.num_input_cols),
+      input_sequence_id_(1),
+      line_inputs_(cfg_.num_input_cols, cfg_.num_input_rows),
       input_(std::make_shared<std::vector<int>>(static_cast<std::size_t>(cfg_.num_input_rows) *
                                                 static_cast<std::size_t>(cfg_.num_input_cols))),
       col_syn_perm_(static_cast<std::size_t>(num_columns_) * static_cast<std::size_t>(num_pot_syn_)),
@@ -123,6 +124,7 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
   std::fill(col_syn_perm_.begin(), col_syn_perm_.end(), 0.0f);
 
   // Initialize input with a deterministic moving-line stimulus.
+  apply_input_sequence(input_sequence_id_);
   *input_ = line_inputs_.next(gen_);
 
   // Initialize distal synapses randomly once.
@@ -139,6 +141,48 @@ HtmFlowRuntime::HtmFlowRuntime(const Config& cfg)
 }
 
 HtmFlowRuntime::HtmFlowRuntime() : HtmFlowRuntime(Config{}) {}
+
+std::vector<htm_gui::InputSequence> HtmFlowRuntime::input_sequences() const {
+  return {
+      {1, "1: left→right line"},
+      {2, "2: right→left line"},
+      {3, "3: top→bottom line"},
+      {4, "4: bottom→top line"},
+  };
+}
+
+void HtmFlowRuntime::apply_input_sequence(int id) {
+  // Reset only the input generator index when changing sequence; keep all HTM state.
+  // Note: The GUI expects that runtimes that don't support this feature will just no-op.
+  input_sequence_id_ = id;
+  switch (id) {
+    case 1:
+      line_inputs_.setPattern(utilities::MovingLineInputs::Pattern::LeftToRight);
+      break;
+    case 2:
+      line_inputs_.setPattern(utilities::MovingLineInputs::Pattern::RightToLeft);
+      break;
+    case 3:
+      line_inputs_.setPattern(utilities::MovingLineInputs::Pattern::TopToBottom);
+      break;
+    case 4:
+      line_inputs_.setPattern(utilities::MovingLineInputs::Pattern::BottomToTop);
+      break;
+    default:
+      // Unknown IDs fall back to 1 (and keep the id as 1 so GUI snaps back).
+      input_sequence_id_ = 1;
+      line_inputs_.setPattern(utilities::MovingLineInputs::Pattern::LeftToRight);
+      break;
+  }
+  line_inputs_.setIndex(0);
+}
+
+void HtmFlowRuntime::set_input_sequence(int id) {
+  if (id == input_sequence_id_) {
+    return;
+  }
+  apply_input_sequence(id);
+}
 
 bool HtmFlowRuntime::time_is_set(const std::vector<int>& time_tensor2, int idx0, int time_step) {
   // Time-history tensors store the last two timesteps for each cell. We treat either slot matching as "true".

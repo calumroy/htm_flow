@@ -13,8 +13,10 @@
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QComboBox>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
@@ -436,6 +438,55 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
 
   tb->addAction(step_one);
   tb->addAction(step_n);
+
+  // Optional input sequence dropdown. Only shown when the runtime advertises sequences.
+  const auto seqs = runtime_.input_sequences();
+  if (!seqs.empty()) {
+    tb->addSeparator();
+
+    auto* label = new QLabel("Input:", this);
+    tb->addWidget(label);
+
+    auto* combo = new QComboBox(this);
+    combo->setToolTip("Select the input stimulus sequence (runtime-dependent).");
+    combo->setMinimumContentsLength(18);
+
+    {
+      const QSignalBlocker blocker(combo);
+      for (const auto& s : seqs) {
+        combo->addItem(QString::fromStdString(s.name), QVariant(s.id));
+      }
+
+      // Set current selection to the runtime's current sequence if present.
+      const int cur_id = runtime_.input_sequence();
+      int found = -1;
+      for (int i = 0; i < combo->count(); ++i) {
+        if (combo->itemData(i).toInt() == cur_id) {
+          found = i;
+          break;
+        }
+      }
+      combo->setCurrentIndex(found >= 0 ? found : 0);
+    }
+
+    connect(combo, &QComboBox::currentIndexChanged, this, [this, combo](int idx) {
+      if (idx < 0) {
+        return;
+      }
+      const int id = combo->itemData(idx).toInt();
+      runtime_.set_input_sequence(id);
+      refresh();
+    });
+
+    auto* w = new QWidget(this);
+    auto* layout = new QHBoxLayout(w);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(combo);
+    w->setLayout(layout);
+    tb->addWidget(w);
+    sequence_widget_ = w;
+  }
+
   tb->addSeparator();
   tb->addAction(show_active);
   tb->addAction(show_pred);

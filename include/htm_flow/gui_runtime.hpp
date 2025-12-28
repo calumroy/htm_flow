@@ -31,8 +31,8 @@ class HtmFlowRuntime final : public htm_gui::IHtmRuntime {
 public:
   struct Config {
     // Overlap / proximal topology
-    int pot_width = 4;
-    int pot_height = 4;
+    int pot_width = 20;
+    int pot_height = 1;
     bool center_pot_synapses = false;
 
     int num_input_rows = 20;
@@ -53,9 +53,9 @@ public:
     bool wrap_input = true;
 
     // Inhibition
-    int inhibition_width = 8;
-    int inhibition_height = 8;
-    int desired_local_activity = 6;
+    int inhibition_width = 40;
+    int inhibition_height = 1;
+    int desired_local_activity = 1;
     bool strict_local_activity = false;
 
     // Spatial learning
@@ -95,11 +95,15 @@ public:
   htm_gui::ProximalSynapseQuery query_proximal(int column_x, int column_y) const override;
   int num_segments(int column_x, int column_y, int cell) const override;
   htm_gui::DistalSynapseQuery query_distal(int column_x, int column_y, int cell, int segment) const override;
+  std::vector<htm_gui::InputSequence> input_sequences() const override;
+  int input_sequence() const override { return input_sequence_id_; }
+  void set_input_sequence(int id) override;
   int activation_threshold() const override { return cfg_.activation_threshold; }
   std::string name() const override { return "htm_flow"; }
 
 private:
   void step_once();
+  void apply_input_sequence(int id);
 
   static bool time_is_set(const std::vector<int>& time_tensor2, int idx0, int time_step);
 
@@ -119,8 +123,9 @@ private:
   mutable std::uniform_int_distribution<int> bit01_{0, 1};
   mutable std::uniform_real_distribution<float> perm01_{0.0f, 1.0f};
 
-  // Input source (deterministic moving vertical line)
-  utilities::VerticalLineInputs line_inputs_;
+  // Input source (deterministic moving line; selectable patterns).
+  int input_sequence_id_{1};
+  utilities::MovingLineInputs line_inputs_;
 
   // Main state buffers
   std::shared_ptr<std::vector<int>> input_;       // size: num_input_rows*num_input_cols

@@ -57,6 +57,8 @@ private:
   std::vector<QWidget*> marked_windows_;
   bool show_cell_overlay_{true};
 
+  QWidget* sequence_widget_{nullptr};  // null when runtime doesn't support input selection
+
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};
   ImageView* cells_view_{nullptr};

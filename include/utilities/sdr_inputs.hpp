@@ -89,6 +89,114 @@ private:
   double seq_prob_ = 1.0;
 };
 
+// A moving line stimulus that can be either vertical (moves along X) or horizontal (moves along Y).
+//
+// Patterns used by the GUI runtime:
+//  - LeftToRight:   vertical line, x=0..width-1
+//  - RightToLeft:   vertical line, x=width-1..0
+//  - TopToBottom:   horizontal line, y=0..height-1
+//  - BottomToTop:   horizontal line, y=height-1..0
+class MovingLineInputs {
+public:
+  enum class Pattern {
+    LeftToRight,
+    RightToLeft,
+    TopToBottom,
+    BottomToTop,
+  };
+
+  MovingLineInputs(int width, int height) : width_(width), height_(height) {
+    if (width_ <= 0 || height_ <= 0) {
+      throw std::invalid_argument("MovingLineInputs: width/height must be > 0");
+    }
+  }
+
+  void setPattern(Pattern p) {
+    pat_ = p;
+    idx_ = 0;
+  }
+
+  void setIndex(int i) {
+    const int seq_len = seqLen();
+    if (seq_len <= 0) {
+      idx_ = 0;
+      return;
+    }
+    const int m = i % seq_len;
+    idx_ = (m < 0) ? (m + seq_len) : m;
+  }
+
+  int seqLen() const {
+    switch (pat_) {
+      case Pattern::LeftToRight:
+      case Pattern::RightToLeft:
+        return width_;
+      case Pattern::TopToBottom:
+      case Pattern::BottomToTop:
+        return height_;
+    }
+    return width_;
+  }
+
+  void setSequenceProbability(double p) { seq_prob_ = p; }
+
+  std::vector<int> next(std::mt19937& rng) {
+    const int seq_len = seqLen();
+    if (seq_len <= 0) {
+      return {};
+    }
+
+    int chosen = idx_;
+    std::uniform_real_distribution<double> u01(0.0, 1.0);
+    if (u01(rng) > seq_prob_) {
+      std::uniform_int_distribution<int> pick(0, seq_len - 1);
+      chosen = pick(rng);
+    }
+
+    std::vector<int> grid(static_cast<std::size_t>(width_ * height_), 0);
+
+    if (is_vertical()) {
+      const int x = pos_for_index(chosen);
+      for (int y = 0; y < height_; ++y) {
+        grid[static_cast<std::size_t>(y * width_ + x)] = 1;
+      }
+    } else {
+      const int y = pos_for_index(chosen);
+      for (int x = 0; x < width_; ++x) {
+        grid[static_cast<std::size_t>(y * width_ + x)] = 1;
+      }
+    }
+
+    idx_ = (idx_ + 1) % seq_len;
+    return grid;
+  }
+
+private:
+  bool is_vertical() const {
+    return pat_ == Pattern::LeftToRight || pat_ == Pattern::RightToLeft;
+  }
+
+  int pos_for_index(int t) const {
+    // For vertical patterns, returns x; for horizontal patterns, returns y.
+    switch (pat_) {
+      case Pattern::LeftToRight:
+      case Pattern::TopToBottom:
+        return t;
+      case Pattern::RightToLeft:
+        return (width_ - 1 - t);
+      case Pattern::BottomToTop:
+        return (height_ - 1 - t);
+    }
+    return 0;
+  }
+
+  int width_;
+  int height_;
+  Pattern pat_{Pattern::LeftToRight};
+  int idx_{0};
+  double seq_prob_{1.0};
+};
+
 // A small helper to emulate Python's `customSDRInputs` API shape:
 // - multiple named sequences ("patterns")
 // - `changePattern`, `setIndex`, `sequenceProbability`
