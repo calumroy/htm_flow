@@ -1477,3 +1477,45 @@ TEST(OverlapCalculatorTest, TieBreakerConsistencyTest)
     LOG(DEBUG, "Tie-Breaker Consistency Test Passed");
 }
 
+TEST(OverlapCalculatorTest, PotSynTieBreakerRowsDiffer)
+{
+    // Regression test: the per-column (row) potential-synapse tie-breaker must vary per row.
+    // If every row is identical, columns that see identical wrapped potential pools will tie
+    // exactly in potential overlap, defeating the intended bias.
+    int potential_width = 5;
+    int potential_height = 4;
+    int columns_width = 6;
+    int columns_height = 5;
+    int input_width = 6;
+    int input_height = 6;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    const std::vector<float> tie = overlapCalc.get_pot_syn_tie_breaker();
+    const std::size_t row_len = static_cast<std::size_t>(potential_width * potential_height);
+    ASSERT_GE(tie.size(), 2 * row_len);
+
+    bool any_diff = false;
+    for (std::size_t i = 0; i < row_len; ++i) {
+        if (tie[i] != tie[row_len + i]) {
+            any_diff = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(any_diff) << "Expected row 0 and row 1 of pot syn tie-breaker to differ";
+}
+

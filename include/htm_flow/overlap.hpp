@@ -179,6 +179,15 @@ namespace overlap
         /// @param[out] taskflow A tf::Taskflow object that the function gets added to. This can be run by a taskflow executor.
         void get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// add_pot_overlap_epsilon   Adds a tiny per-column deterministic epsilon to the
+        ///                           potential overlap scores. This breaks exact ties when
+        ///                           sparse inputs cause repeated masked tie-breaker sums.
+        ///
+        /// @param[out] taskflow A tf::Taskflow object that the function gets added to.
+        void add_pot_overlap_epsilon(tf::Taskflow &taskflow);
+
         // Member variables
         bool center_pot_synapses_; // Specifies if the potential synapses are centered over the columns
         bool wrap_input_;          // Use a wrap input function instead of padding the input to calcualte the overlap scores
