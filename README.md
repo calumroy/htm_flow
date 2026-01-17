@@ -97,37 +97,108 @@ The `debug_region` tool lets you run any HTM configuration with the GUI for manu
 cd htm_gui
 ./build_image.sh              # Build container (once)
 
-# Run different configurations
-./run_debug.sh                # Single layer (default)
-./run_debug.sh 2layer         # Two-layer hierarchy
-./run_debug.sh 3layer         # Three-layer hierarchy
-./run_debug.sh temporal       # Temporal pooling config
+# Run with YAML config files
+./run_debug.sh --config configs/small_test.yaml
+./run_debug.sh --config configs/no_temporal_pooling.yaml
+./run_debug.sh --config configs/top_layer_pooling.yaml
+./run_debug.sh --config configs/full_temporal_pooling.yaml
+
+# Or use built-in configurations
+./run_debug.sh 2layer
+./run_debug.sh temporal
 
 # Train first, then debug
-./run_debug.sh 2layer --train 20
+./run_debug.sh --config configs/small_test.yaml --train 20
+
+# List available configs
+./run_debug.sh --list-configs
 
 # Show all options
 ./run_debug.sh --help
 ```
 
-**Available configurations:**
+## YAML Configuration Files
+
+Configurations are stored in the `configs/` directory as YAML files. This makes it easy to create and share network configurations without modifying C++ code.
+
+### Available Configurations
+
+| File | Description |
+|------|-------------|
+| `small_test.yaml` | Small 2-layer config for quick testing |
+| `no_temporal_pooling.yaml` | 3-layer, temporal pooling disabled in all layers |
+| `top_layer_pooling.yaml` | 3-layer, temporal pooling only in top layer |
+| `full_temporal_pooling.yaml` | 3-layer, temporal pooling in all layers |
+| `temporal_experiment.yaml` | Matches Python test suite parameters |
+
+### Creating Custom Configurations
+
+Copy an existing config and modify it:
+
+```bash
+cp configs/small_test.yaml configs/my_experiment.yaml
+# Edit my_experiment.yaml
+./run_debug.sh --config configs/my_experiment.yaml
+```
+
+### YAML Format Example
+
+```yaml
+# configs/my_experiment.yaml
+enable_feedback: false
+
+layers:
+  - name: Layer0_Sensory
+    input:
+      rows: 20
+      cols: 20
+    columns:
+      rows: 20
+      cols: 40
+    overlap:
+      pot_width: 10
+      center_pot_synapses: true
+      connected_perm: 0.3
+    inhibition:
+      width: 20
+      desired_local_activity: 2
+    sequence_memory:
+      cells_per_column: 5
+      max_segments_per_cell: 4
+    temporal_pooling:
+      enabled: true       # Enable/disable per layer
+      delay_length: 4
+      spatial_permanence_inc: 0.1
+
+  - name: Layer1_Top
+    columns:
+      rows: 20
+      cols: 40
+    temporal_pooling:
+      enabled: true
+```
+
+### Using with Main Executable
+
+The main `htm_flow` executable also supports YAML configs:
+
+```bash
+./build/htm_flow --config configs/small_test.yaml --steps 100
+./build/htm_flow --config configs/full_temporal_pooling.yaml --gui  # (if built with GUI)
+./build/htm_flow --list-configs  # Show available configs
+```
+
+### Built-in Configurations (Legacy)
+
+These built-in configs are still available without YAML files:
+
 | Config | Description |
 |--------|-------------|
 | `1layer` / `single` | Single layer (default) |
 | `2layer` | Two-layer hierarchy |
 | `3layer` | Three-layer hierarchy |
-| `temporal` | Temporal pooling experiment (Python test suite params) |
+| `temporal` | Temporal pooling experiment |
 | `default` | Default config (larger 20x40 grid) |
-
-**Adding custom configurations:** Edit `src/debug_region.cpp` and add to the `create_config()` function:
-
-```cpp
-if (name == "my_config") {
-  auto layer_cfg = htm_flow::small_test_config();
-  layer_cfg.cells_per_column = 8;  // Customize
-  return htm_flow::uniform_region_config(2, layer_cfg);
-}
-```
 
 
 
@@ -135,8 +206,15 @@ if (name == "my_config") {
 
 ```
 htm_flow/
+├── configs/                 # YAML configuration files
+│   ├── small_test.yaml
+│   ├── no_temporal_pooling.yaml
+│   ├── top_layer_pooling.yaml
+│   ├── full_temporal_pooling.yaml
+│   └── temporal_experiment.yaml
 ├── include/htm_flow/
 │   ├── config.hpp           # Configuration structs (HTMLayerConfig, HTMRegionConfig)
+│   ├── config_loader.hpp    # YAML config loading/saving
 │   ├── htm_layer.hpp        # Single HTM layer (full pipeline)
 │   ├── htm_region.hpp       # Multi-layer hierarchy
 │   ├── region_runtime.hpp   # GUI-compatible wrapper with input generation

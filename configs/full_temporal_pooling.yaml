@@ -1,0 +1,97 @@
+# Full Temporal Pooling Configuration
+# 3-layer region with temporal pooling enabled in ALL layers.
+# This is the most aggressive pooling strategy, where each layer
+# maintains stable representations across sequence elements.
+
+enable_feedback: false
+
+layers:
+  # Layer 0 - Sensory input layer (with pooling)
+  - name: Layer0_Sensory
+    input:
+      rows: 20
+      cols: 20
+    columns:
+      rows: 20
+      cols: 40
+    overlap:
+      pot_width: 10
+      pot_height: 1
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 3
+      min_potential_overlap: 1
+      wrap_input: true
+    inhibition:
+      width: 20
+      height: 1
+      desired_local_activity: 2
+      strict_local_activity: false
+    spatial_learning:
+      permanence_inc: 0.05
+      permanence_dec: 0.05
+      active_col_permanence_dec: 0.05
+    sequence_memory:
+      cells_per_column: 5
+      max_segments_per_cell: 4
+      max_synapses_per_segment: 20
+      min_num_syn_threshold: 5
+      min_score_threshold: 5
+      new_syn_permanence: 0.3
+      connect_permanence: 0.2
+      activation_threshold: 6
+      permanence_inc: 0.05
+      permanence_dec: 0.05
+    temporal_pooling:
+      enabled: true   # Pooling at all levels
+      delay_length: 4
+      spatial_permanence_inc: 0.05
+      sequence_permanence_inc: 0.05
+
+  # Layer 1 - Intermediate abstraction layer (with pooling)
+  - name: Layer1_Middle
+    columns:
+      rows: 20
+      cols: 40
+    overlap:
+      pot_width: 10
+      pot_height: 1
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 3
+    inhibition:
+      width: 20
+      desired_local_activity: 2
+    sequence_memory:
+      cells_per_column: 5
+      max_segments_per_cell: 4
+      max_synapses_per_segment: 20
+    temporal_pooling:
+      enabled: true   # Pooling at all levels
+      delay_length: 4
+      spatial_permanence_inc: 0.08
+      sequence_permanence_inc: 0.08
+
+  # Layer 2 - Top abstraction layer (with pooling)
+  - name: Layer2_Top
+    columns:
+      rows: 20
+      cols: 40
+    overlap:
+      pot_width: 10
+      pot_height: 1
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 3
+    inhibition:
+      width: 20
+      desired_local_activity: 2
+    sequence_memory:
+      cells_per_column: 5
+      max_segments_per_cell: 4
+      max_synapses_per_segment: 20
+    temporal_pooling:
+      enabled: true   # Pooling at all levels
+      delay_length: 5  # Longer delay at top
+      spatial_permanence_inc: 0.1
+      sequence_permanence_inc: 0.1

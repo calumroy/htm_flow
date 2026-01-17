@@ -65,6 +65,16 @@ include_directories("include")
 # Include directories for the project source files
 include_directories(${PROJECT_SOURCE_DIR})
 
+# -----------------------------------------------------------------------------
+# yaml-cpp for config file loading
+# -----------------------------------------------------------------------------
+if(EXISTS "${PROJECT_SOURCE_DIR}/lib/yaml-cpp/CMakeLists.txt")
+  set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+  add_subdirectory(lib/yaml-cpp)
+endif()
+
 if(USE_GPU)
     add_subdirectory(cuda)
 
@@ -93,6 +103,7 @@ add_executable(${PROJECT_NAME}
   ./src/main.cpp
   ./src/gui_runtime.cpp
   ./src/config.cpp
+  ./src/config_loader.cpp
   ./src/htm_layer.cpp
   ./src/htm_region.cpp
   ./src/region_runtime.cpp
@@ -113,10 +124,13 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
+# Link yaml-cpp if available
+if(TARGET yaml-cpp)
+  target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp)
+endif()
+
 if(USE_GPU)
   target_link_libraries(${PROJECT_NAME} PRIVATE task_gpu_test gpu_overlap)
-else()
-  target_link_libraries(${PROJECT_NAME} PRIVATE)
 endif()
 
 if(HTM_FLOW_WITH_GUI)
@@ -137,6 +151,7 @@ install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 add_executable(debug_region
   ./src/debug_region.cpp
   ./src/config.cpp
+  ./src/config_loader.cpp
   ./src/htm_layer.cpp
   ./src/htm_region.cpp
   ./src/region_runtime.cpp
@@ -148,6 +163,11 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
 endif()
 
 target_compile_features(debug_region PRIVATE cxx_std_17)
+
+# Link yaml-cpp if available
+if(TARGET yaml-cpp)
+  target_link_libraries(debug_region PRIVATE yaml-cpp)
+endif()
 
 if(USE_GPU)
   target_link_libraries(debug_region PRIVATE task_gpu_test gpu_overlap)
@@ -191,6 +211,7 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
                                   ${PROJECT_SOURCE_DIR}/src/temporal_pooler/temporal_pooler.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/stopwatch.cpp
                                   ${PROJECT_SOURCE_DIR}/src/config.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/config_loader.cpp
                                   ${PROJECT_SOURCE_DIR}/src/htm_layer.cpp
                                   ${PROJECT_SOURCE_DIR}/src/htm_region.cpp
                                   ${PROJECT_SOURCE_DIR}/src/region_runtime.cpp)
@@ -214,6 +235,11 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
     target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
   else()
     target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
+  endif()
+
+  # Link yaml-cpp if available
+  if(TARGET yaml-cpp)
+    target_link_libraries(${PROJECT_NAME}_tests yaml-cpp)
   endif()
 
   # Register individual gtest TEST() cases with CTest so `ctest -R <pattern>` works.

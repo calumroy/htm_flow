@@ -15,7 +15,7 @@ Run debug_region with GUI in a container.
 
 Usage: ./run_debug.sh [config] [options]
 
-Configurations:
+Built-in Configurations:
   1layer, single  Single layer (default)
   2layer          Two-layer hierarchy
   3layer          Three-layer hierarchy
@@ -23,14 +23,30 @@ Configurations:
   default         Default layer config (larger grid)
 
 Options:
+  --config FILE   Load configuration from YAML file
   --train N       Run N training epochs first
+  --list-configs  List available YAML configs
   --help          Show this help
 
-Examples:
+YAML Config Examples:
+  ./run_debug.sh --config configs/small_test.yaml
+  ./run_debug.sh --config configs/no_temporal_pooling.yaml
+  ./run_debug.sh --config configs/top_layer_pooling.yaml
+  ./run_debug.sh --config configs/full_temporal_pooling.yaml
+  ./run_debug.sh --config configs/temporal_experiment.yaml
+
+Built-in Config Examples:
   ./run_debug.sh                  # Single layer with GUI
   ./run_debug.sh 2layer           # Two-layer with GUI
   ./run_debug.sh 3layer --train 20  # Train then debug
 EOF
+  exit 0
+fi
+
+# Handle --list-configs locally
+if [[ "${1:-}" == "--list-configs" ]]; then
+  echo "Available YAML configs:"
+  ls -1 "$(dirname "$0")/../configs/"*.yaml 2>/dev/null || echo "  (none found)"
   exit 0
 fi
 

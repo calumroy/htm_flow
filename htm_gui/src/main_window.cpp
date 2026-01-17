@@ -125,6 +125,22 @@ QImage renderColumnsWithCellOverlay(const htm_gui::Snapshot& s,
   const bool can_draw_cells = (cells > 0 && cells <= 64 && int(s.column_cell_masks.size()) >= src_w * src_h);
   const int side = can_draw_cells ? int(std::ceil(std::sqrt(double(cells)))) : 0;
 
+  std::vector<std::uint64_t> distal_cell_masks;
+  if (can_draw_cells && distal_overlay && distal_overlay->has_value()) {
+    distal_cell_masks.assign(static_cast<std::size_t>(src_w * src_h), 0);
+    for (const auto& syn : distal_overlay->value().synapses) {
+      if (!syn.connected) {
+        continue;
+      }
+      if (syn.dst_column_x < 0 || syn.dst_column_x >= src_w || syn.dst_column_y < 0 || syn.dst_column_y >= src_h ||
+          syn.dst_cell < 0 || syn.dst_cell >= cells) {
+        continue;
+      }
+      const int idx = htm_gui::flatten_xy(syn.dst_column_x, syn.dst_column_y, src_w);
+      distal_cell_masks[static_cast<std::size_t>(idx)] |= (std::uint64_t(1) << syn.dst_cell);
+    }
+  }
+
   for (int sy = 0; sy < src_h; ++sy) {
     for (int sx = 0; sx < src_w; ++sx) {
       const int col_idx = htm_gui::flatten_xy(sx, sy, src_w);
@@ -139,6 +155,9 @@ QImage renderColumnsWithCellOverlay(const htm_gui::Snapshot& s,
       }
 
       const auto masks = s.column_cell_masks[static_cast<std::size_t>(col_idx)];
+      const std::uint64_t distal_mask =
+          (col_idx >= 0 && col_idx < int(distal_cell_masks.size())) ? distal_cell_masks[static_cast<std::size_t>(col_idx)]
+                                                                     : 0;
 
       // Inner area for cell glyphs.
       const int pad = 1;
@@ -164,6 +183,7 @@ QImage renderColumnsWithCellOverlay(const htm_gui::Snapshot& s,
         const bool is_pred = (masks.predictive & bit) != 0;
         const bool is_act = (masks.active & bit) != 0;
         const bool is_learn = (masks.learning & bit) != 0;
+        const bool is_distal_target = (distal_mask & bit) != 0;
 
         // Predictive: black outer square (dominant signal).
         if (is_pred) {
@@ -189,6 +209,15 @@ QImage renderColumnsWithCellOverlay(const htm_gui::Snapshot& s,
           const int dy0 = cy0 + (ch - dot) / 2;
           painter.setBrush(dark_green());
           painter.drawRect(dx0, dy0, dot, dot);
+        }
+
+        if (is_distal_target) {
+          QPen pen(blue());
+          pen.setWidth(1);
+          painter.setPen(pen);
+          painter.setBrush(Qt::NoBrush);
+          painter.drawRect(cx0, cy0, std::max(1, cw - 1), std::max(1, ch - 1));
+          painter.setPen(Qt::NoPen);
         }
       }
     }
@@ -1018,9 +1047,20 @@ QImage MainWindow::renderCells(const htm_gui::Snapshot& s, int col_x, int col_y,
   if (selected_cell_ >= 0 && selected_cell_ < cells) {
     const int gx = selected_cell_ % side;
     const int gy = selected_cell_ / side;
-    for (int py = gy * cell_px; py < std::min(out, (gy + 1) * cell_px); ++py) {
-      for (int px = gx * cell_px; px < std::min(out, (gx + 1) * cell_px); ++px) {
-        img.setPixelColor(px, py, QColor(0xFF, 0xFF, 0xFF));
+    const int x0 = gx * cell_px;
+    const int y0 = gy * cell_px;
+    const int x1 = std::min(out, (gx + 1) * cell_px);
+    const int y1 = std::min(out, (gy + 1) * cell_px);
+    if (x1 - x0 <= 1 || y1 - y0 <= 1) {
+      img.setPixelColor(x0, y0, QColor(0xFF, 0xFF, 0xFF));
+    } else {
+      for (int py = y0; py < y1; ++py) {
+        for (int px = x0; px < x1; ++px) {
+          const bool border = (px == x0 || px == x1 - 1 || py == y0 || py == y1 - 1);
+          if (border) {
+            img.setPixelColor(px, py, QColor(0xFF, 0xFF, 0xFF));
+          }
+        }
       }
     }
   }
