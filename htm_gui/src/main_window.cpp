@@ -487,6 +487,54 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
     sequence_widget_ = w;
   }
 
+  // Optional layer selector dropdown. Only shown when the runtime has multiple layers.
+  const auto layer_opts = runtime_.layer_options();
+  if (layer_opts.size() > 1) {
+    tb->addSeparator();
+
+    auto* layer_label = new QLabel("Layer:", this);
+    tb->addWidget(layer_label);
+
+    auto* layer_combo = new QComboBox(this);
+    layer_combo->setToolTip("Select which layer to visualize in a multi-layer region.");
+    layer_combo->setMinimumContentsLength(10);
+
+    {
+      const QSignalBlocker blocker(layer_combo);
+      for (const auto& opt : layer_opts) {
+        layer_combo->addItem(QString::fromStdString(opt.name), QVariant(opt.id));
+      }
+
+      // Set current selection to the runtime's active layer.
+      const int cur_layer = runtime_.active_layer();
+      int found = -1;
+      for (int i = 0; i < layer_combo->count(); ++i) {
+        if (layer_combo->itemData(i).toInt() == cur_layer) {
+          found = i;
+          break;
+        }
+      }
+      layer_combo->setCurrentIndex(found >= 0 ? found : 0);
+    }
+
+    connect(layer_combo, &QComboBox::currentIndexChanged, this, [this, layer_combo](int idx) {
+      if (idx < 0) {
+        return;
+      }
+      const int layer_idx = layer_combo->itemData(idx).toInt();
+      runtime_.set_active_layer(layer_idx);
+      refresh();
+    });
+
+    auto* layer_w = new QWidget(this);
+    auto* layer_layout = new QHBoxLayout(layer_w);
+    layer_layout->setContentsMargins(0, 0, 0, 0);
+    layer_layout->addWidget(layer_combo);
+    layer_w->setLayout(layer_layout);
+    tb->addWidget(layer_w);
+    layer_widget_ = layer_w;
+  }
+
   tb->addSeparator();
   tb->addAction(show_active);
   tb->addAction(show_pred);
@@ -615,10 +663,15 @@ void MainWindow::refresh() {
   updateProximalSynapsePanel();
   updateDistalSynapsePanel();
 
-  const std::string msg = "t=" + std::to_string(snapshot_.timestep) +
-                          " active_cols=" + std::to_string(snapshot_.active_column_indices.size()) +
-                          " grid=" + std::to_string(snapshot_.columns_shape.cols) + "x" +
-                          std::to_string(snapshot_.columns_shape.rows);
+  std::string msg = "t=" + std::to_string(snapshot_.timestep) +
+                    " active_cols=" + std::to_string(snapshot_.active_column_indices.size()) +
+                    " grid=" + std::to_string(snapshot_.columns_shape.cols) + "x" +
+                    std::to_string(snapshot_.columns_shape.rows);
+  // Add layer info if this is a multi-layer runtime
+  const int num_layers = runtime_.num_layers();
+  if (num_layers > 1) {
+    msg = "Layer " + std::to_string(runtime_.active_layer()) + "/" + std::to_string(num_layers) + "  " + msg;
+  }
   statusBar()->showMessage(QString::fromStdString(msg));
 }
 

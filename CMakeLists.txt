@@ -92,6 +92,10 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp
 add_executable(${PROJECT_NAME}
   ./src/main.cpp
   ./src/gui_runtime.cpp
+  ./src/config.cpp
+  ./src/htm_layer.cpp
+  ./src/htm_region.cpp
+  ./src/region_runtime.cpp
   ${SRC_FILES}
 )
 
@@ -127,6 +131,37 @@ endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 
+# -----------------------------------------------------------------------------
+# Debug region runner - for debugging integration test configurations with GUI
+# -----------------------------------------------------------------------------
+add_executable(debug_region
+  ./src/debug_region.cpp
+  ./src/config.cpp
+  ./src/htm_layer.cpp
+  ./src/htm_region.cpp
+  ./src/region_runtime.cpp
+  ${SRC_FILES}
+)
+
+if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
+  target_include_directories(debug_region PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
+endif()
+
+target_compile_features(debug_region PRIVATE cxx_std_17)
+
+if(USE_GPU)
+  target_link_libraries(debug_region PRIVATE task_gpu_test gpu_overlap)
+endif()
+
+if(HTM_FLOW_WITH_GUI)
+  if(TARGET htm_gui)
+    target_link_libraries(debug_region PRIVATE htm_gui)
+    target_compile_definitions(debug_region PRIVATE HTM_FLOW_WITH_GUI)
+  endif()
+endif()
+
+install(TARGETS debug_region DESTINATION bin)
+
 ####################################################################
 # Build tests if (BUILD_TESTS) is ON 
 option(BUILD_TESTS "Build the tests" ON)
@@ -154,7 +189,11 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
                                   ${PROJECT_SOURCE_DIR}/src/sequence_pooler/predict_cells/predict_cells.cpp
                                   ${PROJECT_SOURCE_DIR}/src/sequence_pooler/sequence_learning/sequence_learning.cpp
                                   ${PROJECT_SOURCE_DIR}/src/temporal_pooler/temporal_pooler.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/utilities/stopwatch.cpp)
+                                  ${PROJECT_SOURCE_DIR}/src/utilities/stopwatch.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/config.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/htm_layer.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/htm_region.cpp
+                                  ${PROJECT_SOURCE_DIR}/src/region_runtime.cpp)
 
 
   # Filter out the GPU test files if GPU flag is set to FALSE
@@ -164,6 +203,11 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
 
   # Add your test files
   add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
+
+  # Add htm_gui include directory for IHtmRuntime interface (no Qt dependency)
+  if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
+    target_include_directories(${PROJECT_NAME}_tests PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
+  endif()
 
   # Link your test executable to the Google Test library and other libraries
   if(USE_GPU)

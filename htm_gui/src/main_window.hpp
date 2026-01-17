@@ -58,6 +58,7 @@ private:
   bool show_cell_overlay_{true};
 
   QWidget* sequence_widget_{nullptr};  // null when runtime doesn't support input selection
+  QWidget* layer_widget_{nullptr};     // null when runtime doesn't support layer selection
 
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};

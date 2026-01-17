@@ -42,6 +42,14 @@ public:
   virtual int input_sequence() const { return 1; }
   virtual void set_input_sequence(int /*id*/) {}
 
+  // Optional: layer selection for multi-layer regions.
+  // If num_layers() returns 0 or 1, the GUI should hide/disable the layer selector.
+  // layer_options() uses the same InputSequence struct for convenience.
+  virtual std::vector<InputSequence> layer_options() const { return {}; }
+  virtual int num_layers() const { return 1; }
+  virtual int active_layer() const { return 0; }
+  virtual void set_active_layer(int /*idx*/) {}
+
   // Optional: segment activation threshold used by the predict-cells stage.
   // A segment is considered active if the number of *connected* synapses targeting
   // currently-active cells exceeds this threshold.
