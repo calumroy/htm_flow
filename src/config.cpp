@@ -87,6 +87,7 @@ HTMLayerConfig temporal_pooling_test_config() {
   cfg.sequence_permanence_dec = 0.02f;  // permanenceDec in Python
   
   // Temporal pooler
+  cfg.temp_enabled = true;
   cfg.temp_delay_length = 3;
   cfg.temp_enable_persistence = true;
   cfg.temp_spatial_permanence_inc = 0.1f;

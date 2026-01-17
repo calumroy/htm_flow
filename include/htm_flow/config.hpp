@@ -96,6 +96,7 @@ struct HTMLayerConfig {
   // Correctly-predicting cells have their activity extended, creating
   // representations that are stable across entire learned sequences.
   // --------------------------------------------------------------------------
+  bool temp_enabled = true;  ///< Enable/disable temporal pooling entirely
   int temp_delay_length = 4;  ///< How many timesteps to extend prediction persistence
   bool temp_enable_persistence = true;  ///< Enable temporal pooling persistence mechanism
   float temp_spatial_permanence_inc = 0.01f;  ///< Proximal learning rate for temporal pooling

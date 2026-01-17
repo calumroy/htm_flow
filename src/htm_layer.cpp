@@ -330,25 +330,27 @@ void HTMLayer::step_once() {
   }
 
   // Temporal pooler
-  if (cfg_.log_timings) {
-    START_STOPWATCH();
-    LOG(INFO, "Starting the temporal pooler calculation.");
-  }
-  temporal_pool_calc_.update_proximal(timestep_,
-                                      overlap_calc_.get_col_pot_inputs(),
-                                      col_active01_,
-                                      col_syn_perm_,
-                                      active_cells_calc_.get_burst_cols_time());
-  temporal_pool_calc_.update_distal(timestep_,
-                                    active_cells_calc_.get_current_learn_cells_list(),
-                                    active_cells_calc_.get_learn_cells_time(),
-                                    predict_cells_calc_.get_predict_cells_time_mutable(),
-                                    active_cells_calc_.get_active_cells_time(),
-                                    predict_cells_calc_.get_active_segs_time(),
-                                    distal_synapses_);
-  if (cfg_.log_timings) {
-    STOP_STOPWATCH();
-    PRINT_ELAPSED_TIME();
+  if (cfg_.temp_enabled) {
+    if (cfg_.log_timings) {
+      START_STOPWATCH();
+      LOG(INFO, "Starting the temporal pooler calculation.");
+    }
+    temporal_pool_calc_.update_proximal(timestep_,
+                                        overlap_calc_.get_col_pot_inputs(),
+                                        col_active01_,
+                                        col_syn_perm_,
+                                        active_cells_calc_.get_burst_cols_time());
+    temporal_pool_calc_.update_distal(timestep_,
+                                      active_cells_calc_.get_current_learn_cells_list(),
+                                      active_cells_calc_.get_learn_cells_time(),
+                                      predict_cells_calc_.get_predict_cells_time_mutable(),
+                                      active_cells_calc_.get_active_cells_time(),
+                                      predict_cells_calc_.get_active_segs_time(),
+                                      distal_synapses_);
+    if (cfg_.log_timings) {
+      STOP_STOPWATCH();
+      PRINT_ELAPSED_TIME();
+    }
   }
 }
 
