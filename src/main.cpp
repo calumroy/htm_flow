@@ -1,114 +1,137 @@
-#include <taskflow/taskflow.hpp>
-#include <htm_flow/overlap.hpp>
-// // Include the gpu_overlap.hpp header file form the gpu_overlap library
-// #include <overlap/gpu_overlap.hpp>#include <inhibition/inhibition.hpp>
-#include <htm_flow/inhibition.hpp>
-#include <utilities/logger.hpp>
-#include <utilities/stopwatch.hpp>
+#include <htm_flow/config_loader.hpp>
+#include <htm_flow/gui_runtime.hpp>
+#include <htm_flow/region_runtime.hpp>
 
-int main(int argc, char *argv[])
-{
-    if (argc != 1)
-    {
-        std::cerr << "Usage: ./htm_flow" << std::endl;
-        std::exit(EXIT_FAILURE);
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+#include <memory>
+#include <string>
+
+#ifdef HTM_FLOW_WITH_GUI
+#include <htm_gui/debugger.hpp>
+#endif
+
+#define NUM_ITERATIONS 3
+
+namespace {
+
+void usage(const char* prog) {
+  std::cerr << "Usage:\n"
+            << "  " << prog << " [--steps N] [--gui] [--log] [--config FILE]\n\n"
+            << "Options:\n"
+            << "  --steps N       Run N steps in headless mode (default: " << NUM_ITERATIONS << ")\n"
+            << "  --gui           Start the Qt debugger (requires building with -DHTM_FLOW_WITH_GUI=ON)\n"
+            << "  --log           Print per-stage timing logs (useful with --gui)\n"
+            << "  --config FILE   Load configuration from YAML file\n"
+            << "  --list-configs  List available YAML configs in configs/\n\n"
+            << "Notes:\n"
+            << "  Input is a deterministic moving vertical line (like the temporal pooling tests),\n"
+            << "  not per-step random bits.\n\n"
+            << "Examples:\n"
+            << "  " << prog << " --steps 100\n"
+            << "  " << prog << " --config configs/small_test.yaml --gui\n"
+            << "  " << prog << " --config configs/full_temporal_pooling.yaml --steps 50\n";
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+  bool use_gui = false;
+  int steps = NUM_ITERATIONS;
+  bool log = false;
+  std::string config_file;
+
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "-h" || arg == "--help") {
+      usage(argv[0]);
+      return 0;
+    }
+    if (arg == "--list-configs") {
+      std::cout << "Available YAML configs in configs/:\n";
+      auto files = htm_flow::list_config_files("configs");
+      if (files.empty()) {
+        std::cout << "  (none found)\n";
+      } else {
+        for (const auto& f : files) {
+          std::cout << "  " << f << "\n";
+        }
+      }
+      return 0;
+    }
+    if (arg == "--gui") {
+      use_gui = true;
+      continue;
+    }
+    if (arg == "--log") {
+      log = true;
+      continue;
+    }
+    if (arg == "--steps") {
+      if (i + 1 >= argc) {
+        std::cerr << "--steps requires a value\n";
+        usage(argv[0]);
+        return 2;
+      }
+      steps = std::atoi(argv[++i]);
+      continue;
+    }
+    if (arg == "--config") {
+      if (i + 1 >= argc) {
+        std::cerr << "--config requires a file path\n";
+        usage(argv[0]);
+        return 2;
+      }
+      config_file = argv[++i];
+      continue;
     }
 
-    tf::Executor executor;
-    tf::Taskflow taskflow;
+    std::cerr << "Unknown arg: " << arg << "\n";
+    usage(argv[0]);
+    return 2;
+  }
 
-    using overlap::OverlapCalculator;
-    using inhibition::InhibitionCalculator;
+  // Use HTMRegionRuntime if config file is provided, otherwise use HtmFlowRuntime
+  std::unique_ptr<htm_gui::IHtmRuntime> runtime;
+  std::string config_name = "htm_flow";
 
-    // Overlap calculation parameters (similar to your existing setup)
-    int pot_width = 30;
-    int pot_height = 30;
-    bool center_pot_synapses = false;
-    int num_input_rows = 1200;
-    int num_input_cols = 1200;
-    int num_column_rows = 800;
-    int num_column_cols = 800;
-    float connected_perm = 0.3;
-    int min_overlap = 3;
-    int num_pot_syn = pot_width * pot_height;
-    int num_columns = num_column_rows * num_column_cols;
-    bool wrap_input = true;
-    bool strict_local_activity = false;
-    
-    // Inhibition calculation parameters
-    int inhibition_width = 30;
-    int inhibition_height = 30;
-    int desired_local_activity = 10;
-
-    // Create random colSynPerm array. This is an array representing the permanence values of columns synapses.
-    // It stores for each column the permanence values of all potential synapses from that column connecting to the input.
-    // It is a 1D vector simulating a 2D vector of size num_columns * num_pot_syn.
-    std::vector<float> col_syn_perm(num_columns * num_pot_syn);
-    std::pair<int, int> col_syn_perm_shape = {num_columns, num_pot_syn}; // Store the shape of the simulated col_syn_perm 2D vector.
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0, 1);
-    // TODO: remove this.
-    // This is slow and only for testing.
-    for (int i = 0; i < num_columns * num_pot_syn; ++i)
-    {
-        col_syn_perm[i] = dis(gen);
+  if (!config_file.empty()) {
+    // Load from YAML file
+    try {
+      auto cfg = htm_flow::load_region_config(config_file);
+      config_name = std::filesystem::path(config_file).stem().string();
+      
+      // Apply logging settings
+      for (auto& layer_cfg : cfg.layers) {
+        layer_cfg.log_timings = (!use_gui) || log;
+      }
+      
+      std::cout << "Loaded config: " << config_file << " (" << cfg.layers.size() << " layer"
+                << (cfg.layers.size() > 1 ? "s" : "") << ")\n";
+      
+      runtime = std::make_unique<htm_flow::HTMRegionRuntime>(cfg, config_name);
+    } catch (const std::exception& e) {
+      std::cerr << "Error loading config: " << e.what() << "\n";
+      return 1;
     }
-    // Create a random input matrix. This is a matrix representing the input to the HTM layer.
-    // It is a boolean input of 1 or 0.
-    // It is a 1D vector simulating a 2D vector of size num_input_rows * num_input_cols.
-    std::vector<int> new_input_mat(num_input_rows * num_input_cols);
-    std::pair<int, int> new_input_mat_shape = {num_input_rows, num_input_cols}; // Store the shape of the simulated 2D vector input matrix.
-    std::uniform_int_distribution<> dis2(0, 1);
-    for (int i = 0; i < num_input_rows * num_input_cols; ++i)
-    {
-        new_input_mat[i] = dis2(gen);
-    }
-    // Random data initialization for testing
-    std::vector<float> colOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for overlap grid
-    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+  } else {
+    // Default: single layer with default config
+    htm_flow::HtmFlowRuntime::Config cfg;
+    cfg.log_timings = (!use_gui) || log;
+    runtime = std::make_unique<htm_flow::HtmFlowRuntime>(cfg);
+  }
 
-    std::vector<float> potColOverlapGrid(num_column_rows * num_column_cols, 1); // Placeholder for potential overlap grid
-    std::pair<int, int> potColOverlapGridShape = {num_column_rows, num_column_cols};
+  if (use_gui) {
+#ifdef HTM_FLOW_WITH_GUI
+    return htm_gui::run_debugger(argc, argv, *runtime);
+#else
+    std::cerr << "This binary was built without GUI support.\n"
+              << "Rebuild with: -DHTM_FLOW_WITH_GUI=ON\n";
+    return 2;
+#endif
+  }
 
-    // Start overlap calculation
-    START_STOPWATCH();
-    // Create an instance of the overlap calculation class
-    OverlapCalculator overlapCalc(pot_width,
-                                  pot_height,
-                                  num_column_cols,
-                                  num_column_rows,
-                                  num_input_cols,
-                                  num_input_rows,
-                                  center_pot_synapses,
-                                  connected_perm,
-                                  min_overlap,
-                                  wrap_input);
-
-    LOG(INFO, "Starting the overlap calculation.");
-
-    // Run the overlap calculation on the CPU
-    overlapCalc.calculate_overlap(col_syn_perm, col_syn_perm_shape, new_input_mat, new_input_mat_shape);
-    STOP_STOPWATCH();
-   
-    // // Print the input matrix
-    // LOG(INFO, "Input matrix: ");
-    // overlap_utils::print_2d_vector(new_input_mat, std::pair(num_input_rows, num_input_cols));
-    // Print the overlap scores
-    std::vector<float> col_overlap_scores = overlapCalc.get_col_overlaps();
-    //overlap_utils::print_2d_vector(col_overlap_scores, std::pair(num_column_rows, num_column_cols));
-    PRINT_ELAPSED_TIME();
-    // Start inhibition calculation
-    START_STOPWATCH();
-    InhibitionCalculator inhibitionCalc(num_column_cols, num_column_rows, inhibition_width, inhibition_height,
-                                        desired_local_activity, min_overlap, center_pot_synapses, wrap_input, strict_local_activity);
-    LOG(INFO, "Starting the inhibition calculation.");
-    inhibitionCalc.calculate_inhibition(col_overlap_scores, colOverlapGridShape, potColOverlapGrid, potColOverlapGridShape);
-    STOP_STOPWATCH();
-
-    // Get and print the active columns
-    std::vector<int> activeColumns = inhibitionCalc.get_active_columns();
-    //overlap_utils::print_2d_vector(activeColumns, colOverlapGridShape);
-    PRINT_ELAPSED_TIME();
-    return 0;
+  runtime->step(steps);
+  return 0;
 }

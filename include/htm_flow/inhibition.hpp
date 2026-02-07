@@ -28,7 +28,7 @@ namespace inhibition
     public:
         // Constructor
         InhibitionCalculator(int width, int height, int potentialInhibWidth, int potentialInhibHeight,
-                             int desiredLocalActivity, int minOverlap, bool centerInhib, bool wrapMode, 
+                             int desiredLocalActivity, int minOverlap, int minPotentialOverlap, bool centerInhib, bool wrapMode, 
                              bool strictLocalActivity = true, bool debug = false, bool useTieBreaker = false);
 
         ///-----------------------------------------------------------------------------
@@ -52,6 +52,17 @@ namespace inhibition
         ///
         /// @return A 1D vector of ints representing the active state (1 for active, 0 for inactive) of each column.
         std::vector<int> get_active_columns();
+
+        ///-----------------------------------------------------------------------------
+        ///
+        /// get_active_column_indices - Returns the indices of active columns from the
+        /// most recent `calculate_inhibition` call.
+        ///
+        /// This does NOT recompute anything; it returns the stored `activeColumnsInd_`.
+        ///
+        /// @return A const reference to the active column index list.
+        ///-----------------------------------------------------------------------------
+        const std::vector<int>& get_active_column_indices() const;
 
     private:
 
@@ -203,6 +214,23 @@ namespace inhibition
         void calculate_serial_sort_inhibition(const std::vector<float>& colOverlapGrid, const std::pair<int, int>& colOverlapGridShape,
                                               const std::vector<float>& potColOverlapGrid, const std::pair<int, int>& potColOverlapGridShape);
 
+        ///-----------------------------------------------------------------------------
+        ///
+        /// parallel_potential_overlap_fill
+        ///
+        /// Parallel “fill” pass over potential-overlap scores (Python-like semantics):
+        /// - Only considers columns that are still inactive and not inhibited after pass-1.
+        /// - Treats already-active neighbors as consuming desiredLocalActivity slots.
+        /// - Iteratively activates additional winners until convergence / bound.
+        ///
+        /// This is used only in the non-strict, parallel inhibition path.
+        ///
+        /// @param[in] potColOverlapGrid The potential-overlap scores (flattened 2D grid).
+        /// @param[in] activeColumnsMutex Mutex protecting `activeColumnsInd_`.
+        ///-----------------------------------------------------------------------------
+        void parallel_potential_overlap_fill(const std::vector<float>& potColOverlapGrid,
+                                             std::mutex& activeColumnsMutex);
+
         // Member variables
         int width_;                  // Width of the grid of columns
         int height_;                 // Height of the grid of columns
@@ -210,7 +238,8 @@ namespace inhibition
         int potentialWidth_;         // Width of the inhibition neighborhood
         int potentialHeight_;        // Height of the inhibition neighborhood
         int desiredLocalActivity_;   // Desired number of active columns within an inhibition neighborhood
-        int minOverlap_;             // Minimum overlap score required for a column to be considered for activation
+        int minOverlap_;             // Minimum *connected-overlap* score required for activation
+        int minPotentialOverlap_;    // Minimum *potential-overlap* score required for fallback activation
         bool centerInhib_;           // Whether the inhibition neighborhood is centered on each column
         bool wrapMode_;             // Whether the inhibition neighborhood wraps around the grid
         bool debug_;                // Whether to print debug messages, this slows down the inhibition calculation.

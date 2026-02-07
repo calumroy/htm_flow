@@ -1,0 +1,35 @@
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    git \
+    pkg-config \
+    build-essential \
+    cmake \
+    ninja-build \
+    qt6-base-dev \
+    qt6-base-dev-tools \
+    qt6-wayland \
+    libgl1-mesa-dev \
+    libxkbcommon-dev \
+    libxkbcommon-x11-dev \
+    libx11-xcb1 \
+    libxkbcommon-x11-0 \
+    libxcb-cursor0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libxcb-xinerama0 \
+    libxcb-xkb1 \
+    xauth \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+
+CMD ["bash"]

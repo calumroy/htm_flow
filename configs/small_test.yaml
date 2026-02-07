@@ -1,0 +1,70 @@
+# Small Test Configuration
+# 2-layer region with small grid sizes for quick testing.
+# Faster learning rates for quicker convergence in tests.
+
+enable_feedback: false
+
+layers:
+  # Layer 0 - Small sensory layer
+  - name: Layer0_Test
+    input:
+      rows: 10
+      cols: 10
+    columns:
+      rows: 10
+      cols: 10
+    overlap:
+      pot_width: 5
+      pot_height: 1
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 2
+      min_potential_overlap: 1
+      wrap_input: true
+    inhibition:
+      width: 10
+      height: 1
+      desired_local_activity: 1
+      strict_local_activity: false
+    spatial_learning:
+      permanence_inc: 0.1
+      permanence_dec: 0.05
+      active_col_permanence_dec: 0.05
+    sequence_memory:
+      cells_per_column: 3
+      max_segments_per_cell: 1
+      max_synapses_per_segment: 10
+      min_num_syn_threshold: 3
+      new_syn_permanence: 0.3
+      connect_permanence: 0.2
+      activation_threshold: 4
+      permanence_inc: 0.1
+      permanence_dec: 0.05
+    temporal_pooling:
+      enabled: false
+      delay_length: 1
+      spatial_permanence_inc: 0.05
+      sequence_permanence_inc: 0.05
+
+  # Layer 1 - Small top layer
+  - name: Layer1_Top
+    columns:
+      rows: 10
+      cols: 10
+    overlap:
+      pot_width: 5
+      pot_height: 1
+      center_pot_synapses: true
+      min_overlap: 2
+    inhibition:
+      width: 10
+      desired_local_activity: 1
+    sequence_memory:
+      cells_per_column: 3
+      max_segments_per_cell: 3
+      max_synapses_per_segment: 10
+    temporal_pooling:
+      enabled: false
+      delay_length: 3
+      spatial_permanence_inc: 0.05
+      sequence_permanence_inc: 0.05

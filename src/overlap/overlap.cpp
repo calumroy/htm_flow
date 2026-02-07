@@ -54,7 +54,6 @@ namespace overlap
         // Make the column input potential synapse tie breaker matrix.
         parallel_make_col_tie_breaker(col_tie_breaker_, columns_height_, columns_width_);
 
-        LOG(DEBUG, "OverlapCalculator Constructor Done.");
     }
 
     void OverlapCalculator::make_pot_syn_tie_breaker(std::vector<float> &pot_syn_tie_breaker, std::pair<int, int> size)
@@ -62,30 +61,26 @@ namespace overlap
         int input_height = size.first;
         int input_width = size.second;
 
-        // Use the sum of all integer values less then or equal to formula.
-        // This is because each row has its tie breaker values added together.
-        // We want to make sure the result from adding the tie breaker values is
-        // less then 0.5 but more then 0.0.
-        float n = static_cast<float>(input_width);
-        float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);
+        // Monotone 2D tie-breaker:
+        // - increasing left->right within a row (synapse index)
+        // - increasing top->bottom within a column (column index)
+        //
+        // We split the "tie-break budget" so that even at maximum density, the total tie contribution
+        // stays < 0.5 and cannot override a 1-count difference in potential overlap.
+        const float W = static_cast<float>(input_width);
+        const float H = static_cast<float>(input_height);
+        const float total_budget = 0.5f;
+        const float row_budget = 0.05f;               // reserved for the per-row (column-index) ramp
+        const float syn_budget = total_budget - row_budget; // reserved for the per-synapse ramp
 
-        std::vector<float> rows_tie(input_width);
-        for (int i = 0; i < input_width; ++i)
-        {
-            rows_tie[i] = (i + 1) * norm_value;
-        }
-
-        // Use a seeded random sample of the above array
-        std::mt19937 rng(1); // Mersenne Twister random number generator
-
-        // Create a tiebreaker that changes for each row.
+        const float syn_norm = (input_width > 0) ? (syn_budget / (W * (W + 1.0f) / 2.0f)) : 0.0f;
+        const float row_norm = (input_width > 0 && input_height > 0) ? (row_budget / (W * H)) : 0.0f;
         for (int j = 0; j < input_height; ++j)
         {
-            std::vector<float> row(input_width);
-            std::sample(rows_tie.begin(), rows_tie.end(), row.begin(), input_width, rng);
             for (int i = 0; i < input_width; ++i)
             {
-                pot_syn_tie_breaker[j * input_width + i] = row[i];
+                pot_syn_tie_breaker[j * input_width + i] =
+                    (static_cast<float>(i) + 1.0f) * syn_norm + (static_cast<float>(j) + 1.0f) * row_norm;
             }
         }
     }
@@ -98,39 +93,27 @@ namespace overlap
         int input_height = size.first; // Number of rows in the tie-breaker matrix
         int input_width = size.second; // Number of columns in the tie-breaker matrix
 
-        // Calculate the normalization value to ensure the sum of tie-breaker values
-        // in any row is less than 0.5. This maintains the requirement for the total
-        // to be less than 0.5 for any given row.
-        float n = static_cast<float>(input_width);
-        float norm_value = 0.5f / (n * (n + 1.0f) / 2.0f);
-
-        // Pre-calculate tie-breaker values for a single row, each value being a multiple
-        // of the normalization value. These are sequentially ordered from 1 to input_width,
-        // each multiplied by the norm_value to ensure the sum of values in any row is less than 0.5.
-        std::vector<float> rows_tie(input_width);
-        for (int i = 0; i < input_width; ++i)
-        {
-            rows_tie[i] = (i + 1) * norm_value;
-        }
+        // Same logic as make_pot_syn_tie_breaker(), but parallel over rows.
+        const float W = static_cast<float>(input_width);
+        const float H = static_cast<float>(input_height);
+        const float total_budget = 0.5f;
+        const float row_budget = 0.05f;
+        const float syn_budget = total_budget - row_budget;
+        const float syn_norm = (input_width > 0) ? (syn_budget / (W * (W + 1.0f) / 2.0f)) : 0.0f;
+        const float row_norm = (input_width > 0 && input_height > 0) ? (row_budget / (W * H)) : 0.0f;
 
         tf::Taskflow taskflow; // Taskflow object for parallel execution of row processing
         tf::Executor executor; // Executor to run the taskflow
 
         // Parallelly populate the tie-breaker matrix, each task handling one row.
-        // This uses a fixed seed for reproducibility across runs.
         for (int j = 0; j < input_height; ++j)
         {
-            taskflow.emplace([&pot_syn_tie_breaker, &rows_tie, j, input_width]()
+            taskflow.emplace([&pot_syn_tie_breaker, j, input_width, syn_norm, row_norm]()
                             {
-                std::mt19937 rng(1); // Random number generator with a fixed seed for reproducibility
-                std::vector<float> row(input_width);
-                // Randomly sample values from rows_tie to create a unique pattern for each row,
-                // similar to the Python implementation using random.sample.
-                std::sample(rows_tie.begin(), rows_tie.end(), row.begin(), input_width, rng);
                 for (int i = 0; i < input_width; ++i)
                 {
-                    // Populate the global tie-breaker matrix with the generated row values
-                    pot_syn_tie_breaker[j * input_width + i] = row[i];
+                    pot_syn_tie_breaker[j * input_width + i] =
+                        (static_cast<float>(i) + 1.0f) * syn_norm + (static_cast<float>(j) + 1.0f) * row_norm;
                 } });
         }
 
@@ -230,6 +213,21 @@ namespace overlap
         return col_overlaps_tie_;
     }
 
+    const std::vector<int>& OverlapCalculator::get_col_pot_inputs() const
+    {
+        return col_input_pot_syn_;
+    }
+
+    std::pair<int, int> OverlapCalculator::get_col_pot_inputs_shape() const
+    {
+        return std::make_pair(num_columns_, potential_width_ * potential_height_);
+    }
+
+    const std::vector<float>& OverlapCalculator::get_col_pot_overlaps() const
+    {
+        return col_pot_overlaps_;
+    }
+
     void OverlapCalculator::get_col_inputs(const std::vector<int> &inputGrid, const std::pair<int, int> &inputGrid_shape, std::vector<int> &col_inputs, tf::Taskflow &taskflow)
     {
         // This function uses a convolution function to return the inputs that each column potentially connects to.
@@ -242,8 +240,49 @@ namespace overlap
         const int output_size = num_columns_ * potential_height_ * potential_width_;
         assert(col_inputs.size() == output_size);
 
-        // Call the parallel_Images2Neibs_1D function
-        overlap_utils::parallel_Images2Neibs_1D(col_inputs, col_inputs_shape_, inputGrid, inputGrid_shape, neib_shape_, neib_step_, wrap_input_, center_pot_synapses_, taskflow);
+        // IMPORTANT: We must iterate over the *column grid* here, not over the input grid.
+        // If columns_width/height exceed input_width/height (with wrap_input enabled),
+        // columns beyond the input extents should still map to wrapped input patches.
+        overlap_utils::parallel_Columns2Neibs_1D(
+            col_inputs,
+            col_inputs_shape_,
+            inputGrid,
+            inputGrid_shape,
+            neib_shape_,
+            neib_step_,
+            wrap_input_,
+            center_pot_synapses_,
+            taskflow);
+    }
+
+    void OverlapCalculator::add_pot_overlap_epsilon(tf::Taskflow &taskflow)
+    {
+        // Add a tiny per-column deterministic epsilon to the *potential* overlap.
+        //
+        // Why: when the input is very sparse (e.g. only 1 bit on), the masked per-synapse
+        // tie-breaker can only take `num_pot_syn` distinct values. With more columns than
+        // that (e.g. 40 cols vs 20 pot syn), repeats are inevitable. This epsilon breaks
+        // exact ties without introducing random-looking behaviour, and is small enough
+        // to not override a 1-count difference in potential overlap.
+        const int n = potential_width_ * potential_height_;
+        const float nf = static_cast<float>(n);
+
+        // The normalization uses the triangular number formula: 1 + 2 + ... + n = n*(n+1)/2.
+        // By dividing 0.5 by this sum, we ensure that even if ALL n synapses were active
+        // and each contributed its maximum tie-breaker value (which sums to n*(n+1)/2 units),
+        // the total contribution would equal exactly 0.5—never enough to cross an integer
+        // boundary and change which column "wins" based on actual overlap count.
+        //
+        // Here we reuse this same scale factor to keep the per-column epsilon in the same
+        // tiny magnitude range (~0.001 for n=20), ensuring it only breaks ties between
+        // columns that already have identical synapse-level tie-breaker sums.
+        const float pot_norm = (n > 0) ? 0.5f / (nf * (nf + 1.0f) / 2.0f) : 0.0f;
+
+        taskflow.for_each_index(0, num_columns_, 1, [this, pot_norm](int c) {
+            // col_tie_breaker_ values are in (0, ~0.5). Scaling by pot_norm shrinks them
+            // to ~0.0012 for n=20, small enough to only resolve exact ties.
+            col_pot_overlaps_[c] += col_tie_breaker_[c] * pot_norm;
+        }).name("add_pot_overlap_epsilon");
     }
 
     void OverlapCalculator::calculate_overlap(const std::vector<float> &colSynPerm,
@@ -272,6 +311,9 @@ namespace overlap
         // Sum the potential inputs for every column, Calculate the col_pot_overlaps_.
         overlap_utils::parallel_calcOverlap(col_input_pot_syn_tie_, num_columns_, potential_height_ * potential_width_, col_pot_overlaps_, tf3);
 
+        // Add a tiny per-column deterministic epsilon to the potential overlap scores.
+        add_pot_overlap_epsilon(tf7);
+
         // Calculate the connected synapse inputs for every column. The synapses who's permanence values are above the connected_perm_ threshold and are connected to an active input.
         // Calculate the con_syn_input_.
         overlap_utils::get_connected_syn_input(colSynPerm, col_input_pot_syn_, connected_perm_,
@@ -292,14 +334,18 @@ namespace overlap
         tf::Task f4_task = taskflow.composed_of(tf4).name("get_connected_syn_input");
         tf::Task f5_task = taskflow.composed_of(tf5).name("parallel_calcOverlap");
         tf::Task f6_task = taskflow.composed_of(tf6).name("parallel_addVectors");
+        tf::Task f7_task = taskflow.composed_of(tf7).name("add_pot_overlap_epsilon");
         f1_task.precede(f2_task);
         f2_task.precede(f3_task);
         f2_task.precede(f4_task);
+        f3_task.precede(f7_task);  // Epsilon addition runs after potential overlap calculation
         f4_task.precede(f5_task);
         f5_task.precede(f6_task);
 
         // dump the graph to a DOT file through std::cout
-        taskflow.dump(std::cout);
+        if (debug) {
+            taskflow.dump(std::cout);
+        }
 
         ///////////////////////////////////////////////////////////////////////////
         // Run the constructed taskflow graph.
@@ -335,9 +381,11 @@ namespace overlap
             // Print the tie breaker values
             LOG(INFO, "col_tie_breaker_ shape: " + std::to_string(col_tie_breaker_.size()));
             overlap_utils::print_2d_vector(col_tie_breaker_, {columns_height_, columns_width_});
+
+            LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
         }
 
-        LOG(DEBUG, "OverlapCalculator calculate_overlap Done.");
+        
     }
 
 } // namespace overlap

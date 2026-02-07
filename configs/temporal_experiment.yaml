@@ -1,0 +1,73 @@
+# Temporal Pooling Experiment Configuration
+# 2-layer region with parameters matching the Python temporal pooling test suite.
+# See: HTM/tests/temporalPooling/test_temporalPoolingSuite2.py
+
+enable_feedback: false
+
+layers:
+  # Layer 0 - Matches Python layer 0 config
+  - name: Layer0_Temporal
+    input:
+      rows: 60   # 2 * columnArrayHeight (30)
+      cols: 30   # columnArrayWidth (10) * cellsPerColumn (3)
+    columns:
+      rows: 30
+      cols: 10
+    overlap:
+      pot_width: 4
+      pot_height: 4
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 3
+      min_potential_overlap: 1
+      wrap_input: true
+    inhibition:
+      width: 4
+      height: 2
+      desired_local_activity: 1
+      strict_local_activity: false
+    spatial_learning:
+      permanence_inc: 0.1
+      permanence_dec: 0.02
+      active_col_permanence_dec: 0.02
+    sequence_memory:
+      cells_per_column: 3
+      max_segments_per_cell: 10
+      max_synapses_per_segment: 10   # newSynapseCount in Python
+      min_num_syn_threshold: 5       # minThreshold in Python
+      new_syn_permanence: 0.4        # cellSynPermanence in Python
+      connect_permanence: 0.3
+      activation_threshold: 6
+      permanence_inc: 0.1            # permanenceInc in Python
+      permanence_dec: 0.02           # permanenceDec in Python
+    temporal_pooling:
+      enabled: true
+      delay_length: 3
+      spatial_permanence_inc: 0.1
+      sequence_permanence_inc: 0.1
+
+  # Layer 1 - Second layer with temporal pooling
+  - name: Layer1_Temporal
+    columns:
+      rows: 30
+      cols: 10
+    overlap:
+      pot_width: 4
+      pot_height: 4
+      center_pot_synapses: true
+      connected_perm: 0.3
+      min_overlap: 3
+    inhibition:
+      width: 4
+      height: 2
+      desired_local_activity: 1
+    sequence_memory:
+      cells_per_column: 3
+      max_segments_per_cell: 10
+      max_synapses_per_segment: 10
+      activation_threshold: 6
+    temporal_pooling:
+      enabled: true
+      delay_length: 3
+      spatial_permanence_inc: 0.1
+      sequence_permanence_inc: 0.1

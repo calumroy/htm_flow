@@ -1,34 +1,254 @@
 # htm_flow
-A pattern recognition algorithm using the cpp library cpp taskflow. 
+
+A C++ implementation of Hierarchical Temporal Memory (HTM) using the [Taskflow](https://taskflow.github.io/) parallel programming library.
+
+## Overview
+
+HTM is a biologically-inspired machine learning algorithm that models the neocortex. This implementation provides:
+
+- **HTMLayer**: A single HTM layer implementing the full pipeline (overlap → inhibition → spatial learning → sequence memory → temporal pooling)
+- **HTMRegion**: A stack of layers forming a cortical hierarchy, where each layer learns increasingly abstract representations
+- **HTMRegionRuntime**: GUI-compatible wrapper for visualization and debugging
+
+The architecture allows flexible configuration and testing of single layers, multi-layer regions, or complete networks.
+
+## Quick Start
+
+```bash
+# Install dependencies (Taskflow, GoogleTest)
+./setup.sh
+
+# Build (CPU-only, Release mode)
+./build.sh Release
+
+# Run headless (3 steps by default)
+./build/htm_flow
+
+# Run with more steps
+./build/htm_flow --steps 100
 ```
-setup.sh
+
+## Building
+
+### Prerequisites
+```bash
+sudo apt install cmake g++  # GCC >= 10.2.1 required
 ```
-Installs taskflow locally and then copies the header only files for task flow to include directory.
+
+### Build Options
+
+```bash
+./build.sh [Release|Debug|RelWithDebInfo] [GPU]
+```
+
+**Examples:**
+```bash
+./build.sh Debug              # Debug build, CPU only
+./build.sh Release            # Release build, CPU only
+./build.sh Debug GPU          # Debug build with CUDA support
+./build.sh Release GPU        # Release build with CUDA support
+./build.sh clean              # Delete build directory
+```
+
+> **Note:** For GUI builds, use the container scripts in `htm_gui/` (see "With GUI" section below).
+
+## Running the Main Executable
+
+### Headless Mode (no GUI)
+```bash
+./build/htm_flow                    # Run 3 steps (default)
+./build/htm_flow --steps 100        # Run 100 steps
+./build/htm_flow --steps 50 --log   # Run with timing output
+```
+
+### With GUI (Container)
+
+The GUI uses a container with Qt6 pre-installed, so you don't need to install Qt6 locally.
+
+```bash
+# Install podman if needed
+sudo apt install podman
+
+# Build the container image (once)
+cd htm_gui
+./build_image.sh
+
+# Run the main GUI
+./run_gui.sh
+
+# Or run debug_region with different configs (see "Manual Debugging" section)
+./run_debug.sh 2layer
+```
+
+The scripts mount your source code, build inside the container, and launch the GUI with X11/Wayland display forwarding.
+
+**The GUI allows you to:**
+- Step through the HTM algorithm one timestep at a time
+- Visualize column activations, cell states, and predictions
+- Inspect proximal and distal synapses for any column/cell
+- Switch between different input patterns
+- Select which layer to view (for multi-layer regions)
+
+## Manual Debugging with GUI
+
+The `debug_region` tool lets you run any HTM configuration with the GUI for manual debugging and experimentation.
+
+```bash
+cd htm_gui
+./build_image.sh              # Build container (once)
+
+# Run with YAML config files
+./run_debug.sh --config configs/small_test.yaml
+./run_debug.sh --config configs/no_temporal_pooling.yaml
+./run_debug.sh --config configs/top_layer_pooling.yaml
+./run_debug.sh --config configs/full_temporal_pooling.yaml
+
+# Or use built-in configurations
+./run_debug.sh 2layer
+./run_debug.sh temporal
+
+# Train first, then debug
+./run_debug.sh --config configs/small_test.yaml --train 20
+
+# List available configs
+./run_debug.sh --list-configs
+
+# Show all options
+./run_debug.sh --help
+```
+
+## YAML Configuration Files
+
+Configurations are stored in the `configs/` directory as YAML files. This makes it easy to create and share network configurations without modifying C++ code.
+
+### Available Configurations
+
+| File | Description |
+|------|-------------|
+| `small_test.yaml` | Small 2-layer config for quick testing |
+| `no_temporal_pooling.yaml` | 3-layer, temporal pooling disabled in all layers |
+| `top_layer_pooling.yaml` | 3-layer, temporal pooling only in top layer |
+| `full_temporal_pooling.yaml` | 3-layer, temporal pooling in all layers |
+| `temporal_experiment.yaml` | Matches Python test suite parameters |
+
+### Creating Custom Configurations
+
+Copy an existing config and modify it:
+
+```bash
+cp configs/small_test.yaml configs/my_experiment.yaml
+# Edit my_experiment.yaml
+./run_debug.sh --config configs/my_experiment.yaml
+```
+
+### YAML Format Example
+
+```yaml
+# configs/my_experiment.yaml
+enable_feedback: false
+
+layers:
+  - name: Layer0_Sensory
+    input:
+      rows: 20
+      cols: 20
+    columns:
+      rows: 20
+      cols: 40
+    overlap:
+      pot_width: 10
+      center_pot_synapses: true
+      connected_perm: 0.3
+    inhibition:
+      width: 20
+      desired_local_activity: 2
+    sequence_memory:
+      cells_per_column: 5
+      max_segments_per_cell: 4
+    temporal_pooling:
+      enabled: true              # Enable/disable temporal pooling per layer
+      enable_persistence: true   # Optional: disable persistence only
+      delay_length: 4
+      spatial_permanence_inc: 0.1
+
+  - name: Layer1_Top
+    columns:
+      rows: 20
+      cols: 40
+    temporal_pooling:
+      enabled: true
+```
+
+### Using with Main Executable
+
+The main `htm_flow` executable also supports YAML configs:
+
+```bash
+./build/htm_flow --config configs/small_test.yaml --steps 100
+./build/htm_flow --config configs/full_temporal_pooling.yaml --gui  # (if built with GUI)
+./build/htm_flow --list-configs  # Show available configs
+```
+
+### Built-in Configurations (Legacy)
+
+These built-in configs are still available without YAML files:
+
+| Config | Description |
+|--------|-------------|
+| `1layer` / `single` | Single layer (default) |
+| `2layer` | Two-layer hierarchy |
+| `3layer` | Three-layer hierarchy |
+| `temporal` | Temporal pooling experiment |
+| `default` | Default config (larger 20x40 grid) |
+
+
+
+## Project Structure
 
 ```
-build.sh
-```  
-builds the project using cmake and gcc > 10.2.1 
-Creates the executable in a out of source build directory.
-It also builds all the unit tests (include GPU option for including the cuda GPU tests, see below).
+htm_flow/
+├── configs/                 # YAML configuration files
+│   ├── small_test.yaml
+│   ├── no_temporal_pooling.yaml
+│   ├── top_layer_pooling.yaml
+│   ├── full_temporal_pooling.yaml
+│   └── temporal_experiment.yaml
+├── include/htm_flow/
+│   ├── config.hpp           # Configuration structs (HTMLayerConfig, HTMRegionConfig)
+│   ├── config_loader.hpp    # YAML config loading/saving
+│   ├── htm_layer.hpp        # Single HTM layer (full pipeline)
+│   ├── htm_region.hpp       # Multi-layer hierarchy
+│   ├── region_runtime.hpp   # GUI-compatible wrapper with input generation
+│   ├── overlap.hpp          # Overlap calculator
+│   ├── inhibition.hpp       # Inhibition calculator
+│   ├── spatiallearn.hpp     # Spatial learning calculator
+│   ├── sequence_pooler/     # Sequence memory (active cells, predictions, learning)
+│   └── temporal_pooler/     # Temporal pooling calculator
+├── src/
+│   ├── debug_region.cpp     # Debug tool for manual GUI testing
+│   └── ...                  # Implementation files
+├── test/                    # Unit and integration tests
+├── htm_gui/                 # Qt6 debugger GUI
+└── cuda/                    # GPU implementations
+```
 
-You can build a debug or release CPU only version of the project.
-```
-build.sh Debug
-```
-```
-build.sh Release
-```
-```
-build.sh RelWithDebInfo
-```
+### Key Classes
 
-You may need cmake installed to build the project.
-```
-sudo apt install cmake
-```
+| Class | Purpose |
+|-------|---------|
+| `HTMLayer` | Core HTM layer with full pipeline. Use directly or stack into regions. |
+| `HTMRegion` | Stack of HTMLayers for hierarchical processing. |
+| `HTMRegionRuntime` | GUI-compatible wrapper with input generation and layer selection. |
 
+### Configuration
 
+All HTM parameters are defined in `HTMLayerConfig` (see `include/htm_flow/config.hpp`). Preset configurations are available:
+
+```cpp
+auto cfg = htm_flow::default_layer_config();      // Standard defaults
+auto cfg = htm_flow::small_test_config();         // Fast testing
+auto cfg = htm_flow::temporal_pooling_test_config(); // Temporal pooling experiments
+```
 
 ## Task flow with GPU support
 To run the task flow with GPU support, you need to have CUDA installed on your system.
@@ -53,28 +273,65 @@ Info on CUDA cmake building
 https://developer.nvidia.com/blog/building-cuda-applications-cmake/
 
 
-## Unit tests
-Uses the google test framework.
-To run the unit tests, you need to have the google test framework installed.
-This is done automatically by the setup.sh script.
+## Testing
+
+Uses the [GoogleTest](https://github.com/google/googletest) framework (installed by `setup.sh`).
+
+### Running Tests
+
+```bash
+# Run all tests
+./build/htm_flow_tests
+
+# List available tests
+./build/htm_flow_tests --gtest_list_tests
+
+# Run a specific test
+./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap
+
+# Run tests matching a pattern
+./build/htm_flow_tests --gtest_filter=parallel*
 ```
-setup.sh 
-```  
 
-To run the unit tests, use the executable   
-`./build/htm_flow_tests`  
-To list all unit tests use googletest flags   
-`./build/htm_flow_tests --gtest_list_tests`  
-To run specifc test e.g "parallel_Images2Neibs.test2_wrap" use googletest flags  
-`./build/htm_flow_tests --gtest_filter=parallel_Images2Neibs.test2_wrap`
-To run all tests with the "parallel" prefix use  
-`./build/htm_flow_tests --gtest_filter=parallel*`  
+### Integration Tests
 
-To run the GPU unit tests you must build with the GPU option `build.sh Debug GPU`
-Then run specific GPU unit tests with e.g  
-`./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test1_wrap`
+Integration tests verify the complete HTM pipeline (HTMLayer, HTMRegion):
 
-# Visualize Taskflow Graphs
+```bash
+# Run all HTMLayer integration tests
+./build/htm_flow_tests --gtest_filter=HTMLayerIntegration.*
+
+# Run all HTMRegion integration tests
+./build/htm_flow_tests --gtest_filter=HTMRegionIntegration.*
+
+# Run all integration tests
+./build/htm_flow_tests --gtest_filter=*Integration*
+```
+
+**Available integration test suites:**
+- `HTMLayerIntegration.*` - Single layer sanity checks (columns activate, predictions form, learning occurs)
+- `HTMRegionIntegration.*` - Multi-layer hierarchies (layer stacking, input propagation, temporal pooling)
+
+### Unit Tests
+
+Unit tests verify individual calculators in isolation:
+
+```bash
+./build/htm_flow_tests --gtest_filter=parallel_inhibition*   # Inhibition calculator
+./build/htm_flow_tests --gtest_filter=parallel_overlap*      # Overlap calculator
+./build/htm_flow_tests --gtest_filter=spatiallearn*          # Spatial learning
+./build/htm_flow_tests --gtest_filter=TemporalPooler*        # Temporal pooler
+```
+
+### GPU Tests
+
+Requires building with GPU support: `./build.sh Debug GPU`
+
+```bash
+./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.*
+```
+
+## Visualize Taskflow Graphs
 You can dump a taskflow graph to a DOT format and visualize it using a number of free GraphViz tools such as [GraphViz Online](https://dreampuf.github.io/GraphvizOnline/).
 
 e.g add the code 
@@ -147,7 +404,7 @@ cuda-gdb --args ./build/htm_flow_tests --gtest_filter=gpu_Images2Neibs.test4_lar
 (cuda-gdb) run
 ```
 
-# Generate Doxygen code documentation
+## Generate Doxygen Code Documentation
 To generate the code documentation, you need to have doxygen installed.
 ```
 sudo apt install doxygen
@@ -159,7 +416,7 @@ doxygen Doxyfile
 This will generate the documentation in the `htm_flow/docs` directory.
 Open the `htm_flow/docs/html/index.html` file in a web browser to view the documentation.
 
-# Run in a docker container
+## Run in a Docker Container
 To run the project in a docker container, you need to have docker installed with nvidia container toolkit.
 Install dockler with the following command:
 ```

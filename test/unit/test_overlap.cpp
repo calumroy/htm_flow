@@ -1003,6 +1003,64 @@ TEST(OverlapCalculatorTest, WrapInputTest)
     LOG(DEBUG, "Wrap Input Test Passed");
 }
 
+TEST(OverlapCalculatorTest, ColumnsWiderThanInputWrapDoesNotZeroTail)
+{
+    // Regression test:
+    // When columns_width > input_width with wrap_input enabled, columns beyond the input width
+    // should wrap around and still see valid input patches (not remain all zeros).
+    const int potential_width = 3;
+    const int potential_height = 3;
+    const int columns_width = 40;
+    const int columns_height = 1;
+    const int input_width = 20;
+    const int input_height = 4;
+    const bool center_pot_synapses = false;
+    const float connected_perm = 0.2f;
+    const int min_overlap = 0;
+    const bool wrap_input = true;
+
+    // Input: 4x20 with a vertical line at x=0, so overlap should be >0 for many columns.
+    std::vector<int> inputGrid(input_width * input_height, 0);
+    for (int r = 0; r < input_height; ++r) {
+        inputGrid[r * input_width + 0] = 1;
+    }
+    const std::pair<int, int> inputGridShape = {input_height, input_width};
+
+    // Permanences: all synapses connected.
+    const int num_columns = columns_width * columns_height;
+    const int synapses_per_column = potential_width * potential_height;
+    std::vector<float> colSynPerm(num_columns * synapses_per_column, 1.0f);
+    const std::pair<int, int> colSynPermShape = {num_columns, synapses_per_column};
+
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    overlapCalc.calculate_overlap(colSynPerm, colSynPermShape, inputGrid, inputGridShape);
+    const std::vector<float> overlapScores = overlapCalc.get_col_overlaps();
+
+    ASSERT_EQ(overlapScores.size(), static_cast<size_t>(num_columns));
+
+    // Column x=0 and x=20 should map to the same wrapped input start, so their integer overlap
+    // (before per-column tie-breakers) should match and be >0.
+    const int idx0 = 0;   // (y=0, x=0)
+    const int idx20 = 20; // (y=0, x=20)
+
+    const int ov0 = static_cast<int>(overlapScores[idx0]);
+    const int ov20 = static_cast<int>(overlapScores[idx20]);
+
+    ASSERT_GT(ov0, 0);
+    ASSERT_EQ(ov0, ov20);
+}
+
 TEST(OverlapCalculatorTest, NoConnectedSynapsesTest)
 {
     // Test case where no synapses are connected (all permanences below threshold)
@@ -1417,5 +1475,47 @@ TEST(OverlapCalculatorTest, TieBreakerConsistencyTest)
     overlap_utils::print_2d_vector(tieBreaker1, {columns_height * potential_height, columns_width * potential_width});
 
     LOG(DEBUG, "Tie-Breaker Consistency Test Passed");
+}
+
+TEST(OverlapCalculatorTest, PotSynTieBreakerRowsDiffer)
+{
+    // Regression test: the per-column (row) potential-synapse tie-breaker must vary per row.
+    // If every row is identical, columns that see identical wrapped potential pools will tie
+    // exactly in potential overlap, defeating the intended bias.
+    int potential_width = 5;
+    int potential_height = 4;
+    int columns_width = 6;
+    int columns_height = 5;
+    int input_width = 6;
+    int input_height = 6;
+    bool center_pot_synapses = true;
+    float connected_perm = 0.5f;
+    int min_overlap = 0;
+    bool wrap_input = false;
+
+    overlap::OverlapCalculator overlapCalc(
+        potential_width,
+        potential_height,
+        columns_width,
+        columns_height,
+        input_width,
+        input_height,
+        center_pot_synapses,
+        connected_perm,
+        min_overlap,
+        wrap_input);
+
+    const std::vector<float> tie = overlapCalc.get_pot_syn_tie_breaker();
+    const std::size_t row_len = static_cast<std::size_t>(potential_width * potential_height);
+    ASSERT_GE(tie.size(), 2 * row_len);
+
+    bool any_diff = false;
+    for (std::size_t i = 0; i < row_len; ++i) {
+        if (tie[i] != tie[row_len + i]) {
+            any_diff = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(any_diff) << "Expected row 0 and row 1 of pot syn tie-breaker to differ";
 }
 
