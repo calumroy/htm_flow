@@ -21,6 +21,55 @@
 
 namespace {
 
+// ── Suite-wide default configuration ────────────────────────────────
+// Equivalent to htm_flow::small_test_config() with all values shown explicitly.
+// Every test in this file starts from this config (or a modified copy).
+htm_flow::HTMLayerConfig suiteConfig() {
+  htm_flow::HTMLayerConfig cfg;
+  // Input/column grid
+  cfg.num_input_rows            = 10;
+  cfg.num_input_cols            = 10;
+  cfg.num_column_rows           = 10;
+  cfg.num_column_cols           = 20;
+  // Proximal topology
+  cfg.pot_width                 = 5;
+  cfg.pot_height                = 1;
+  cfg.center_pot_synapses       = true;
+  cfg.wrap_input                = true;
+  cfg.connected_perm            = 0.3f;
+  cfg.min_overlap               = 2;
+  cfg.min_potential_overlap     = 1;
+  // Inhibition
+  cfg.inhibition_width          = 10;
+  cfg.inhibition_height         = 1;
+  cfg.desired_local_activity    = 1;
+  cfg.strict_local_activity     = false;
+  // Spatial learning
+  cfg.spatial_permanence_inc    = 0.1f;
+  cfg.spatial_permanence_dec    = 0.05f;
+  cfg.active_col_permanence_dec = 0.05f;
+  // Sequence pooler
+  cfg.cells_per_column          = 3;
+  cfg.max_segments_per_cell     = 2;
+  cfg.max_synapses_per_segment  = 10;
+  cfg.min_num_syn_threshold     = 5;
+  cfg.min_score_threshold       = 5;
+  cfg.new_syn_permanence        = 0.3f;
+  cfg.connect_permanence        = 0.2f;
+  cfg.activation_threshold      = 6;
+  cfg.sequence_permanence_inc   = 0.1f;
+  cfg.sequence_permanence_dec   = 0.05f;
+  // Temporal pooler
+  cfg.temp_enabled              = true;
+  cfg.temp_delay_length         = 4;
+  cfg.temp_enable_persistence   = true;
+  cfg.temp_spatial_permanence_inc  = 0.01f;
+  cfg.temp_sequence_permanence_inc = 0.01f;
+  // Runtime
+  cfg.log_timings               = false;
+  return cfg;
+}
+
 /// Create a vertical line input pattern at the given x position.
 std::vector<int> create_vertical_line(int width, int height, int x_pos) {
   std::vector<int> input(static_cast<std::size_t>(width * height), 0);
@@ -100,7 +149,7 @@ private:
 
 TEST(HTMRegionIntegration, SingleLayerRegionWorks) {
   // Test that a single-layer region works correctly.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg;
   cfg.layers.push_back(layer_cfg);
 
@@ -118,7 +167,7 @@ TEST(HTMRegionIntegration, SingleLayerRegionWorks) {
 
 TEST(HTMRegionIntegration, MultiLayerRegionStacks) {
   // Test that a multi-layer region correctly stacks layers.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg;
   cfg.layers.push_back(layer_cfg);
   cfg.layers.push_back(layer_cfg);  // Second layer will auto-adjust input dims
@@ -149,7 +198,7 @@ TEST(HTMRegionIntegration, MultiLayerRegionStacks) {
 
 TEST(HTMRegionIntegration, LayerAccessWorks) {
   // Test that we can access individual layers in a region.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(3, layer_cfg);
 
   htm_flow::HTMRegion region(cfg);
@@ -173,7 +222,7 @@ TEST(HTMRegionIntegration, LayerAccessWorks) {
 
 TEST(HTMRegionIntegration, OutputPassesBetweenLayers) {
   // Test that output from one layer becomes input to the next.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(2, layer_cfg);
 
   htm_flow::HTMRegion region(cfg);
@@ -199,7 +248,7 @@ TEST(HTMRegionIntegration, OutputPassesBetweenLayers) {
 
 TEST(HTMRegionIntegration, RegionRuntimeWorks) {
   // Test that HTMRegionRuntime provides correct IHtmRuntime interface.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(3, layer_cfg);
 
   htm_flow::HTMRegionRuntime runtime(cfg, "TestRuntime");
@@ -222,7 +271,7 @@ TEST(HTMRegionIntegration, RegionRuntimeWorks) {
 
 TEST(HTMRegionIntegration, RegionRuntimeLayerOptions) {
   // Test that layer_options returns correct options for GUI.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(3, layer_cfg);
 
   htm_flow::HTMRegionRuntime runtime(cfg);
@@ -236,7 +285,7 @@ TEST(HTMRegionIntegration, RegionRuntimeLayerOptions) {
 
 TEST(HTMRegionIntegration, RegionRuntimeInputSequences) {
   // Test that input sequence selection works in region runtime.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(2, layer_cfg);
 
   htm_flow::HTMRegionRuntime runtime(cfg);
@@ -255,7 +304,7 @@ TEST(HTMRegionIntegration, RegionRuntimeInputSequences) {
 
 TEST(HTMRegionIntegration, TemporalPoolingWithTraining) {
   // Test that temporal pooling occurs after training on a repeating sequence.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   // Use larger learning rates for faster convergence
   layer_cfg.spatial_permanence_inc = 0.15f;
   layer_cfg.temp_spatial_permanence_inc = 0.1f;
@@ -306,7 +355,7 @@ TEST(HTMRegionIntegration, TemporalPoolingWithTraining) {
 
 TEST(HTMRegionIntegration, UniformRegionConfigWorks) {
   // Test that uniform_region_config helper produces valid config.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(4, layer_cfg);
 
   EXPECT_EQ(cfg.layers.size(), 4u);
@@ -321,11 +370,11 @@ TEST(HTMRegionIntegration, DifferentLayerConfigs) {
   htm_flow::HTMRegionConfig cfg;
 
   // Layer 0: small config
-  auto layer0_cfg = htm_flow::small_test_config();
+  auto layer0_cfg = suiteConfig();
   cfg.layers.push_back(layer0_cfg);
 
   // Layer 1: different config (will have input dims adjusted)
-  auto layer1_cfg = htm_flow::small_test_config();
+  auto layer1_cfg = suiteConfig();
   layer1_cfg.num_column_cols = 15;  // Different column layout
   layer1_cfg.num_column_rows = 8;
   cfg.layers.push_back(layer1_cfg);
@@ -357,7 +406,7 @@ TEST(HTMRegionIntegration, EmptyConfigThrows) {
 
 TEST(HTMRegionIntegration, InvalidLayerIndexThrows) {
   // Test that accessing invalid layer index throws an exception.
-  auto layer_cfg = htm_flow::small_test_config();
+  auto layer_cfg = suiteConfig();
   htm_flow::HTMRegionConfig cfg = htm_flow::uniform_region_config(2, layer_cfg);
 
   htm_flow::HTMRegion region(cfg);

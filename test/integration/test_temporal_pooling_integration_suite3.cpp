@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/tp_harness.hpp"
-#include "test_utils/tp_inputs.hpp"
-#include "test_utils/tp_metrics.hpp"
-#include "test_utils/tp_suite3_patterns.hpp"
+#include "../test_utils/tp_harness.hpp"
+#include "../test_utils/tp_inputs.hpp"
+#include "../test_utils/tp_metrics.hpp"
+#include "../test_utils/tp_suite3_patterns.hpp"
 
 #include <vector>
 
@@ -14,6 +14,62 @@ using temporal_pooling_test_utils::TwoLayerHtmHarness;
 using temporal_pooling_test_utils::similarityPercent;
 
 namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Suite3 uses small 8x8 hardcoded patterns (see Suite3Patterns), so the
+// layer configs are adapted for that input size.
+// Every test in this file starts from these configs.
+// Modify copies in individual tests if needed.
+TwoLayerHtmHarness::Config suiteConfig() {
+  TwoLayerHtmHarness::Config cfg;
+
+  // Layer 0 — receives 8x8 input patterns
+  cfg.l0.input_rows              = 8;   // Suite3Patterns::h
+  cfg.l0.input_cols              = 8;   // Suite3Patterns::w
+  cfg.l0.col_rows                = 10;
+  cfg.l0.col_cols                = 10;
+  cfg.l0.pot_h                   = 4;   // Must be <= input dims for 8x8 inputs
+  cfg.l0.pot_w                   = 4;
+  cfg.l0.center_pot_synapses     = false;
+  cfg.l0.wrap_input              = true;
+  cfg.l0.inhib_w                 = 7;
+  cfg.l0.inhib_h                 = 7;
+  cfg.l0.desired_local_activity  = 4;
+  cfg.l0.connected_perm          = 0.3f;
+  cfg.l0.min_overlap             = 2;
+  cfg.l0.min_potential_overlap   = 0;
+  cfg.l0.spatial_perm_inc        = 0.05f;
+  cfg.l0.spatial_perm_dec        = 0.02f;
+  cfg.l0.active_col_perm_dec     = 0.01f;
+  cfg.l0.cells_per_column        = 4;
+  cfg.l0.max_segments_per_cell   = 2;
+  cfg.l0.max_synapses_per_segment = 10;
+  cfg.l0.min_num_syn_threshold   = 1;
+  cfg.l0.min_score_threshold     = 1;
+  cfg.l0.new_syn_permanence      = 0.3f;
+  cfg.l0.connect_permanence      = 0.2f;
+  cfg.l0.activation_threshold    = 3;
+  cfg.l0.seq_perm_inc            = 0.05f;
+  cfg.l0.seq_perm_dec            = 0.02f;
+  cfg.l0.temp_spatial_perm_inc   = 0.05f;
+  cfg.l0.temp_seq_perm_inc       = 0.05f;
+  cfg.l0.temp_delay_length       = 4;
+  cfg.l0.temp_enable_persistence = true;
+  cfg.l0.rng_seed                = 123u;
+
+  // Layer 1 — input is layer 0's column grid (10x10)
+  cfg.l1 = cfg.l0;                       // Start from layer 0 defaults
+  cfg.l1.input_rows              = cfg.l0.col_rows;   // 10
+  cfg.l1.input_cols              = cfg.l0.col_cols;    // 10
+  cfg.l1.col_rows                = 8;
+  cfg.l1.col_cols                = 8;
+  cfg.l1.pot_h                   = 4;
+  cfg.l1.pot_w                   = 4;
+  cfg.l1.desired_local_activity  = 3;
+
+  cfg.rng_seed = 123u;
+  return cfg;
+}
 
 inline std::vector<uint8_t> runAndCaptureOneCycleTopLearn(TwoLayerHtmHarness& htm,
                                                           CustomSdrInputs& inputs,
@@ -96,28 +152,7 @@ TEST(TemporalPoolingIntegrationSuite3, test_tempEquality_two_patterns_recall_and
 
   Suite3Patterns pats;
 
-  TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
-  cfg.l0.input_rows = pats.h;
-  cfg.l0.input_cols = pats.w;
-  cfg.l0.col_rows = 10;
-  cfg.l0.col_cols = 10;
-  // The default harness uses a tall potential pool (pot_h=12) for larger inputs.
-  // For Suite3's small (8x8) hardcoded patterns, we must keep pot sizes <= input sizes.
-  cfg.l0.pot_h = 4;
-  cfg.l0.pot_w = 4;
-  cfg.l0.desired_local_activity = 4;
-  cfg.l1.input_rows = cfg.l0.col_rows;
-  cfg.l1.input_cols = cfg.l0.col_cols;
-  cfg.l1.col_rows = 8;
-  cfg.l1.col_cols = 8;
-  cfg.l1.pot_h = 4;
-  cfg.l1.pot_w = 4;
-  cfg.l1.desired_local_activity = 3;
-  cfg.rng_seed = 123u;
-
-  TwoLayerHtmHarness htm(cfg);
+  TwoLayerHtmHarness htm(suiteConfig());
 
   CustomSdrInputs inputs(pats.w, pats.h);
   const int defIdx = inputs.appendSequence(pats.DEF());
@@ -209,26 +244,7 @@ TEST(TemporalPoolingIntegrationSuite3, test_temporalDiff_shared_element_produces
 
   Suite3Patterns pats;
 
-  TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
-  cfg.l0.input_rows = pats.h;
-  cfg.l0.input_cols = pats.w;
-  cfg.l0.col_rows = 10;
-  cfg.l0.col_cols = 10;
-  cfg.l0.pot_h = 4;
-  cfg.l0.pot_w = 4;
-  cfg.l0.desired_local_activity = 4;
-  cfg.l1.input_rows = cfg.l0.col_rows;
-  cfg.l1.input_cols = cfg.l0.col_cols;
-  cfg.l1.col_rows = 8;
-  cfg.l1.col_cols = 8;
-  cfg.l1.pot_h = 4;
-  cfg.l1.pot_w = 4;
-  cfg.l1.desired_local_activity = 3;
-  cfg.rng_seed = 123u;
-
-  TwoLayerHtmHarness htm(cfg);
+  TwoLayerHtmHarness htm(suiteConfig());
 
   CustomSdrInputs inputs(pats.w, pats.h);
   const int abcIdx = inputs.appendSequence(pats.ABC());

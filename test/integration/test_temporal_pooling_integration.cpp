@@ -1,6 +1,6 @@
-#include "test_utils/tp_harness.hpp"
-#include "test_utils/tp_inputs.hpp"
-#include "test_utils/tp_metrics.hpp"
+#include "../test_utils/tp_harness.hpp"
+#include "../test_utils/tp_inputs.hpp"
+#include "../test_utils/tp_metrics.hpp"
 
 #include <algorithm>
 #include <random>
@@ -11,6 +11,50 @@ using temporal_pooling_test_utils::TemporalPoolingMeasure;
 using temporal_pooling_test_utils::TwoLayerHtmHarness;
 using temporal_pooling_test_utils::VerticalLineInputs;
 using temporal_pooling_test_utils::similarityPercent;
+
+namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Every test in this file starts from this config.
+// Modify a copy in individual tests if needed.
+HtmPipelineHarness::Config suiteConfig() {
+  HtmPipelineHarness::Config c;
+  c.input_rows              = 24;
+  c.input_cols              = 16;
+  c.col_rows                = 12;
+  c.col_cols                = 12;
+  c.pot_h                   = 12;
+  c.pot_w                   = 4;
+  c.center_pot_synapses     = false;
+  c.wrap_input              = true;
+  c.inhib_w                 = 7;
+  c.inhib_h                 = 7;
+  c.desired_local_activity  = 6;
+  c.connected_perm          = 0.3f;
+  c.min_overlap             = 2;
+  c.min_potential_overlap   = 0;
+  c.spatial_perm_inc        = 0.05f;
+  c.spatial_perm_dec        = 0.02f;
+  c.active_col_perm_dec     = 0.01f;
+  c.cells_per_column        = 4;
+  c.max_segments_per_cell   = 2;
+  c.max_synapses_per_segment = 10;
+  c.min_num_syn_threshold   = 1;
+  c.min_score_threshold     = 1;
+  c.new_syn_permanence      = 0.3f;
+  c.connect_permanence      = 0.2f;
+  c.activation_threshold    = 3;
+  c.seq_perm_inc            = 0.05f;
+  c.seq_perm_dec            = 0.02f;
+  c.temp_spatial_perm_inc   = 0.05f;
+  c.temp_seq_perm_inc       = 0.05f;
+  c.temp_delay_length       = 4;
+  c.temp_enable_persistence = true;
+  c.rng_seed                = 123u;
+  return c;
+}
+
+} // namespace
 
 TEST(TemporalPoolingIntegration, repeating_sequence_temporally_pools) {
   // Step-by-step: what we're testing and why
@@ -24,7 +68,7 @@ TEST(TemporalPoolingIntegration, repeating_sequence_temporally_pools) {
   //    In this pipeline, learning-cells selection depends on predictive state, which is influenced by temporal pooling.
   // 4) Assert the pooling percent rises above a minimum threshold.
   //    Why: for a repeatable sequence, the output should become relatively stable across timesteps.
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
   inputs.setPattern(VerticalLineInputs::Pattern::LeftToRight);
   inputs.setSequenceProbability(1.0);
@@ -58,7 +102,7 @@ TEST(TemporalPoolingIntegration, random_order_sequence_does_not_pool_much) {
   //    is unpredictable.
   // 3) Measure temporal pooling percent on the learning-cells representation.
   // 4) Assert pooling remains low.
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
   inputs.setPattern(VerticalLineInputs::Pattern::LeftToRight);
   inputs.setSequenceProbability(1.0);
@@ -92,7 +136,7 @@ TEST(TemporalPoolingIntegration, missing_inputs_still_pools_some) {
   //    should still show some stability because the overall sequence is still structured.
   // 3) Measure pooling percent on learning-cells output.
   // 4) Assert pooling is not tiny (greater than the random-order case would be).
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
   inputs.setPattern(VerticalLineInputs::Pattern::LeftToRight);
   inputs.setSequenceProbability(1.0);
@@ -130,9 +174,10 @@ TEST(TemporalPoolingIntegration, pooled_representation_more_stable_than_raw_acti
   //    Why learning cells? The Python suites often look at cell-level outputs, and learning selection
   //    depends on predictive state (which temporal pooling influences).
   // 4) Assert pooling in Layer 1 is greater than (or at least not worse than) Layer 0.
+  // Build a 2-layer config from the suite defaults
   TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
+  cfg.l0 = suiteConfig();
+  cfg.l1 = suiteConfig();
   // Layer-1 input == Layer-0 column grid.
   cfg.l1.input_rows = cfg.l0.col_rows;
   cfg.l1.input_cols = cfg.l0.col_cols;
@@ -187,7 +232,7 @@ TEST(TemporalPoolingIntegration, multi_pattern_differentiation_and_recall) {
   // Implementation note:
   // We use EvenPositions vs OddPositions which are disjoint sets of vertical lines (for even input width),
   // inspired by the Python suite's use of disjoint patterns.
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
 
   // Use half-length sequences for even/odd patterns (disjoint).
   const int base_w = htm.cfg().input_cols;

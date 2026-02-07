@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/sp_harness.hpp"
-#include "test_utils/sp_metrics.hpp"
-#include "test_utils/tp_inputs.hpp"
+#include "../test_utils/sp_harness.hpp"
+#include "../test_utils/sp_metrics.hpp"
+#include "../test_utils/tp_inputs.hpp"
 
 #include <vector>
 
@@ -11,6 +11,36 @@ using spatial_pooling_test_utils::jaccardSimilarity01;
 using spatial_pooling_test_utils::toU8;
 
 using temporal_pooling_test_utils::VerticalLineInputs;
+
+namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Every test in this file starts from this config.
+// Modify a copy in individual tests if needed.
+SpatialPoolerHarness::Config suiteConfig() {
+  SpatialPoolerHarness::Config c;
+  c.input_rows            = 60;
+  c.input_cols            = 30;
+  c.col_rows              = 30;
+  c.col_cols              = 10;
+  c.pot_h                 = 4;
+  c.pot_w                 = 4;
+  c.center_pot_synapses   = true;
+  c.wrap_input            = false;
+  c.inhib_w               = 3;
+  c.inhib_h               = 3;
+  c.desired_local_activity = 2;
+  c.connected_perm        = 0.3f;
+  c.min_overlap           = 3;
+  c.min_potential_overlap  = 0;
+  c.spatial_perm_inc      = 0.10f;
+  c.spatial_perm_dec      = 0.02f;
+  c.active_col_perm_dec   = 0.02f;
+  c.rng_seed              = 123u;
+  return c;
+}
+
+} // namespace
 
 TEST(SpatialPoolingIntegrationSuite2, test_case1_two_patterns_non_forgetting_recall) {
   /*
@@ -41,7 +71,7 @@ TEST(SpatialPoolingIntegrationSuite2, test_case1_two_patterns_non_forgetting_rec
     qualitative behavior (high recall) but leave moderate slack to avoid brittle tests.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness sp(suiteConfig());
   VerticalLineInputs inputs(/*width=*/sp.cfg().input_cols, /*height=*/sp.cfg().input_rows, /*seq_len=*/sp.cfg().input_cols);
   inputs.setSequenceProbability(1.0);
 
@@ -122,7 +152,7 @@ TEST(SpatialPoolingIntegrationSuite2, test_case2_similar_patterns_non_forgetting
   - Both patterns remain recallable after training on the other.
   */
 
-  SpatialPoolerHarness sp(SpatialPoolerHarness::Config{});
+  SpatialPoolerHarness sp(suiteConfig());
   VerticalLineInputs inputs(/*width=*/sp.cfg().input_cols, /*height=*/sp.cfg().input_rows, /*seq_len=*/sp.cfg().input_cols);
   inputs.setSequenceProbability(1.0);
 

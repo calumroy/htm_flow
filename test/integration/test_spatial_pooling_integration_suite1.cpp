@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/sp_harness.hpp"
-#include "test_utils/sp_metrics.hpp"
+#include "../test_utils/sp_harness.hpp"
+#include "../test_utils/sp_metrics.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -10,6 +10,32 @@ using spatial_pooling_test_utils::SpatialPoolerHarness;
 using spatial_pooling_test_utils::jaccardSimilarity01;
 
 namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Every test in this file starts from this config (or a modified copy).
+// See individual tests for per-test overrides.
+SpatialPoolerHarness::Config suiteConfig() {
+  SpatialPoolerHarness::Config c;
+  c.input_rows            = 60;
+  c.input_cols            = 30;
+  c.col_rows              = 30;
+  c.col_cols              = 10;
+  c.pot_h                 = 4;
+  c.pot_w                 = 4;
+  c.center_pot_synapses   = true;
+  c.wrap_input            = false;
+  c.inhib_w               = 3;
+  c.inhib_h               = 3;
+  c.desired_local_activity = 2;
+  c.connected_perm        = 0.3f;
+  c.min_overlap           = 3;
+  c.min_potential_overlap  = 0;
+  c.spatial_perm_inc      = 0.10f;
+  c.spatial_perm_dec      = 0.02f;
+  c.active_col_perm_dec   = 0.02f;
+  c.rng_seed              = 123u;
+  return c;
+}
 
 inline std::vector<int> verticalLine01(int w, int h, int x) {
   std::vector<int> g(static_cast<std::size_t>(w * h), 0);
@@ -74,17 +100,7 @@ TEST(SpatialPoolingIntegrationSuite1, test_case1_superposition_far_apart_inputs)
     more tolerance to avoid brittle CI failures if small parameters change.
   */
 
-  SpatialPoolerHarness::Config cfg;
-  cfg.input_cols = 30;
-  cfg.input_rows = 60;
-  cfg.col_cols = 10;
-  cfg.col_rows = 30;
-  cfg.pot_w = 4;
-  cfg.pot_h = 4;
-  cfg.inhib_w = 3;
-  cfg.inhib_h = 3;
-  cfg.desired_local_activity = 2;
-  cfg.min_overlap = 3;
+  auto cfg = suiteConfig();
   // Keep legacy behavior for these superposition tests: only allow the potential-overlap
   // fallback to compete at the same threshold as connected-overlap.
   cfg.min_potential_overlap = cfg.min_overlap;
@@ -95,8 +111,6 @@ TEST(SpatialPoolingIntegrationSuite1, test_case1_superposition_far_apart_inputs)
   // - The Python suite uses a different neighborhood implementation; to preserve the *intent*
   //   of superposition rather than test padding quirks, we enable wrapping here.
   cfg.wrap_input = true;
-  cfg.center_pot_synapses = true;
-  cfg.rng_seed = 123u;
 
   SpatialPoolerHarness sp(cfg);
 
@@ -156,7 +170,7 @@ TEST(SpatialPoolingIntegrationSuite1, test_case2_superposition_closer_inputs) {
     combined is not identical to either alone.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.wrap_input = true;
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);
@@ -211,7 +225,7 @@ TEST(SpatialPoolingIntegrationSuite1, test_case3_superposition_half_patterns) {
   - Compare active-column outputs via Jaccard similarity.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.wrap_input = true;
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);

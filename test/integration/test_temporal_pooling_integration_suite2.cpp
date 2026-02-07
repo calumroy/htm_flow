@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/tp_harness.hpp"
-#include "test_utils/tp_inputs.hpp"
-#include "test_utils/tp_metrics.hpp"
+#include "../test_utils/tp_harness.hpp"
+#include "../test_utils/tp_inputs.hpp"
+#include "../test_utils/tp_metrics.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -14,6 +14,46 @@ using temporal_pooling_test_utils::VerticalLineInputs;
 using temporal_pooling_test_utils::similarityPercent;
 
 namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Every test in this file starts from this config.
+// Modify a copy in individual tests if needed.
+HtmPipelineHarness::Config suiteConfig() {
+  HtmPipelineHarness::Config c;
+  c.input_rows              = 24;
+  c.input_cols              = 16;
+  c.col_rows                = 12;
+  c.col_cols                = 12;
+  c.pot_h                   = 12;
+  c.pot_w                   = 4;
+  c.center_pot_synapses     = false;
+  c.wrap_input              = true;
+  c.inhib_w                 = 7;
+  c.inhib_h                 = 7;
+  c.desired_local_activity  = 6;
+  c.connected_perm          = 0.3f;
+  c.min_overlap             = 2;
+  c.min_potential_overlap   = 0;
+  c.spatial_perm_inc        = 0.05f;
+  c.spatial_perm_dec        = 0.02f;
+  c.active_col_perm_dec     = 0.01f;
+  c.cells_per_column        = 4;
+  c.max_segments_per_cell   = 2;
+  c.max_synapses_per_segment = 10;
+  c.min_num_syn_threshold   = 1;
+  c.min_score_threshold     = 1;
+  c.new_syn_permanence      = 0.3f;
+  c.connect_permanence      = 0.2f;
+  c.activation_threshold    = 3;
+  c.seq_perm_inc            = 0.05f;
+  c.seq_perm_dec            = 0.02f;
+  c.temp_spatial_perm_inc   = 0.05f;
+  c.temp_seq_perm_inc       = 0.05f;
+  c.temp_delay_length       = 4;
+  c.temp_enable_persistence = true;
+  c.rng_seed                = 123u;
+  return c;
+}
 
 inline std::vector<uint8_t> avgOfSamples(const std::vector<std::vector<uint8_t>>& samples) {
   // Return a representative SDR by OR'ing across samples.
@@ -67,7 +107,7 @@ TEST(TemporalPoolingIntegrationSuite2, test_case1_repeating_sequence_pools) {
   // 1) Warm up the model by replaying a deterministic repeating sequence.
   // 2) Run for a few more cycles and compute temporalPoolingPercent each step.
   // 3) Expect the running average to be "reasonably high".
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
 
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
   inputs.setPattern(VerticalLineInputs::Pattern::LeftToRight);
@@ -116,9 +156,10 @@ TEST(TemporalPoolingIntegrationSuite2, test_case4_pooling_increases_with_depth_t
   // 1) Build a deterministic two-layer feed-forward stack.
   // 2) Warm up on a repeating sequence long enough for pooling to emerge.
   // 3) During evaluation, track pooling in both layers and compare.
+  // Build a 2-layer config from the suite defaults
   TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
+  cfg.l0 = suiteConfig();
+  cfg.l1 = suiteConfig();
   cfg.l1.input_rows = cfg.l0.col_rows;
   cfg.l1.input_cols = cfg.l0.col_cols;
   cfg.rng_seed = 123u;
@@ -195,7 +236,7 @@ TEST(TemporalPoolingIntegrationSuite2, test_multiPattern_differentiation_and_rec
   // 4) Switch back to B briefly; capture representative B2 (recall).
   // 5) Assert: A1 overlaps A2, B1 overlaps B2, and A1 is not almost identical to B1.
 
-  HtmPipelineHarness htm(HtmPipelineHarness::Config{});
+  HtmPipelineHarness htm(suiteConfig());
 
   VerticalLineInputs inputs(/*width=*/htm.cfg().input_cols, /*height=*/htm.cfg().input_rows, /*seq_len=*/htm.cfg().input_cols);
   inputs.setSequenceProbability(1.0);

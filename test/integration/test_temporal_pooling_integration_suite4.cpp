@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/tp_harness.hpp"
-#include "test_utils/tp_inputs.hpp"
-#include "test_utils/tp_metrics.hpp"
+#include "../test_utils/tp_harness.hpp"
+#include "../test_utils/tp_inputs.hpp"
+#include "../test_utils/tp_metrics.hpp"
 
 #include <vector>
 
@@ -13,6 +13,57 @@ using temporal_pooling_test_utils::VerticalLineInputs;
 using temporal_pooling_test_utils::similarityPercent;
 
 namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Suite4 uses the default harness config in a 2-layer hierarchy.
+// Layer 1's input matches Layer 0's column grid.
+// Every test in this file starts from these configs.
+// Modify copies in individual tests if needed.
+TwoLayerHtmHarness::Config suiteConfig() {
+  TwoLayerHtmHarness::Config cfg;
+
+  // Layer 0 — default pipeline config
+  cfg.l0.input_rows              = 24;
+  cfg.l0.input_cols              = 16;
+  cfg.l0.col_rows                = 12;
+  cfg.l0.col_cols                = 12;
+  cfg.l0.pot_h                   = 12;
+  cfg.l0.pot_w                   = 4;
+  cfg.l0.center_pot_synapses     = false;
+  cfg.l0.wrap_input              = true;
+  cfg.l0.inhib_w                 = 7;
+  cfg.l0.inhib_h                 = 7;
+  cfg.l0.desired_local_activity  = 6;
+  cfg.l0.connected_perm          = 0.3f;
+  cfg.l0.min_overlap             = 2;
+  cfg.l0.min_potential_overlap   = 0;
+  cfg.l0.spatial_perm_inc        = 0.05f;
+  cfg.l0.spatial_perm_dec        = 0.02f;
+  cfg.l0.active_col_perm_dec     = 0.01f;
+  cfg.l0.cells_per_column        = 4;
+  cfg.l0.max_segments_per_cell   = 2;
+  cfg.l0.max_synapses_per_segment = 10;
+  cfg.l0.min_num_syn_threshold   = 1;
+  cfg.l0.min_score_threshold     = 1;
+  cfg.l0.new_syn_permanence      = 0.3f;
+  cfg.l0.connect_permanence      = 0.2f;
+  cfg.l0.activation_threshold    = 3;
+  cfg.l0.seq_perm_inc            = 0.05f;
+  cfg.l0.seq_perm_dec            = 0.02f;
+  cfg.l0.temp_spatial_perm_inc   = 0.05f;
+  cfg.l0.temp_seq_perm_inc       = 0.05f;
+  cfg.l0.temp_delay_length       = 4;
+  cfg.l0.temp_enable_persistence = true;
+  cfg.l0.rng_seed                = 123u;
+
+  // Layer 1 — same params, but input matches layer 0's column grid
+  cfg.l1 = cfg.l0;
+  cfg.l1.input_rows = cfg.l0.col_rows;   // 12
+  cfg.l1.input_cols = cfg.l0.col_cols;    // 12
+
+  cfg.rng_seed = 123u;
+  return cfg;
+}
 
 inline std::vector<uint8_t> representativeOverCycle(TwoLayerHtmHarness& htm,
                                                     VerticalLineInputs& inputs,
@@ -93,14 +144,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
   // 5) Capture Pattern 2’s top-layer representative SDR over one full cycle.
   // 6) Assert that the two representatives do not overlap "too much".
 
-  TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
-  cfg.l1.input_rows = cfg.l0.col_rows;
-  cfg.l1.input_cols = cfg.l0.col_cols;
-  cfg.rng_seed = 123u;
-
-  TwoLayerHtmHarness htm(cfg);
+  TwoLayerHtmHarness htm(suiteConfig());
 
   VerticalLineInputs inputs(/*width=*/htm.layer0().cfg().input_cols,
                             /*height=*/htm.layer0().cfg().input_rows,
@@ -160,14 +204,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinc
   // 4) Capture representative pooled SDR for OddPositions.
   // 5) Assert they are not (nearly) identical.
 
-  TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
-  cfg.l1.input_rows = cfg.l0.col_rows;
-  cfg.l1.input_cols = cfg.l0.col_cols;
-  cfg.rng_seed = 123u;
-
-  TwoLayerHtmHarness htm(cfg);
+  TwoLayerHtmHarness htm(suiteConfig());
 
   VerticalLineInputs inputs(/*width=*/htm.layer0().cfg().input_cols,
                             /*height=*/htm.layer0().cfg().input_rows,
@@ -242,14 +279,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
   //    - pooling percent on each (stability within pattern)
   //    - similarity between final Even and final Odd (transition pooling direction)
 
-  TwoLayerHtmHarness::Config cfg;
-  cfg.l0 = HtmPipelineHarness::Config{};
-  cfg.l1 = HtmPipelineHarness::Config{};
-  cfg.l1.input_rows = cfg.l0.col_rows;
-  cfg.l1.input_cols = cfg.l0.col_cols;
-  cfg.rng_seed = 123u;
-
-  TwoLayerHtmHarness htm(cfg);
+  TwoLayerHtmHarness htm(suiteConfig());
 
   VerticalLineInputs inputs(/*width=*/htm.layer0().cfg().input_cols,
                             /*height=*/htm.layer0().cfg().input_rows,

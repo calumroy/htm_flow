@@ -18,6 +18,55 @@
 
 namespace {
 
+// ── Suite-wide default configuration ────────────────────────────────
+// Equivalent to htm_flow::small_test_config() with all values shown explicitly.
+// Every test in this file starts from this config (or a modified copy).
+htm_flow::HTMLayerConfig suiteConfig() {
+  htm_flow::HTMLayerConfig cfg;
+  // Input/column grid
+  cfg.num_input_rows            = 10;
+  cfg.num_input_cols            = 10;
+  cfg.num_column_rows           = 10;
+  cfg.num_column_cols           = 20;
+  // Proximal topology
+  cfg.pot_width                 = 5;
+  cfg.pot_height                = 1;
+  cfg.center_pot_synapses       = true;
+  cfg.wrap_input                = true;
+  cfg.connected_perm            = 0.3f;
+  cfg.min_overlap               = 2;
+  cfg.min_potential_overlap     = 1;
+  // Inhibition
+  cfg.inhibition_width          = 10;
+  cfg.inhibition_height         = 1;
+  cfg.desired_local_activity    = 1;
+  cfg.strict_local_activity     = false;
+  // Spatial learning
+  cfg.spatial_permanence_inc    = 0.1f;
+  cfg.spatial_permanence_dec    = 0.05f;
+  cfg.active_col_permanence_dec = 0.05f;
+  // Sequence pooler
+  cfg.cells_per_column          = 3;
+  cfg.max_segments_per_cell     = 2;
+  cfg.max_synapses_per_segment  = 10;
+  cfg.min_num_syn_threshold     = 5;
+  cfg.min_score_threshold       = 5;
+  cfg.new_syn_permanence        = 0.3f;
+  cfg.connect_permanence        = 0.2f;
+  cfg.activation_threshold      = 6;
+  cfg.sequence_permanence_inc   = 0.1f;
+  cfg.sequence_permanence_dec   = 0.05f;
+  // Temporal pooler
+  cfg.temp_enabled              = true;
+  cfg.temp_delay_length         = 4;
+  cfg.temp_enable_persistence   = true;
+  cfg.temp_spatial_permanence_inc  = 0.01f;
+  cfg.temp_sequence_permanence_inc = 0.01f;
+  // Runtime
+  cfg.log_timings               = false;
+  return cfg;
+}
+
 /// Create a vertical line input pattern at the given x position.
 std::vector<int> create_vertical_line(int width, int height, int x_pos) {
   std::vector<int> input(static_cast<std::size_t>(width * height), 0);
@@ -74,7 +123,7 @@ int count_learning_cells(const htm_gui::Snapshot& snap) {
 
 TEST(HTMLayerIntegration, ColumnsActivateOnInput) {
   // Test that columns become active when given input with active bits.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   // Create input with a vertical line
@@ -90,7 +139,7 @@ TEST(HTMLayerIntegration, NoActiveColumnsWithEmptyInput) {
   // Test that no columns become active when input is all zeros.
   // Note: This depends on configuration - with min_overlap > 0 and all zeros,
   // no columns should have enough overlap to activate.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   cfg.min_overlap = 2;  // Ensure we need some overlap
   htm_flow::HTMLayer layer(cfg);
 
@@ -108,7 +157,7 @@ TEST(HTMLayerIntegration, NoActiveColumnsWithEmptyInput) {
 
 TEST(HTMLayerIntegration, ActiveCellsExistWhenColumnsActivate) {
   // Test that active cells are present when columns become active.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -122,7 +171,7 @@ TEST(HTMLayerIntegration, ActiveCellsExistWhenColumnsActivate) {
 
 TEST(HTMLayerIntegration, LearningCellsExistOnActivation) {
   // Test that learning cells are marked when columns become active.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -140,7 +189,7 @@ TEST(HTMLayerIntegration, LearningCellsExistOnActivation) {
 
 TEST(HTMLayerIntegration, PredictionsFormAfterRepeatedInput) {
   // Test that predictions form after repeated exposure to a sequence.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   const int seq_len = cfg.num_input_cols;
@@ -177,7 +226,7 @@ TEST(HTMLayerIntegration, PredictionsFormAfterRepeatedInput) {
 
 TEST(HTMLayerIntegration, OutputHasCorrectDimensions) {
   // Test that the output has the correct dimensions for stacking layers.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -193,7 +242,7 @@ TEST(HTMLayerIntegration, OutputHasCorrectDimensions) {
 
 TEST(HTMLayerIntegration, OutputContainsActiveCellInfo) {
   // Test that the output reflects active cell states.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -218,7 +267,7 @@ TEST(HTMLayerIntegration, OutputContainsActiveCellInfo) {
 
 TEST(HTMLayerIntegration, SnapshotReturnsValidData) {
   // Test that the IHtmRuntime snapshot method returns valid data.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -240,7 +289,7 @@ TEST(HTMLayerIntegration, SnapshotReturnsValidData) {
 
 TEST(HTMLayerIntegration, QueryProximalReturnsValidData) {
   // Test that query_proximal returns valid synapse data.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);
@@ -255,7 +304,7 @@ TEST(HTMLayerIntegration, QueryProximalReturnsValidData) {
 
 TEST(HTMLayerIntegration, QueryDistalReturnsValidData) {
   // Test that query_distal returns valid segment/synapse data.
-  auto cfg = htm_flow::small_test_config();
+  auto cfg = suiteConfig();
   htm_flow::HTMLayer layer(cfg);
 
   auto input = create_vertical_line(cfg.num_input_cols, cfg.num_input_rows, 3);

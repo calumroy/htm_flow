@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "test_utils/sp_harness.hpp"
-#include "test_utils/sp_metrics.hpp"
-#include "test_utils/tp_inputs.hpp"
+#include "../test_utils/sp_harness.hpp"
+#include "../test_utils/sp_metrics.hpp"
+#include "../test_utils/tp_inputs.hpp"
 
 #include <cmath>
 #include <vector>
@@ -14,6 +14,32 @@ using spatial_pooling_test_utils::or01;
 using temporal_pooling_test_utils::CustomSdrInputs;
 
 namespace {
+
+// ── Suite-wide default configuration ────────────────────────────────
+// Every test in this file starts from this config.
+// Modify a copy in individual tests if needed.
+SpatialPoolerHarness::Config suiteConfig() {
+  SpatialPoolerHarness::Config c;
+  c.input_rows            = 60;
+  c.input_cols            = 30;
+  c.col_rows              = 30;
+  c.col_cols              = 10;
+  c.pot_h                 = 4;
+  c.pot_w                 = 4;
+  c.center_pot_synapses   = true;
+  c.wrap_input            = false;
+  c.inhib_w               = 3;
+  c.inhib_h               = 3;
+  c.desired_local_activity = 2;
+  c.connected_perm        = 0.3f;
+  c.min_overlap           = 3;
+  c.min_potential_overlap  = 0;
+  c.spatial_perm_inc      = 0.10f;
+  c.spatial_perm_dec      = 0.02f;
+  c.active_col_perm_dec   = 0.02f;
+  c.rng_seed              = 123u;
+  return c;
+}
 
 inline std::vector<int> dottedVerticalLine01(int w,
                                              int h,
@@ -76,7 +102,7 @@ TEST(SpatialPoolingIntegrationSuite3, test_case1_similar_sequences_outputs_simil
     without being overly brittle.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
@@ -149,7 +175,7 @@ TEST(SpatialPoolingIntegrationSuite3, test_case2_two_different_dotted_lines_outp
   - After training, we capture a cycle for each and compute average Jaccard similarity.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
@@ -205,7 +231,7 @@ TEST(SpatialPoolingIntegrationSuite3, test_case3_three_different_dotted_lines_al
   - After training, capture one cycle from each and compute pairwise similarities.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
@@ -277,7 +303,7 @@ TEST(SpatialPoolingIntegrationSuite3, test_case4_different_style_dotted_lines_se
   - Train and assert low average similarity.
   */
 
-  SpatialPoolerHarness::Config cfg;
+  auto cfg = suiteConfig();
   cfg.min_potential_overlap = cfg.min_overlap;
   SpatialPoolerHarness sp(cfg);
   const int w = sp.cfg().input_cols;
