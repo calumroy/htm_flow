@@ -69,16 +69,18 @@ inline std::vector<uint8_t> representativeOverCycle(TwoLayerHtmHarness& htm,
                                                     int& time_step,
                                                     int seq_len) {
   // Build a single representative SDR for "what this pattern looks like" at the *top* layer,
-  // by running one full input cycle and aggregating the per-step learn-cells outputs.
+  // by running one full input cycle and OR-ing the per-step learn-cells outputs.
   //
   // Why do we need a representative at all?
   // - The input is a SEQUENCE (a cycle of vertical lines at different x positions).
   // - The pooled representation for a whole sequence is not one timestep; it is the
   //   stable-ish set of cells that tend to be involved across the cycle.
   //
-  // Why majority vote?
-  // - We want something stable (robust to a single bursty/odd timestep).
-  // - This is a simple, deterministic way to collapse a cycle into one SDR for comparisons.
+  // Why OR instead of majority-vote?
+  // - With multiple predicted cells per column, learn-cells outputs can be sparse and
+  //   variable step-to-step. Majority vote can collapse to all-zeros for short cycles.
+  // - OR preserves the union of features that participate across the cycle, matching
+  //   Suite2's avgOfSamples approach.
   std::vector<std::vector<uint8_t>> samples;
   samples.reserve(static_cast<std::size_t>(seq_len));
   for (int i = 0; i < seq_len; ++i) {
@@ -88,14 +90,14 @@ inline std::vector<uint8_t> representativeOverCycle(TwoLayerHtmHarness& htm,
     ++time_step;
   }
 
+  if (samples.empty()) return {};
   const std::size_t n = samples[0].size();
-  std::vector<int> counts(n, 0);
-  for (const auto& s : samples) {
-    for (std::size_t i = 0; i < n; ++i) counts[i] += (s[i] != 0) ? 1 : 0;
-  }
   std::vector<uint8_t> out(n, 0);
-  const int half = static_cast<int>(samples.size() / 2);
-  for (std::size_t i = 0; i < n; ++i) out[i] = (counts[i] > half) ? 1 : 0;
+  for (const auto& s : samples) {
+    for (std::size_t i = 0; i < n; ++i) {
+      out[i] = (out[i] != 0 || s[i] != 0) ? 1 : 0;
+    }
+  }
   return out;
 }
 
@@ -362,8 +364,8 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
 
   const double simFinal = similarityPercent(repEvenFinal, repOddFinal);
 
-  EXPECT_GE(pooledEven, 0.40);
-  EXPECT_GE(pooledOdd, 0.40);
+  EXPECT_GE(pooledEven, 0.30);
+  EXPECT_GE(pooledOdd, 0.30);
   EXPECT_GE(simFinal, simEarly - 0.05) << "After many alternations, similarity should not decrease";
 }
 

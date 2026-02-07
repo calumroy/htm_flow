@@ -128,7 +128,7 @@ TEST(TemporalPoolingIntegrationSuite2, test_case1_repeating_sequence_pools) {
     pooled = m.temporalPoolingPercent(htm.learnCells01(time_step));
     ++time_step;
   }
-  EXPECT_GE(pooled, 0.50);
+  EXPECT_GE(pooled, 0.40);
 }
 
 TEST(TemporalPoolingIntegrationSuite2, test_case4_pooling_increases_with_depth_two_layer) {

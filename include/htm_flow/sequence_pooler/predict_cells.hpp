@@ -13,12 +13,13 @@ namespace sequence_pooler {
 // Predict-cells stage of the sequence pooler.
 //
 // What this component does:
-// - Looks at each column's distal segments and counts how many synapses connect to
+// - Looks at each cell's distal segments and counts how many synapses connect to
 //   cells that are active at `time_step`.
 // - If a segment has more than `activation_threshold` active connected synapses, the
 //   segment is considered active and will place the cell into the predictive state.
-// - For each column, we pick the single "most predictive" cell (highest active-synapse
-//   count across all segments/cells in that column).
+// - ALL cells with at least one active segment are set predictive. Multiple cells per
+//   column can be predictive simultaneously, which naturally handles overlapping
+//   sequences that share common column activations.
 //
 // What this component returns:
 // - `predictCellsTime`: last two timesteps each cell was predictive.
