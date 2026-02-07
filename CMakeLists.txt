@@ -98,9 +98,12 @@ file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/overlap/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/temporal_pooler/*.cpp
                                   ${PROJECT_SOURCE_DIR}/src/utilities/*.cpp)
 
-# Build the Project executable
-add_executable(${PROJECT_NAME}
-  ./src/main.cpp
+# -----------------------------------------------------------------------------
+# htm_flow_core: static library containing all HTM algorithm, config, and
+# runtime code.  External projects can link against this target instead of
+# duplicating the source file list.
+# -----------------------------------------------------------------------------
+add_library(htm_flow_core STATIC
   ./src/gui_runtime.cpp
   ./src/config.cpp
   ./src/config_loader.cpp
@@ -110,23 +113,35 @@ add_executable(${PROJECT_NAME}
   ${SRC_FILES}
 )
 
-# `HtmFlowRuntime` depends on the GUI interface headers (no Qt dependency).
+target_compile_features(htm_flow_core PUBLIC cxx_std_17)
+
+# Public include directories so consumers get the headers automatically.
+target_include_directories(htm_flow_core PUBLIC
+  "${PROJECT_SOURCE_DIR}/include"
+)
+
+# The IHtmRuntime interface lives in htm_gui/include (header-only, no Qt dep).
 if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
-  target_include_directories(${PROJECT_NAME} PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
+  target_include_directories(htm_flow_core PUBLIC "${PROJECT_SOURCE_DIR}/htm_gui/include")
 endif()
+
+# Link yaml-cpp if available
+if(TARGET yaml-cpp)
+  target_link_libraries(htm_flow_core PUBLIC yaml-cpp)
+endif()
+
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+
+# -----------------------------------------------------------------------------
+# Build the main htm_flow executable (links against htm_flow_core)
+# -----------------------------------------------------------------------------
+add_executable(${PROJECT_NAME} ./src/main.cpp)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE htm_flow_core)
 
 # Required for CUDA debugging in Visual Studio Code. This adds a -G flag to compilation.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
-endif()
-
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
-
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-
-# Link yaml-cpp if available
-if(TARGET yaml-cpp)
-  target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp)
 endif()
 
 if(USE_GPU)
@@ -148,26 +163,9 @@ install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 # -----------------------------------------------------------------------------
 # Debug region runner - for debugging integration test configurations with GUI
 # -----------------------------------------------------------------------------
-add_executable(debug_region
-  ./src/debug_region.cpp
-  ./src/config.cpp
-  ./src/config_loader.cpp
-  ./src/htm_layer.cpp
-  ./src/htm_region.cpp
-  ./src/region_runtime.cpp
-  ${SRC_FILES}
-)
+add_executable(debug_region ./src/debug_region.cpp)
 
-if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
-  target_include_directories(debug_region PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
-endif()
-
-target_compile_features(debug_region PRIVATE cxx_std_17)
-
-# Link yaml-cpp if available
-if(TARGET yaml-cpp)
-  target_link_libraries(debug_region PRIVATE yaml-cpp)
-endif()
+target_link_libraries(debug_region PRIVATE htm_flow_core)
 
 if(USE_GPU)
   target_link_libraries(debug_region PRIVATE task_gpu_test gpu_overlap)
@@ -200,22 +198,9 @@ if(BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
 
-# Add all the cpp files in the test directory and include the necessary source files
-file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/inhibition.cpp 
-                                  ${PROJECT_SOURCE_DIR}/src/overlap/overlap.cpp 
-                                  ${PROJECT_SOURCE_DIR}/src/overlap/overlap_utils.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/spatiallearn/spatiallearn.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/active_cells/active_cells.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/predict_cells/predict_cells.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/sequence_pooler/sequence_learning/sequence_learning.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/temporal_pooler/temporal_pooler.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/utilities/stopwatch.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/config.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/config_loader.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/htm_layer.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/htm_region.cpp
-                                  ${PROJECT_SOURCE_DIR}/src/region_runtime.cpp)
-
+  # Collect test source files only (no need to list library sources; they come
+  # from htm_flow_core).
+  file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
 
   # Filter out the GPU test files if GPU flag is set to FALSE
   if(NOT USE_GPU)
@@ -225,21 +210,14 @@ file(GLOB_RECURSE TEST_FILES ./test/*.cpp ${PROJECT_SOURCE_DIR}/src/inhibition/i
   # Add your test files
   add_executable(${PROJECT_NAME}_tests ${TEST_FILES})
 
-  # Add htm_gui include directory for IHtmRuntime interface (no Qt dependency)
-  if(EXISTS "${PROJECT_SOURCE_DIR}/htm_gui/include")
-    target_include_directories(${PROJECT_NAME}_tests PRIVATE "${PROJECT_SOURCE_DIR}/htm_gui/include")
-  endif()
+  # Link against htm_flow_core (brings in headers + all algorithm code)
+  target_link_libraries(${PROJECT_NAME}_tests PRIVATE htm_flow_core)
 
   # Link your test executable to the Google Test library and other libraries
   if(USE_GPU)
-    target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main task_gpu_test gpu_overlap)
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest gtest_main task_gpu_test gpu_overlap)
   else()
-    target_link_libraries(${PROJECT_NAME}_tests gtest gtest_main)
-  endif()
-
-  # Link yaml-cpp if available
-  if(TARGET yaml-cpp)
-    target_link_libraries(${PROJECT_NAME}_tests yaml-cpp)
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest gtest_main)
   endif()
 
   # Register individual gtest TEST() cases with CTest so `ctest -R <pattern>` works.
