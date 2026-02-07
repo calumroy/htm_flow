@@ -67,7 +67,6 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
           cfg_.max_segments_per_cell,
           cfg_.max_synapses_per_segment,
           cfg_.min_num_syn_threshold,
-          cfg_.min_score_threshold,
           cfg_.new_syn_permanence,
           cfg_.connect_permanence,
       }),

@@ -90,7 +90,6 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
     cfg.max_segments_per_cell = get_or(seq, "max_segments_per_cell", cfg.max_segments_per_cell);
     cfg.max_synapses_per_segment = get_or(seq, "max_synapses_per_segment", cfg.max_synapses_per_segment);
     cfg.min_num_syn_threshold = get_or(seq, "min_num_syn_threshold", cfg.min_num_syn_threshold);
-    cfg.min_score_threshold = get_or(seq, "min_score_threshold", cfg.min_score_threshold);
     cfg.new_syn_permanence = get_or(seq, "new_syn_permanence", cfg.new_syn_permanence);
     cfg.connect_permanence = get_or(seq, "connect_permanence", cfg.connect_permanence);
     cfg.activation_threshold = get_or(seq, "activation_threshold", cfg.activation_threshold);
@@ -101,7 +100,6 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
   cfg.max_segments_per_cell = get_or(node, "max_segments_per_cell", cfg.max_segments_per_cell);
   cfg.max_synapses_per_segment = get_or(node, "max_synapses_per_segment", cfg.max_synapses_per_segment);
   cfg.min_num_syn_threshold = get_or(node, "min_num_syn_threshold", cfg.min_num_syn_threshold);
-  cfg.min_score_threshold = get_or(node, "min_score_threshold", cfg.min_score_threshold);
   cfg.new_syn_permanence = get_or(node, "new_syn_permanence", cfg.new_syn_permanence);
   cfg.connect_permanence = get_or(node, "connect_permanence", cfg.connect_permanence);
   cfg.activation_threshold = get_or(node, "activation_threshold", cfg.activation_threshold);
@@ -173,7 +171,6 @@ void emit_layer_node(YAML::Emitter& out, const HTMLayerConfig& cfg, int layer_in
   out << YAML::Key << "max_segments_per_cell" << YAML::Value << cfg.max_segments_per_cell;
   out << YAML::Key << "max_synapses_per_segment" << YAML::Value << cfg.max_synapses_per_segment;
   out << YAML::Key << "min_num_syn_threshold" << YAML::Value << cfg.min_num_syn_threshold;
-  out << YAML::Key << "min_score_threshold" << YAML::Value << cfg.min_score_threshold;
   out << YAML::Key << "new_syn_permanence" << YAML::Value << cfg.new_syn_permanence;
   out << YAML::Key << "connect_permanence" << YAML::Value << cfg.connect_permanence;
   out << YAML::Key << "activation_threshold" << YAML::Value << cfg.activation_threshold;

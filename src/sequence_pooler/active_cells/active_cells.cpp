@@ -39,9 +39,6 @@ ActiveCellsCalculator::ActiveCellsCalculator(const Config& cfg) : cfg_(cfg) {
   active_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
   learn_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
 
-  cells_score_.assign(cfg_.num_columns * cfg_.cells_per_column, 0);
-  col_highest_scored_cell_.assign(cfg_.num_columns, -1);
-
   // Sequence-learning update structures (active-cells side).
   seg_ind_update_active_.assign(cfg_.num_columns * cfg_.cells_per_column, -1);
   seg_active_syn_active_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_synapses_per_segment, 0);
@@ -214,75 +211,6 @@ int ActiveCellsCalculator::get_best_matching_segment(const std::vector<DistalSyn
   return -1;
 }
 
-int ActiveCellsCalculator::segment_highest_score(const std::vector<DistalSynapse>& distal_synapses,
-                                                 int origin_col,
-                                                 int origin_cell,
-                                                 int seg) const {
-  int highest = 0;
-  for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
-    const std::size_t idx =
-        idx_distal_synapse(static_cast<std::size_t>(origin_col),
-                           static_cast<std::size_t>(origin_cell),
-                           static_cast<std::size_t>(seg),
-                           static_cast<std::size_t>(syn),
-                           static_cast<std::size_t>(cfg_.cells_per_column),
-                           static_cast<std::size_t>(cfg_.max_segments_per_cell),
-                           static_cast<std::size_t>(cfg_.max_synapses_per_segment));
-    const DistalSynapse& s = distal_synapses[idx];
-    if (check_col_prev_active(s.target_col)) {
-      const int flat = s.target_col * cfg_.cells_per_column + s.target_cell;
-      const int score = cells_score_[static_cast<size_t>(flat)];
-      if (score > highest) {
-        highest = score;
-      }
-    }
-  }
-  return highest;
-}
-
-void ActiveCellsCalculator::update_active_cell_scores(const std::vector<uint8_t>& active_cols,
-                                                      const std::vector<DistalSynapse>& distal_synapses,
-                                                      int time_step) {
-  // Compute the score for each cell in columns that just became active.
-  //
-  // Key points:
-  // - Scores are ONLY computed for newly-active columns (prev inactive, now active).
-  // - Scores are only used later if the column was not explicitly predicted.
-  //
-  // Scoring rule (per cell):
-  // 1) Find the best-matching segment on this cell using distal synapses that connect to
-  //    columns that were active at (time_step-1). If no segment has enough active synapses,
-  //    score = 0.
-  // 2) Otherwise, score = 1 + highest score among the segment's synapse endpoints (restricted
-  //    to endpoints in previously-active columns). This propagates "chain strength" forward.
-  //
-  // Interpretation:
-  // - score = 0 : no distal evidence linking this cell to the recent context
-  // - score = 1 : shallow link to recent activity, but no strong upstream chain
-  // - score > 1 : connects to cells that themselves had support, suggesting an ongoing chain
-  for (int c = 0; c < cfg_.num_columns; ++c) {
-    // Only update scores for columns that changed state from not-active to active.
-    if (prev_active_cols_[static_cast<size_t>(c)] == 0 && active_cols[static_cast<size_t>(c)] == 1) {
-      int highest_score = 0;
-      col_highest_scored_cell_[static_cast<size_t>(c)] = -1;
-      for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
-        const int best_seg = get_best_matching_segment(distal_synapses, c, cell, time_step, /*on_cell=*/false);
-        const int flat = c * cfg_.cells_per_column + cell;
-        if (best_seg != -1) {
-          const int score = 1 + segment_highest_score(distal_synapses, c, cell, best_seg);
-          cells_score_[static_cast<size_t>(flat)] = score;
-          if (score > highest_score) {
-            highest_score = score;
-            col_highest_scored_cell_[static_cast<size_t>(c)] = cell;
-          }
-        } else {
-          cells_score_[static_cast<size_t>(flat)] = 0;
-        }
-      }
-    }
-  }
-}
-
 int ActiveCellsCalculator::find_num_segs(const std::vector<DistalSynapse>& distal_synapses,
                                         int origin_col,
                                         int origin_cell) const {
@@ -450,13 +378,11 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
                                                    const std::vector<int>& active_segs_time,
                                                    const std::vector<DistalSynapse>& distal_synapses) {
   // Implementation overview (ported from the Python implementation):
-  // Step 1. Compute per-cell scores for newly-active columns.
-  // Step 2. Update active + learning states for active columns:
-  //         - predicted activation path
-  //         - alternative sequence path (highest score above threshold)
+  // Step 1. Update active + learning states for active columns:
+  //         - predicted activation path (multiple cells can be predicted per column)
   //         - bursting fallback
   //         - best-matching-cell selection for learning cell + update structures
-  // Step 3. Build output lists (active cells + learning cells) for this timestep.
+  // Step 2. Build output lists (active cells + learning cells) for this timestep.
 
   // Shape checks (predictive state is produced by PredictCellsCalculator).
   assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
@@ -480,9 +406,6 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
   std::fill(seg_active_syn_active_.begin(), seg_active_syn_active_.end(), 0);
   std::fill(seg_ind_new_syn_active_.begin(), seg_ind_new_syn_active_.end(), -1);
   std::fill(seg_new_syn_active_.begin(), seg_new_syn_active_.end(), DistalSynapse{0, 0, -1.0f});
-
-  // Update the scores for the alternative-sequence selection.
-  update_active_cell_scores(active_cols, distal_synapses, time_step);
 
   tf::Taskflow taskflow;
 
@@ -532,38 +455,7 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
             }
           }
 
-          // Alternative-sequence path (score-based):
-          // If nothing explicitly predicted this column, we may still avoid bursting by selecting a
-          // single cell with strong score support from the recent context.
-          //
-          // Concretely:
-          // - `update_active_cell_scores()` computed `cells_score_` for this column when it first became active.
-          // - We pick the cell with the highest score (`col_highest_scored_cell_`).
-          // - If that score is high enough (>= min_score_threshold), we treat the column as belonging to an
-          //   "alternative" temporal chain and activate only that cell instead of bursting.
-          const int high_cell = col_highest_scored_cell_[static_cast<size_t>(c)];
-          if (high_cell != -1 && !active_cell_chosen) {
-            const int flat = c * cfg_.cells_per_column + high_cell;
-            if (cells_score_[static_cast<size_t>(flat)] >= cfg_.min_score_threshold) {
-              active_cell_chosen = true;
-              set_active_cell(c, high_cell, time_step);
-              learning_cell_chosen = true;
-              set_learn_cell(c, high_cell, time_step);
-
-              // Learning hook:
-              // Propose a segment overwrite for this cell so the learning stage can wire it to the
-              // recent learning context (previous learning cells). This makes the alternative choice
-              // durable (based on learned synapses) rather than repeatedly re-deriving it from weak evidence.
-              const int seg = find_least_used_seg(active_segs_time, c, high_cell);
-              seg_ind_new_syn_active_[static_cast<size_t>(flat)] = seg;
-              DistalSynapse* out_new =
-                  &seg_new_syn_active_[static_cast<size_t>(flat) * cfg_.max_synapses_per_segment];
-              new_random_prev_learn_synapses(distal_synapses, c, high_cell, seg, time_step,
-                                             /*keep_connected_syn=*/false, out_new);
-            }
-          }
-
-          // Bursting fallback if still no active cell was chosen.
+          // Bursting fallback if no predicted cell was found.
           if (!active_cell_chosen) {
             set_burst_col(c, time_step);
             for (int i = 0; i < cfg_.cells_per_column; ++i) {
@@ -594,10 +486,10 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
       })
       .name("active_cells_for_each_active_column");
 
-  // Step 2. Execute the per-active-column work.
+  // Execute the per-active-column work.
   executor_.run(taskflow).wait();
 
-  // Step 3. Build output lists deterministically by scanning the per-cell time tensors.
+  // Build output lists deterministically by scanning the per-cell time tensors.
   // This avoids any ambiguity if multiple cells end up active/learning in a column.
   current_active_cells_list_.reserve(active_col_indices.size() * static_cast<size_t>(cfg_.cells_per_column));
   current_learn_cells_list_.reserve(active_col_indices.size());

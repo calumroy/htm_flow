@@ -218,7 +218,6 @@ public:
     int max_segments_per_cell = 2;
     int max_synapses_per_segment = 10;
     int min_num_syn_threshold = 1;
-    int min_score_threshold = 1;
     float new_syn_permanence = 0.3f;
     float connect_permanence = 0.2f;
     int activation_threshold = 3;
@@ -274,7 +273,6 @@ public:
             cfg_.max_segments_per_cell,
             cfg_.max_synapses_per_segment,
             cfg_.min_num_syn_threshold,
-            cfg_.min_score_threshold,
             cfg_.new_syn_permanence,
             cfg_.connect_permanence,
         }),

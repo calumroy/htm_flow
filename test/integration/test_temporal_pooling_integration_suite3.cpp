@@ -45,7 +45,6 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.max_segments_per_cell   = 2;
   cfg.l0.max_synapses_per_segment = 10;
   cfg.l0.min_num_syn_threshold   = 1;
-  cfg.l0.min_score_threshold     = 1;
   cfg.l0.new_syn_permanence      = 0.3f;
   cfg.l0.connect_permanence      = 0.2f;
   cfg.l0.activation_threshold    = 3;

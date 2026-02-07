@@ -50,7 +50,6 @@ htm_flow::HTMLayerConfig suiteConfig() {
   cfg.max_segments_per_cell     = 2;
   cfg.max_synapses_per_segment  = 10;
   cfg.min_num_syn_threshold     = 5;
-  cfg.min_score_threshold       = 5;
   cfg.new_syn_permanence        = 0.3f;
   cfg.connect_permanence        = 0.2f;
   cfg.activation_threshold      = 6;

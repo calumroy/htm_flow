@@ -40,7 +40,6 @@ HtmPipelineHarness::Config suiteConfig() {
   c.max_segments_per_cell   = 2;
   c.max_synapses_per_segment = 10;
   c.min_num_syn_threshold   = 1;
-  c.min_score_threshold     = 1;
   c.new_syn_permanence      = 0.3f;
   c.connect_permanence      = 0.2f;
   c.activation_threshold    = 3;

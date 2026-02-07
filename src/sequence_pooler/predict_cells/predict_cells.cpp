@@ -151,47 +151,45 @@ void PredictCellsCalculator::calculate_predict_cells(int time_step,
   // Step 1. For each column, scan all cells and segments and compute "prediction level"
   //         (= number of connected synapses ending on currently active cells).
   // Step 2. Mark segments with predictionLevel > activation_threshold as active segments.
-  // Step 3. Choose the single most-predictive cell in each column and set it predictive.
-  // Step 4. If it wasn't predicting last timestep, emit segment-update tensors for learning.
+  // Step 3. Set ALL cells with at least one active segment as predictive (multiple cells
+  //         per column can be predictive simultaneously, matching standard HTM behavior).
+  // Step 4. For each newly-predictive cell, emit segment-update tensors for learning
+  //         (using that cell's best active segment).
 
   tf::Taskflow taskflow;
 
   taskflow.for_each_index(
       0, cfg_.num_columns, 1,
       [&](int c) {
-        int most_pred_syn_count = 0;
-        int most_pred_cell = 0;
-        int most_pred_seg = 0;
-        bool column_predicting = false;
-
         for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
+          int best_seg = -1;
+          int best_count = 0;
+
           for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
             const int prediction_level =
                 count_active_connected_synapses(active_cells_time, distal_synapses, time_step, c, cell, seg);
 
             if (prediction_level > cfg_.activation_threshold) {
               set_active_seg(c, cell, seg, time_step);
-              if (prediction_level > most_pred_syn_count) {
-                most_pred_syn_count = prediction_level;
-                most_pred_cell = cell;
-                most_pred_seg = seg;
-                column_predicting = true;
+              if (prediction_level > best_count) {
+                best_count = prediction_level;
+                best_seg = seg;
               }
             }
           }
-        }
 
-        if (column_predicting) {
-          // Set the most predicting cell in the column as predictive.
-          set_predict_cell(c, most_pred_cell, time_step);
+          if (best_seg >= 0) {
+            // This cell has at least one active segment -- mark it predictive.
+            set_predict_cell(c, cell, time_step);
 
-          // Only emit update tensors if this cell wasn't already predicting at (time_step-1).
-          if (!check_cell_predicting(c, most_pred_cell, time_step - 1)) {
-            seg_ind_update_[c * cfg_.cells_per_column + most_pred_cell] = most_pred_seg;
-            int8_t* out01 =
-                &seg_active_syn_[(c * cfg_.cells_per_column + most_pred_cell) * cfg_.max_synapses_per_segment];
-            fill_seg_active_syn_list(active_cells_time, distal_synapses, time_step, c, most_pred_cell, most_pred_seg,
-                                     out01);
+            // Only emit update tensors if this cell wasn't already predicting at (time_step-1).
+            if (!check_cell_predicting(c, cell, time_step - 1)) {
+              seg_ind_update_[c * cfg_.cells_per_column + cell] = best_seg;
+              int8_t* out01 =
+                  &seg_active_syn_[(c * cfg_.cells_per_column + cell) * cfg_.max_synapses_per_segment];
+              fill_seg_active_syn_list(active_cells_time, distal_synapses, time_step, c, cell, best_seg,
+                                       out01);
+            }
           }
         }
       })

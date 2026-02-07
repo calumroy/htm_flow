@@ -81,7 +81,6 @@ struct HTMLayerConfig {
   int max_segments_per_cell = 2;  ///< Maximum distal dendrite segments per cell
   int max_synapses_per_segment = 20;  ///< Maximum synapses per segment
   int min_num_syn_threshold = 5;  ///< Minimum synapses for segment activation consideration
-  int min_score_threshold = 5;  ///< Minimum score for a cell to join an alternative sequence
   float new_syn_permanence = 0.3f;  ///< Initial permanence for newly created synapses
   float connect_permanence = 0.2f;  ///< Threshold for distal synapse to be "connected"
   int activation_threshold = 6;  ///< Connected active synapses needed to activate a segment

@@ -35,7 +35,6 @@ layers:
       max_segments_per_cell: 10
       max_synapses_per_segment: 10   # newSynapseCount in Python
       min_num_syn_threshold: 5       # minThreshold in Python
-      min_score_threshold: 5
       new_syn_permanence: 0.4        # cellSynPermanence in Python
       connect_permanence: 0.3
       activation_threshold: 6

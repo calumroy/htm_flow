@@ -79,7 +79,6 @@ HTMLayerConfig temporal_pooling_test_config() {
   cfg.max_segments_per_cell = 10;
   cfg.max_synapses_per_segment = 10;  // newSynapseCount in Python
   cfg.min_num_syn_threshold = 5;      // minThreshold in Python
-  cfg.min_score_threshold = 5;
   cfg.new_syn_permanence = 0.4f;      // cellSynPermanence in Python
   cfg.connect_permanence = 0.3f;
   cfg.activation_threshold = 6;
