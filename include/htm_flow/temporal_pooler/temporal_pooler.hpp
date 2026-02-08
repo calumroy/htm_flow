@@ -32,8 +32,13 @@ public:
     // --- Learning rates ---
     // The value by which proximal (column) synapse permanence values change by in the temporal pooler.
     float spatial_permanence_inc = 0.0f;
-    // The value by which distal (cell) synapse permanence values change by in the temporal pooler.
+    // The value by which distal (cell) synapse permanence values are incremented for active synapses.
     float seq_permanence_inc = 0.0f;
+    // The value by which distal (cell) synapse permanence values are decremented for inactive synapses
+    // (synapses whose target cell is NOT active when the segment is reinforced).
+    // When a synapse's permanence decays to 0, it is replaced with a new synapse targeting a recent
+    // learning cell, keeping segments tuned to the current temporal context.
+    float seq_permanence_dec = 0.0f;
 
     // --- Thresholds / permanence constants ---
     // More than this many synapses in a segment must be "active" for that segment to be considered

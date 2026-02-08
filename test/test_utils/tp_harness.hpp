@@ -71,6 +71,7 @@ public:
     // Temporal pooler
     float temp_spatial_perm_inc = 0.05f;
     float temp_seq_perm_inc = 0.05f;
+    float temp_seq_perm_dec = 0.0f;
     int temp_delay_length = 4;
     bool temp_enable_persistence = true;
 
@@ -144,6 +145,7 @@ public:
             num_pot_syn_,
             cfg_.temp_spatial_perm_inc,
             cfg_.temp_seq_perm_inc,
+            cfg_.temp_seq_perm_dec,
             cfg_.min_num_syn_threshold,
             cfg_.new_syn_permanence,
             cfg_.connect_permanence,

@@ -527,8 +527,12 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     if (active_predict) {
       const int best_seg = get_best_matching_segment_prev2(distal_synapses, prev2_set, col, cell);
       if (best_seg >= 0) {
-        // Increment permanence for synapses whose end is on an active cell at this timestep
-        // (matches python: build active list then increment those synapses).
+        // Reinforce the best-matching segment:
+        // - Increment permanence for synapses whose target cell is active at this timestep.
+        // - Decrement permanence for synapses whose target cell is NOT active (they are not
+        //   contributing to the correct prediction and should gradually weaken).
+        // - Replace dead synapses (permanence <= 0) with new synapses targeting recent
+        //   learning cells, so the segment adapts to the current temporal context.
         for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
           const std::size_t idx =
               idx_distal_synapse(static_cast<std::size_t>(col),
@@ -542,6 +546,22 @@ void TemporalPoolerCalculator::update_distal(int time_step,
           if (check_cell_time(active_cells_time, s.target_col, s.target_cell, time_step)) {
             float p = distal_synapses[idx].perm + cfg_.seq_permanence_inc;
             distal_synapses[idx].perm = (p > 1.0f) ? 1.0f : p;
+          } else if (s.perm > 0.0f && cfg_.seq_permanence_dec > 0.0f) {
+            float p = distal_synapses[idx].perm - cfg_.seq_permanence_dec;
+            distal_synapses[idx].perm = (p < 0.0f) ? 0.0f : p;
+          }
+
+          // Replace dead synapses with new connections to recent learning cells.
+          if (distal_synapses[idx].perm <= 0.0f && !prev2_cells.empty()) {
+            const std::uint64_t seed =
+                static_cast<std::uint64_t>(col) * 1315423911u +
+                static_cast<std::uint64_t>(cell) * 2654435761u +
+                static_cast<std::uint64_t>(best_seg) * 97531u +
+                static_cast<std::uint64_t>(syn) * 1013904223u +
+                static_cast<std::uint64_t>(time_step);
+            const std::size_t pick = deterministic_pick(splitmix64(seed), prev2_cells.size());
+            const auto& tgt = prev2_cells[pick];
+            distal_synapses[idx] = DistalSynapse{tgt.first, tgt.second, cfg_.new_syn_permanence};
           }
         }
       } else {

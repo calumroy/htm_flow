@@ -100,6 +100,7 @@ struct HTMLayerConfig {
   bool temp_enable_persistence = true;  ///< Enable temporal pooling persistence mechanism
   float temp_spatial_permanence_inc = 0.01f;  ///< Proximal learning rate for temporal pooling
   float temp_sequence_permanence_inc = 0.01f;  ///< Distal learning rate for temporal pooling
+  float temp_sequence_permanence_dec = 0.01f;  ///< Distal decay rate for inactive synapses in temporal pooling
 
   // --------------------------------------------------------------------------
   // Runtime options

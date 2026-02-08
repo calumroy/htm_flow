@@ -95,6 +95,7 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
           num_pot_syn_,
           cfg_.temp_spatial_permanence_inc,
           cfg_.temp_sequence_permanence_inc,
+          cfg_.temp_sequence_permanence_dec,
           cfg_.min_num_syn_threshold,
           cfg_.new_syn_permanence,
           cfg_.connect_permanence,

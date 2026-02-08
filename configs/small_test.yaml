@@ -32,7 +32,7 @@ layers:
       active_col_permanence_dec: 0.05
     sequence_memory:
       cells_per_column: 3
-      max_segments_per_cell: 1
+      max_segments_per_cell: 2
       max_synapses_per_segment: 10
       min_num_syn_threshold: 3
       new_syn_permanence: 0.3
@@ -43,8 +43,8 @@ layers:
     temporal_pooling:
       enabled: false
       delay_length: 1
-      spatial_permanence_inc: 0.05
-      sequence_permanence_inc: 0.05
+      spatial_permanence_inc: 0.02
+      sequence_permanence_inc: 0.02
 
   # Layer 1 - Small top layer
   - name: Layer1_Top

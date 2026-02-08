@@ -22,6 +22,7 @@ TEST(TemporalPooler, proximal_updates_expected_synapses) {
       /*num_pot_synapses=*/3,
       /*spatial_permanence_inc=*/0.1f,
       /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.3f,
       /*connect_permanence=*/0.2f,
@@ -71,6 +72,7 @@ TEST(TemporalPooler, proximal_skips_bursting_columns_for_ruleA) {
       /*num_pot_synapses=*/3,
       /*spatial_permanence_inc=*/0.1f,
       /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.3f,
       /*connect_permanence=*/0.2f,
@@ -107,6 +109,7 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.3f,
       /*connect_permanence=*/0.2f,
@@ -156,6 +159,7 @@ TEST(TemporalPooler, distal_persistence_extends_predictive_state) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.3f,
       /*connect_permanence=*/0.2f,
@@ -197,6 +201,123 @@ TEST(TemporalPooler, distal_persistence_extends_predictive_state) {
   EXPECT_TRUE(p0 == 2 || p1 == 2);
 }
 
+TEST(TemporalPooler, distal_decrements_inactive_synapses) {
+  // Verify that when a segment is reinforced for an active-predictive cell,
+  // synapses whose target cells are NOT active get decremented by seq_permanence_dec.
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/1,
+      /*spatial_permanence_inc=*/0.0f,
+      /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.05f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.3f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  // Distal synapses: shape (num_columns=2, cells=2, seg=1, syn=2)
+  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  // Origin cell: (col0, cell0, seg0)
+  // syn0: target (col1, cell1) -- will be active => should be incremented
+  distal[0] = DistalSynapse{/*target_col=*/1, /*target_cell=*/1, /*perm=*/0.5f};
+  // syn1: target (col0, cell1) -- will NOT be active => should be decremented
+  distal[1] = DistalSynapse{/*target_col=*/0, /*target_cell=*/1, /*perm=*/0.5f};
+
+  // time history tensors: (2,2,2) => 8
+  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_cells_time(2 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_segs_time(2 * 2 * 1, -1);
+
+  // Make (col0,cell0) active_predict at t=2 by setting it active at 2 and predicted at 1.
+  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
+  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
+
+  // Make target (col1,cell1) active at t=2, so syn0 is "active" for reinforcement.
+  // Do NOT make (col0,cell1) active, so syn1 is "inactive".
+  active_cells_time[idx_cell_time(2, 1, 1, 0)] = 2;
+
+  // Ensure (col1,cell1) enters learning at t=2 so it's in the prev2 set.
+  std::vector<std::pair<int, int>> new_learn_cells_list = {{1, 1}};
+
+  tp.update_distal(/*time_step=*/2,
+                   new_learn_cells_list,
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  // syn0: target was active => incremented: 0.5 + 0.1 = 0.6
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.6f);
+  // syn1: target was NOT active => decremented: 0.5 - 0.05 = 0.45
+  EXPECT_FLOAT_EQ(distal[1].perm, 0.45f);
+}
+
+TEST(TemporalPooler, distal_replaces_dead_synapses) {
+  // Verify that when an inactive synapse's permanence decays to 0, it gets replaced
+  // with a new synapse targeting a recent learning cell.
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/1,
+      /*spatial_permanence_inc=*/0.0f,
+      /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.1f, // large enough to kill the synapse in one step
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.3f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  // Distal synapses: shape (num_columns=2, cells=2, seg=1, syn=2)
+  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  // Origin cell: (col0, cell0, seg0)
+  // syn0: target (col1, cell1) -- will be active => incremented
+  distal[0] = DistalSynapse{/*target_col=*/1, /*target_cell=*/1, /*perm=*/0.5f};
+  // syn1: target (col0, cell1) -- NOT active, perm=0.05 => will decay to 0 and get replaced
+  distal[1] = DistalSynapse{/*target_col=*/0, /*target_cell=*/1, /*perm=*/0.05f};
+
+  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_cells_time(2 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_segs_time(2 * 2 * 1, -1);
+
+  // Make (col0,cell0) active_predict at t=2.
+  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
+  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
+
+  // Make target (col1,cell1) active at t=2 (so syn0 is "active").
+  active_cells_time[idx_cell_time(2, 1, 1, 0)] = 2;
+
+  // Provide a learning cell so there is a candidate for replacement.
+  std::vector<std::pair<int, int>> new_learn_cells_list = {{1, 1}};
+
+  tp.update_distal(/*time_step=*/2,
+                   new_learn_cells_list,
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  // syn0: active => incremented
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.6f);
+
+  // syn1: was 0.05, decremented by 0.1 => would be -0.05, clamped to 0 => replaced.
+  // The replacement synapse should have new_syn_permanence (0.3) and target a prev2 cell.
+  EXPECT_FLOAT_EQ(distal[1].perm, 0.3f);
+  // The replacement should target a cell from prev2_cells (which includes (1,1)).
+  EXPECT_EQ(distal[1].target_col, 1);
+  EXPECT_EQ(distal[1].target_cell, 1);
+}
+
 TEST(TemporalPooler, distal_persistence_does_not_become_sticky_without_activity) {
   TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
       /*num_columns=*/1,
@@ -206,6 +327,7 @@ TEST(TemporalPooler, distal_persistence_does_not_become_sticky_without_activity)
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
+      /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.3f,
       /*connect_permanence=*/0.2f,

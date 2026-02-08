@@ -91,6 +91,7 @@ HTMLayerConfig temporal_pooling_test_config() {
   cfg.temp_enable_persistence = true;
   cfg.temp_spatial_permanence_inc = 0.1f;
   cfg.temp_sequence_permanence_inc = 0.1f;
+  cfg.temp_sequence_permanence_dec = 0.02f;
   
   return cfg;
 }

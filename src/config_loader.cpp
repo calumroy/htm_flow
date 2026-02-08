@@ -114,12 +114,14 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
     cfg.temp_delay_length = get_or(tp, "delay_length", cfg.temp_delay_length);
     cfg.temp_spatial_permanence_inc = get_or(tp, "spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
     cfg.temp_sequence_permanence_inc = get_or(tp, "sequence_permanence_inc", cfg.temp_sequence_permanence_inc);
+    cfg.temp_sequence_permanence_dec = get_or(tp, "sequence_permanence_dec", cfg.temp_sequence_permanence_dec);
   }
   cfg.temp_enabled = get_or(node, "temp_enabled", cfg.temp_enabled);
   cfg.temp_enable_persistence = get_or(node, "temp_enable_persistence", cfg.temp_enable_persistence);
   cfg.temp_delay_length = get_or(node, "temp_delay_length", cfg.temp_delay_length);
   cfg.temp_spatial_permanence_inc = get_or(node, "temp_spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
   cfg.temp_sequence_permanence_inc = get_or(node, "temp_sequence_permanence_inc", cfg.temp_sequence_permanence_inc);
+  cfg.temp_sequence_permanence_dec = get_or(node, "temp_sequence_permanence_dec", cfg.temp_sequence_permanence_dec);
 
   // Runtime options
   cfg.log_timings = get_or(node, "log_timings", cfg.log_timings);
@@ -184,6 +186,7 @@ void emit_layer_node(YAML::Emitter& out, const HTMLayerConfig& cfg, int layer_in
   out << YAML::Key << "delay_length" << YAML::Value << cfg.temp_delay_length;
   out << YAML::Key << "spatial_permanence_inc" << YAML::Value << cfg.temp_spatial_permanence_inc;
   out << YAML::Key << "sequence_permanence_inc" << YAML::Value << cfg.temp_sequence_permanence_inc;
+  out << YAML::Key << "sequence_permanence_dec" << YAML::Value << cfg.temp_sequence_permanence_dec;
   out << YAML::EndMap;
 
   out << YAML::EndMap;
