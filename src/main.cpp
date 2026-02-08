@@ -107,8 +107,15 @@ int main(int argc, char* argv[]) {
         layer_cfg.log_timings = (!use_gui) || log;
       }
       
-      std::cout << "Loaded config: " << config_file << " (" << cfg.layers.size() << " layer"
-                << (cfg.layers.size() > 1 ? "s" : "") << ")\n";
+      std::cout << "Loaded config from file: " << config_file << "\n"
+                << "  " << cfg.layers.size() << " layer" << (cfg.layers.size() > 1 ? "s" : "");
+      for (std::size_t li = 0; li < cfg.layers.size(); ++li) {
+        const auto& lc = cfg.layers[li];
+        std::cout << "\n  layer " << li << ": input=" << lc.num_input_rows << "x" << lc.num_input_cols
+                  << " columns=" << lc.num_column_rows << "x" << lc.num_column_cols
+                  << " cells_per_col=" << lc.cells_per_column;
+      }
+      std::cout << "\n";
       
       runtime = std::make_unique<htm_flow::HTMRegionRuntime>(cfg, config_name);
     } catch (const std::exception& e) {
@@ -119,6 +126,12 @@ int main(int argc, char* argv[]) {
     // Default: single layer with default config
     htm_flow::HtmFlowRuntime::Config cfg;
     cfg.log_timings = (!use_gui) || log;
+
+    std::cout << "Using built-in default config (no --config file specified)\n"
+              << "  1 layer | input=" << cfg.num_input_rows << "x" << cfg.num_input_cols
+              << " columns=" << cfg.num_column_rows << "x" << cfg.num_column_cols
+              << " cells_per_col=" << cfg.cells_per_column << "\n";
+
     runtime = std::make_unique<htm_flow::HtmFlowRuntime>(cfg);
   }
 

@@ -40,14 +40,17 @@ if [[ -d /dev/dri ]]; then
   DISPLAY_ARGS+=(--device /dev/dri)
 fi
 
-podman run "${COMMON_ARGS[@]}" "${DISPLAY_ARGS[@]}" "$IMAGE_NAME" bash -lc '
+# Forward any extra arguments to htm_flow (e.g. --config configs/small_test.yaml)
+HTM_ARGS="${*:-}"
+
+podman run "${COMMON_ARGS[@]}" "${DISPLAY_ARGS[@]}" "$IMAGE_NAME" bash -lc "
   set -euo pipefail
   if [[ ! -d include/taskflow ]]; then
-    echo "Taskflow headers not found; running ./setup.sh (needs network)"
+    echo 'Taskflow headers not found; running ./setup.sh (needs network)'
     ./setup.sh
   fi
 
   cmake -S . -B build_qt -DHTM_FLOW_WITH_GUI=ON -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
   cmake --build build_qt -j
-  ./build_qt/htm_flow --gui --log
-'
+  ./build_qt/htm_flow --gui --log $HTM_ARGS
+"
