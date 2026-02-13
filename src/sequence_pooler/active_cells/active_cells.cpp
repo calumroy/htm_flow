@@ -38,6 +38,7 @@ ActiveCellsCalculator::ActiveCellsCalculator(const Config& cfg) : cfg_(cfg) {
   burst_cols_time_.assign(cfg_.num_columns * 2, -1);
   active_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
   learn_cells_time_.assign(cfg_.num_columns * cfg_.cells_per_column * 2, -1);
+  learn_segs_time_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell, -1);
 
   // Sequence-learning update structures (active-cells side).
   seg_ind_update_active_.assign(cfg_.num_columns * cfg_.cells_per_column, -1);
@@ -234,14 +235,14 @@ int ActiveCellsCalculator::find_num_segs(const std::vector<DistalSynapse>& dista
   return num;
 }
 
-int ActiveCellsCalculator::find_least_used_seg(const std::vector<int>& active_segs_time,
+int ActiveCellsCalculator::find_least_used_seg(const std::vector<int>& learn_segs_time,
                                               int origin_col,
                                               int origin_cell) const {
   const int base = (origin_col * cfg_.cells_per_column + origin_cell) * cfg_.max_segments_per_cell;
   int least_seg = 0;
-  int oldest = active_segs_time[static_cast<size_t>(base)];
+  int oldest = learn_segs_time[static_cast<size_t>(base)];
   for (int seg = 1; seg < cfg_.max_segments_per_cell; ++seg) {
-    const int t = active_segs_time[static_cast<size_t>(base + seg)];
+    const int t = learn_segs_time[static_cast<size_t>(base + seg)];
     if (t < oldest) {
       oldest = t;
       least_seg = seg;
@@ -269,13 +270,13 @@ std::tuple<int, int, bool> ActiveCellsCalculator::get_best_matching_cell(const s
     if (cell == 0 || num_segs < fewest_segs) {
       cell_least_used_seg = cell;
       fewest_segs = num_segs;
-      seg_least_used = find_least_used_seg(active_segs_time, origin_col, cell);
+      seg_least_used = find_least_used_seg(learn_segs_time_, origin_col, cell);
       const int base = (origin_col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell;
-      least_used_time = active_segs_time[static_cast<size_t>(base + seg_least_used)];
+      least_used_time = learn_segs_time_[static_cast<size_t>(base + seg_least_used)];
     } else if (num_segs == fewest_segs) {
-      const int candidate_seg = find_least_used_seg(active_segs_time, origin_col, cell);
+      const int candidate_seg = find_least_used_seg(learn_segs_time_, origin_col, cell);
       const int base = (origin_col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell;
-      const int candidate_time = active_segs_time[static_cast<size_t>(base + candidate_seg)];
+      const int candidate_time = learn_segs_time_[static_cast<size_t>(base + candidate_seg)];
       if (candidate_time < least_used_time) {
         cell_least_used_seg = cell;
         seg_least_used = candidate_seg;
@@ -481,6 +482,7 @@ void ActiveCellsCalculator::calculate_active_cells(int time_step,
             // If a matching segment was found, only overwrite weak synapses; otherwise overwrite all.
             new_random_prev_learn_synapses(distal_synapses, c, cell, seg, time_step,
                                            /*keep_connected_syn=*/match_found, out_new);
+            learn_segs_time_[static_cast<size_t>(idx_cell_seg(c, cell, seg))] = time_step;
           }
         }
       })

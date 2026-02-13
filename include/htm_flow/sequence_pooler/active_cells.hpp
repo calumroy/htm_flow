@@ -107,6 +107,9 @@ private:
     return (col * cfg_.cells_per_column + cell) * 2 + slot;
   }
   inline int idx_col_time(int col, int slot) const { return col * 2 + slot; }
+  inline int idx_cell_seg(int col, int cell, int seg) const {
+    return (col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell + seg;
+  }
 
   bool check_cell_active(int col, int cell, int time_step) const;
   bool check_cell_learn(int col, int cell, int time_step) const;
@@ -144,7 +147,7 @@ private:
   int find_num_segs(const std::vector<DistalSynapse>& distal_synapses,
                     int origin_col,
                     int origin_cell) const;
-  int find_least_used_seg(const std::vector<int>& active_segs_time,
+  int find_least_used_seg(const std::vector<int>& learn_segs_time,
                           int origin_col,
                           int origin_cell) const;
   // Returns: (cell, seg, bestCellFound)
@@ -182,6 +185,8 @@ private:
   std::vector<std::pair<int, int>> current_active_cells_list_;
   std::vector<std::pair<int, int>> current_learn_cells_list_;
   std::vector<std::pair<int, int>> prev_learn_cells_list_;
+  // Last timestep each segment was selected as a learning target.
+  std::vector<int> learn_segs_time_;
 
   // Update structures for the sequence learning stage (active-cells side).
   std::vector<int> seg_ind_update_active_;        // (num_columns*cells_per_column)
