@@ -22,6 +22,8 @@
 #include <iostream>
 #include <string>
 
+#include <yaml-cpp/yaml.h>
+
 #ifdef HTM_FLOW_WITH_GUI
 #include <htm_gui/debugger.hpp>
 #endif
@@ -78,6 +80,7 @@ void print_help(const char* prog) {
             << "  --config FILE   Load configuration from YAML file\n"
             << "  --list-configs  List available YAML configs in configs/\n"
             << "  --gui           Open Qt debugger GUI\n"
+            << "  --theme MODE    GUI theme: light|dark (CLI overrides YAML gui.theme)\n"
             << "  --train N       Run N training epochs first\n"
             << "  --steps N       Run N steps (headless mode)\n"
             << "  --log           Enable timing logs\n"
@@ -86,9 +89,21 @@ void print_help(const char* prog) {
             << "  " << prog << " --gui                                    # Single layer with GUI\n"
             << "  " << prog << " 2layer --gui                             # 2-layer with GUI\n"
             << "  " << prog << " --config configs/small_test.yaml         # Load from YAML\n"
-            << "  " << prog << " --config configs/top_layer_pooling.yaml --gui  # YAML with GUI\n"
+            << "  " << prog << " --config configs/top_layer_pooling.yaml --gui --theme dark\n"
             << "  " << prog << " 3layer --train 20 --gui                  # Train then debug\n"
             << "  " << prog << " temporal --steps 100                     # Headless run\n";
+}
+
+std::string parse_gui_theme(const std::string& config_path) {
+  try {
+    YAML::Node root = YAML::LoadFile(config_path);
+    if (root["gui"] && root["gui"]["theme"]) {
+      return root["gui"]["theme"].as<std::string>();
+    }
+  } catch (const YAML::Exception& e) {
+    std::cerr << "Warning: could not parse gui theme: " << e.what() << "\n";
+  }
+  return {};
 }
 
 }  // namespace
@@ -100,6 +115,8 @@ int main(int argc, char* argv[]) {
   int train_epochs = 0;
   int steps = 10;
   bool log_timings = false;
+  std::string cli_theme;
+  std::string yaml_theme;
 
   // Parse args
   for (int i = 1; i < argc; ++i) {
@@ -124,6 +141,14 @@ int main(int argc, char* argv[]) {
       config_file = argv[++i];
       continue;
     }
+    if (arg == "--theme" && i + 1 < argc) {
+      cli_theme = argv[++i];
+      continue;
+    }
+    if (arg == "--theme") {
+      std::cerr << "--theme requires a value: light|dark\n";
+      return 2;
+    }
     if (arg == "--gui") { use_gui = true; continue; }
     if (arg == "--log") { log_timings = true; continue; }
     if (arg == "--train" && i + 1 < argc) { train_epochs = std::atoi(argv[++i]); continue; }
@@ -138,6 +163,7 @@ int main(int argc, char* argv[]) {
     // Load from YAML file
     try {
       cfg = htm_flow::load_region_config(config_file);
+      yaml_theme = parse_gui_theme(config_file);
       config_name = std::filesystem::path(config_file).stem().string();
       std::cout << "Loaded config from: " << config_file << "\n";
     } catch (const std::exception& e) {
@@ -172,10 +198,14 @@ int main(int argc, char* argv[]) {
   }
 
   // Run
+  const std::string effective_theme = cli_theme.empty() ? yaml_theme : cli_theme;
   if (use_gui) {
 #ifdef HTM_FLOW_WITH_GUI
     std::cout << "Starting GUI... (use Layer dropdown to switch layers)\n";
-    return htm_gui::run_debugger(argc, argv, runtime);
+    htm_gui::DebuggerOptions opts;
+    opts.window_title = config_name;
+    opts.theme = effective_theme;
+    return htm_gui::run_debugger(argc, argv, runtime, opts);
 #else
     std::cerr << "Built without GUI. Rebuild with: ./build.sh Release GUI\n";
     return 1;

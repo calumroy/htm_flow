@@ -8,6 +8,7 @@ namespace htm_gui {
 
 struct DebuggerOptions {
   std::string window_title{};
+  std::string theme{};  // "light" or "dark"; empty = platform default
 };
 
 // Runs a Qt event loop and blocks until the GUI exits.

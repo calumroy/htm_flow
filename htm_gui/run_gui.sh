@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Usage:
+#   ./htm_gui/run_gui.sh --config configs/small_test.yaml --theme dark
+#   ./htm_gui/run_gui.sh --config configs/small_test.yaml --log
+# Theme can also be specified in YAML as gui.theme: light|dark.
+
 IMAGE_NAME=${IMAGE_NAME:-htm_flow_gui:qt6}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
@@ -40,7 +45,7 @@ if [[ -d /dev/dri ]]; then
   DISPLAY_ARGS+=(--device /dev/dri)
 fi
 
-# Forward any extra arguments to htm_flow (e.g. --config configs/small_test.yaml)
+# Forward any extra arguments to htm_flow (e.g. --config configs/small_test.yaml --theme dark)
 HTM_ARGS="${*:-}"
 
 podman run "${COMMON_ARGS[@]}" "${DISPLAY_ARGS[@]}" "$IMAGE_NAME" bash -lc "

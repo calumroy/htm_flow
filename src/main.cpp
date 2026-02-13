@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 
+#include <yaml-cpp/yaml.h>
+
 #ifdef HTM_FLOW_WITH_GUI
 #include <htm_gui/debugger.hpp>
 #endif
@@ -18,10 +20,11 @@ namespace {
 
 void usage(const char* prog) {
   std::cerr << "Usage:\n"
-            << "  " << prog << " [--steps N] [--gui] [--log] [--config FILE]\n\n"
+            << "  " << prog << " [--steps N] [--gui] [--theme MODE] [--log] [--config FILE]\n\n"
             << "Options:\n"
             << "  --steps N       Run N steps in headless mode (default: " << NUM_ITERATIONS << ")\n"
             << "  --gui           Start the Qt debugger (requires building with -DHTM_FLOW_WITH_GUI=ON)\n"
+            << "  --theme MODE    GUI theme: light|dark (CLI overrides YAML gui.theme)\n"
             << "  --log           Print per-stage timing logs (useful with --gui)\n"
             << "  --config FILE   Load configuration from YAML file\n"
             << "  --list-configs  List available YAML configs in configs/\n\n"
@@ -30,8 +33,20 @@ void usage(const char* prog) {
             << "  not per-step random bits.\n\n"
             << "Examples:\n"
             << "  " << prog << " --steps 100\n"
-            << "  " << prog << " --config configs/small_test.yaml --gui\n"
+            << "  " << prog << " --config configs/small_test.yaml --gui --theme dark\n"
             << "  " << prog << " --config configs/full_temporal_pooling.yaml --steps 50\n";
+}
+
+std::string parse_gui_theme(const std::string& config_path) {
+  try {
+    YAML::Node root = YAML::LoadFile(config_path);
+    if (root["gui"] && root["gui"]["theme"]) {
+      return root["gui"]["theme"].as<std::string>();
+    }
+  } catch (const YAML::Exception& e) {
+    std::cerr << "Warning: could not parse gui theme: " << e.what() << "\n";
+  }
+  return {};
 }
 
 }  // namespace
@@ -41,6 +56,7 @@ int main(int argc, char* argv[]) {
   int steps = NUM_ITERATIONS;
   bool log = false;
   std::string config_file;
+  std::string cli_theme;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -86,6 +102,15 @@ int main(int argc, char* argv[]) {
       config_file = argv[++i];
       continue;
     }
+    if (arg == "--theme") {
+      if (i + 1 >= argc) {
+        std::cerr << "--theme requires a value: light|dark\n";
+        usage(argv[0]);
+        return 2;
+      }
+      cli_theme = argv[++i];
+      continue;
+    }
 
     std::cerr << "Unknown arg: " << arg << "\n";
     usage(argv[0]);
@@ -95,11 +120,13 @@ int main(int argc, char* argv[]) {
   // Use HTMRegionRuntime if config file is provided, otherwise use HtmFlowRuntime
   std::unique_ptr<htm_gui::IHtmRuntime> runtime;
   std::string config_name = "htm_flow";
+  std::string yaml_theme;
 
   if (!config_file.empty()) {
     // Load from YAML file
     try {
       auto cfg = htm_flow::load_region_config(config_file);
+      yaml_theme = parse_gui_theme(config_file);
       config_name = std::filesystem::path(config_file).stem().string();
       
       // Apply logging settings
@@ -134,10 +161,14 @@ int main(int argc, char* argv[]) {
 
     runtime = std::make_unique<htm_flow::HtmFlowRuntime>(cfg);
   }
+  const std::string effective_theme = cli_theme.empty() ? yaml_theme : cli_theme;
 
   if (use_gui) {
 #ifdef HTM_FLOW_WITH_GUI
-    return htm_gui::run_debugger(argc, argv, *runtime);
+    htm_gui::DebuggerOptions opts;
+    opts.window_title = config_name;
+    opts.theme = effective_theme;
+    return htm_gui::run_debugger(argc, argv, *runtime, opts);
 #else
     std::cerr << "This binary was built without GUI support.\n"
               << "Rebuild with: -DHTM_FLOW_WITH_GUI=ON\n";
