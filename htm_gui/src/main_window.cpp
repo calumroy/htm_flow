@@ -20,6 +20,8 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QTimer>
+#include <QShowEvent>
 #include <QWidget>
 
 #include "views.hpp"
@@ -404,6 +406,22 @@ ImageView* focusedImageView() {
   return nullptr;
 }
 
+bool distalSynapseLess(const htm_gui::DistalSynapseInfo& a, const htm_gui::DistalSynapseInfo& b) {
+  if (a.dst_column_y != b.dst_column_y) {
+    return a.dst_column_y < b.dst_column_y;
+  }
+  if (a.dst_column_x != b.dst_column_x) {
+    return a.dst_column_x < b.dst_column_x;
+  }
+  if (a.dst_cell != b.dst_cell) {
+    return a.dst_cell < b.dst_cell;
+  }
+  if (a.connected != b.connected) {
+    return a.connected && !b.connected;
+  }
+  return a.permanence > b.permanence;
+}
+
 }  // namespace
 
 MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
@@ -414,17 +432,29 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   columns_view_ = new ImageView(this);
   cells_view_ = new ImageView(this);
 
-  // Use a splitter so the user can resize the three panels interactively.
-  auto* splitter = new QSplitter(Qt::Horizontal, this);
-  splitter->setObjectName("MainSplitter");
-  splitter->setChildrenCollapsible(false);
-  splitter->setOpaqueResize(true);
-  splitter->addWidget(input_view_);
-  splitter->addWidget(columns_view_);
-  splitter->addWidget(cells_view_);
-  splitter->setStretchFactor(0, 1);
-  splitter->setStretchFactor(1, 1);
-  splitter->setStretchFactor(2, 0);
+  setDockNestingEnabled(true);
+  setCentralWidget(new QWidget(this));
+
+  // Main visual panes as docks so they can be drag-reordered interactively.
+  input_dock_ = new QDockWidget("Input", this);
+  input_dock_->setObjectName("InputViewDock");
+  input_dock_->setAllowedAreas(Qt::AllDockWidgetAreas);
+  input_dock_->setWidget(input_view_);
+  addDockWidget(Qt::LeftDockWidgetArea, input_dock_);
+
+  columns_dock_ = new QDockWidget("Columns", this);
+  columns_dock_->setObjectName("ColumnsViewDock");
+  columns_dock_->setAllowedAreas(Qt::AllDockWidgetAreas);
+  columns_dock_->setWidget(columns_view_);
+  addDockWidget(Qt::LeftDockWidgetArea, columns_dock_);
+  splitDockWidget(input_dock_, columns_dock_, Qt::Horizontal);
+
+  cells_dock_ = new QDockWidget("Cells", this);
+  cells_dock_->setObjectName("CellsViewDock");
+  cells_dock_->setAllowedAreas(Qt::AllDockWidgetAreas);
+  cells_dock_->setWidget(cells_view_);
+  addDockWidget(Qt::LeftDockWidgetArea, cells_dock_);
+  splitDockWidget(columns_dock_, cells_dock_, Qt::Horizontal);
 
   // Distal synapse panel: dockable + floatable so you can move/resize it independently.
   distal_text_ = new QPlainTextEdit(this);
@@ -448,8 +478,6 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   proximal_dock_->setWidget(proximal_text_);
   addDockWidget(Qt::RightDockWidgetArea, proximal_dock_);
 
-  setCentralWidget(splitter);
-
   auto* tb = addToolBar("Controls");
   auto* step_one = new QAction("Step", this);
   auto* step_n = new QAction("N steps", this);
@@ -460,6 +488,8 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   auto* zoom_in = new QAction("Zoom In", this);
   auto* zoom_out = new QAction("Zoom Out", this);
   auto* mark = new QAction("Mark", this);
+  auto* pin_proximal = new QAction("Pin Proximal", this);
+  auto* pin_distal = new QAction("Pin Distal", this);
 
   // Space bar steps the simulation (global within the app window).
   step_one->setShortcut(QKeySequence(Qt::Key_Space));
@@ -574,6 +604,8 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   tb->addAction(zoom_out);
   tb->addSeparator();
   tb->addAction(mark);
+  tb->addAction(pin_proximal);
+  tb->addAction(pin_distal);
 
   connect(step_one, &QAction::triggered, this, &MainWindow::stepOne);
   connect(step_n, &QAction::triggered, this, &MainWindow::stepN);
@@ -581,6 +613,8 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   connect(show_pred, &QAction::triggered, this, &MainWindow::showPredictCells);
   connect(show_learn, &QAction::triggered, this, &MainWindow::showLearnCells);
   connect(mark, &QAction::triggered, this, &MainWindow::markState);
+  connect(pin_proximal, &QAction::triggered, this, &MainWindow::pinCurrentProximal);
+  connect(pin_distal, &QAction::triggered, this, &MainWindow::pinCurrentDistal);
 
   // Global zoom shortcuts apply to the currently focused ImageView (input / columns / cells).
   zoom_in->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
@@ -626,8 +660,38 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   legend->setToolTip("Per-column overlay: black outer=pred, blue inner=active, dark-green dot=learning.");
   statusBar()->addPermanentWidget(legend);
 
+  // Keep proximal/distal as tabs so the main image panes get most of the width on startup.
+  tabifyDockWidget(proximal_dock_, distal_dock_);
+  distal_dock_->raise();
+
   statusBar()->showMessage("Ready");
   refresh();
+}
+
+void MainWindow::showEvent(QShowEvent* event) {
+  QMainWindow::showEvent(event);
+  if (initial_dock_layout_done_) {
+    return;
+  }
+  initial_dock_layout_done_ = true;
+
+  // Run after show/layout stabilization so dock widths are applied reliably on startup.
+  QTimer::singleShot(0, this, [this]() {
+    applyInitialDockLayout();
+    QTimer::singleShot(0, this, [this]() {
+      applyInitialDockLayout();
+    });
+  });
+}
+
+void MainWindow::applyInitialDockLayout() {
+  if (!input_dock_ || !columns_dock_ || !cells_dock_ || !proximal_dock_) {
+    return;
+  }
+
+  // Keep the right-side synapse tabs relatively narrow, then split remaining width evenly across main panes.
+  resizeDocks({input_dock_, columns_dock_, cells_dock_, proximal_dock_}, {3, 3, 3, 1}, Qt::Horizontal);
+  resizeDocks({input_dock_, columns_dock_, cells_dock_}, {1, 1, 1}, Qt::Horizontal);
 }
 
 void MainWindow::refresh() {
@@ -691,6 +755,8 @@ void MainWindow::refresh() {
 
   updateProximalSynapsePanel();
   updateDistalSynapsePanel();
+  updatePinnedProximalPanels();
+  updatePinnedDistalPanels();
 
   std::string msg = "t=" + std::to_string(snapshot_.timestep) +
                     " active_cols=" + std::to_string(snapshot_.active_column_indices.size()) +
@@ -789,7 +855,11 @@ void MainWindow::updateProximalSynapsePanel() {
     proximal_query_ = runtime_.query_proximal(selected_col_x_, selected_col_y_);
   }
 
-  auto syns = proximal_query_->synapses;
+  proximal_text_->setPlainText(formatProximalSynapseText(*proximal_query_, selected_col_x_, selected_col_y_));
+}
+
+QString MainWindow::formatProximalSynapseText(const htm_gui::ProximalSynapseQuery& query, int col_x, int col_y) const {
+  auto syns = query.synapses;
   std::sort(syns.begin(), syns.end(), [](const htm_gui::ProximalSynapseInfo& a, const htm_gui::ProximalSynapseInfo& b) {
     return a.permanence > b.permanence;
   });
@@ -802,10 +872,10 @@ void MainWindow::updateProximalSynapsePanel() {
   }
 
   QString out;
-  out += QString("Column (%1,%2)\n").arg(selected_col_x_).arg(selected_col_y_);
+  out += QString("Column (%1,%2)\n").arg(col_x).arg(col_y);
   out += QString("Overlap: %1   Potential overlap: %2\n")
-             .arg(QString::number(proximal_query_->overlap, 'f', 6))
-             .arg(QString::number(proximal_query_->potential_overlap, 'f', 6));
+             .arg(QString::number(query.overlap, 'f', 6))
+             .arg(QString::number(query.potential_overlap, 'f', 6));
   out += QString("Synapses: %1  connected: %2  input_on: %3\n\n")
              .arg(int(syns.size()))
              .arg(connected_count)
@@ -824,8 +894,7 @@ void MainWindow::updateProximalSynapsePanel() {
                .arg(s.connected ? "Y" : "N")
                .arg(s.input_value ? "1" : "0");
   }
-
-  proximal_text_->setPlainText(out);
+  return out;
 }
 
 void MainWindow::updateDistalSynapsePanel() {
@@ -845,40 +914,45 @@ void MainWindow::updateDistalSynapsePanel() {
     return;
   }
 
-  // Sort by permanence descending for quick visual inspection.
-  auto syns = distal_overlay_->synapses;
-  std::sort(syns.begin(), syns.end(), [](const htm_gui::DistalSynapseInfo& a, const htm_gui::DistalSynapseInfo& b) {
-    return a.permanence > b.permanence;
-  });
+  distal_text_->setPlainText(
+      formatDistalSynapseText(*distal_overlay_, selected_col_x_, selected_col_y_, selected_cell_, selected_segment_));
+}
+
+QString MainWindow::formatDistalSynapseText(const htm_gui::DistalSynapseQuery& query,
+                                            int src_col_x,
+                                            int src_col_y,
+                                            int src_cell,
+                                            int src_segment) const {
+  auto syns = query.synapses;
+  std::sort(syns.begin(), syns.end(), distalSynapseLess);
 
   int connected_count = 0;
   for (const auto& s : syns) {
-    if (s.connected) ++connected_count;
-  }
-
-  QString syn_lines;
-
-  const int grid_w = snapshot_.columns_shape.cols;
-  const int grid_h = snapshot_.columns_shape.rows;
-
-  // Is the selected cell currently predictive (per snapshot)?
-  bool cell_predictive = false;
-  bool cell_active = false;
-  bool cell_learning = false;
-  if (selected_cell_ >= 0 && selected_cell_ < 64 && selected_col_x_ >= 0 && selected_col_y_ >= 0 && grid_w > 0) {
-    const int src_col_idx = htm_gui::flatten_xy(selected_col_x_, selected_col_y_, grid_w);
-    if (src_col_idx >= 0 && src_col_idx < int(snapshot_.column_cell_masks.size())) {
-      const auto masks = snapshot_.column_cell_masks[src_col_idx];
-      cell_predictive = (masks.predictive & (std::uint64_t(1) << selected_cell_)) != 0;
-      cell_active = (masks.active & (std::uint64_t(1) << selected_cell_)) != 0;
-      cell_learning = (masks.learning & (std::uint64_t(1) << selected_cell_)) != 0;
+    if (s.connected) {
+      ++connected_count;
     }
   }
 
-  // Does THIS selected segment have enough connected synapses targeting active cells to be considered active?
+  QString syn_lines;
+  const int grid_w = snapshot_.columns_shape.cols;
+  const int grid_h = snapshot_.columns_shape.rows;
+
+  bool cell_predictive = false;
+  bool cell_active = false;
+  bool cell_learning = false;
+  if (src_cell >= 0 && src_cell < 64 && src_col_x >= 0 && src_col_y >= 0 && grid_w > 0) {
+    const int src_col_idx = htm_gui::flatten_xy(src_col_x, src_col_y, grid_w);
+    if (src_col_idx >= 0 && src_col_idx < int(snapshot_.column_cell_masks.size())) {
+      const auto masks = snapshot_.column_cell_masks[src_col_idx];
+      cell_predictive = (masks.predictive & (std::uint64_t(1) << src_cell)) != 0;
+      cell_active = (masks.active & (std::uint64_t(1) << src_cell)) != 0;
+      cell_learning = (masks.learning & (std::uint64_t(1) << src_cell)) != 0;
+    }
+  }
+
   const int threshold = runtime_.activation_threshold();
   int active_connected = 0;
-
+  int tgt_active_total = 0;
   int i = 0;
   for (const auto& s : syns) {
     bool dst_active = false;
@@ -890,14 +964,13 @@ void MainWindow::updateDistalSynapsePanel() {
         dst_active = (masks.active & (std::uint64_t(1) << s.dst_cell)) != 0;
       }
     }
-
+    if (dst_active) {
+      ++tgt_active_total;
+    }
     if (s.connected && dst_active) {
       ++active_connected;
     }
 
-    // Legend:
-    // - conn: permanence >= connect threshold (as provided by runtime_.query_distal)
-    // - tgt_active: whether the synapse points to a currently active cell in the *current* snapshot
     syn_lines += QString("%1) dst=(%2,%3) cell=%4  perm=%5  conn=%6  tgt_active=%7\n")
                      .arg(i++, 2)
                      .arg(s.dst_column_x, 4)
@@ -910,11 +983,7 @@ void MainWindow::updateDistalSynapsePanel() {
 
   const bool segment_active = active_connected > threshold;
   QString out;
-  out += QString("Src column (%1,%2)  cell=%3  seg=%4\n")
-             .arg(selected_col_x_)
-             .arg(selected_col_y_)
-             .arg(selected_cell_)
-             .arg(selected_segment_);
+  out += QString("Src column (%1,%2)  cell=%3  seg=%4\n").arg(src_col_x).arg(src_col_y).arg(src_cell).arg(src_segment);
   out += QString("Cell state (now): active=%1  predictive=%2  learning=%3\n")
              .arg(cell_active ? "Y" : "N")
              .arg(cell_predictive ? "Y" : "N")
@@ -923,10 +992,119 @@ void MainWindow::updateDistalSynapsePanel() {
              .arg(segment_active ? "Y" : "N")
              .arg(active_connected)
              .arg(threshold);
-  out += QString("Synapses: %1  connected: %2\n\n").arg(int(syns.size())).arg(connected_count);
+  out += QString("Synapses: %1  connected: %2  tgt_active: %3\n\n")
+             .arg(int(syns.size()))
+             .arg(connected_count)
+             .arg(tgt_active_total);
   out += syn_lines;
+  return out;
+}
 
-  distal_text_->setPlainText(out);
+void MainWindow::updatePinnedDistalPanels() {
+  auto it = pinned_distal_views_.begin();
+  while (it != pinned_distal_views_.end()) {
+    if (it->dock.isNull() || it->text.isNull()) {
+      it = pinned_distal_views_.erase(it);
+      continue;
+    }
+
+    const int grid_w = snapshot_.columns_shape.cols;
+    const int grid_h = snapshot_.columns_shape.rows;
+    const bool src_col_valid = (it->col_x >= 0 && it->col_x < grid_w && it->col_y >= 0 && it->col_y < grid_h);
+    const bool src_cell_valid = (it->cell >= 0 && it->cell < snapshot_.cells_per_column);
+
+    if (!src_col_valid || !src_cell_valid) {
+      it->text->setPlainText("Pinned source is no longer valid for this snapshot.");
+      ++it;
+      continue;
+    }
+
+    const int nsegs = runtime_.num_segments(it->col_x, it->col_y, it->cell);
+    if (it->segment < 0 || it->segment >= nsegs) {
+      it->text->setPlainText("Pinned segment is no longer available.");
+      ++it;
+      continue;
+    }
+
+    const auto query = runtime_.query_distal(it->col_x, it->col_y, it->cell, it->segment);
+    it->text->setPlainText(formatDistalSynapseText(query, it->col_x, it->col_y, it->cell, it->segment));
+    ++it;
+  }
+}
+
+void MainWindow::updatePinnedProximalPanels() {
+  auto it = pinned_proximal_views_.begin();
+  while (it != pinned_proximal_views_.end()) {
+    if (it->dock.isNull() || it->text.isNull()) {
+      it = pinned_proximal_views_.erase(it);
+      continue;
+    }
+
+    const int grid_w = snapshot_.columns_shape.cols;
+    const int grid_h = snapshot_.columns_shape.rows;
+    const bool src_col_valid = (it->col_x >= 0 && it->col_x < grid_w && it->col_y >= 0 && it->col_y < grid_h);
+    if (!src_col_valid) {
+      it->text->setPlainText("Pinned column is no longer valid for this snapshot.");
+      ++it;
+      continue;
+    }
+
+    const auto query = runtime_.query_proximal(it->col_x, it->col_y);
+    it->text->setPlainText(formatProximalSynapseText(query, it->col_x, it->col_y));
+    ++it;
+  }
+}
+
+void MainWindow::pinCurrentProximal() {
+  if (selected_col_x_ < 0 || selected_col_y_ < 0) {
+    statusBar()->showMessage("Select a column before pinning proximal synapses.", 3000);
+    return;
+  }
+
+  const auto query = runtime_.query_proximal(selected_col_x_, selected_col_y_);
+  auto* text = new QPlainTextEdit(this);
+  text->setReadOnly(true);
+  text->setPlainText(formatProximalSynapseText(query, selected_col_x_, selected_col_y_));
+
+  auto* dock =
+      new QDockWidget(QString("Proximal synapses (%1,%2)").arg(selected_col_x_).arg(selected_col_y_), this);
+  dock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+  dock->setWidget(text);
+  dock->setAttribute(Qt::WA_DeleteOnClose, true);
+  addDockWidget(Qt::RightDockWidgetArea, dock);
+  dock->show();
+
+  pinned_proximal_views_.push_back(PinnedProximalView{selected_col_x_, selected_col_y_, text, dock});
+}
+
+void MainWindow::pinCurrentDistal() {
+  if (selected_col_x_ < 0 || selected_col_y_ < 0 || selected_cell_ < 0 || selected_segment_ < 0) {
+    statusBar()->showMessage("Select a column, cell, and segment before pinning distal synapses.", 3000);
+    return;
+  }
+
+  const int nsegs = runtime_.num_segments(selected_col_x_, selected_col_y_, selected_cell_);
+  if (selected_segment_ >= nsegs) {
+    statusBar()->showMessage("Current segment is no longer valid.", 3000);
+    return;
+  }
+
+  const auto query = runtime_.query_distal(selected_col_x_, selected_col_y_, selected_cell_, selected_segment_);
+  auto* text = new QPlainTextEdit(this);
+  text->setReadOnly(true);
+  text->setPlainText(formatDistalSynapseText(query, selected_col_x_, selected_col_y_, selected_cell_, selected_segment_));
+
+  auto* dock = new QDockWidget(
+      QString("Distal synapses (%1,%2 c%3 s%4)").arg(selected_col_x_).arg(selected_col_y_).arg(selected_cell_).arg(selected_segment_),
+      this);
+  dock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+  dock->setWidget(text);
+  dock->setAttribute(Qt::WA_DeleteOnClose, true);
+  addDockWidget(Qt::RightDockWidgetArea, dock);
+  dock->show();
+
+  pinned_distal_views_.push_back(
+      PinnedDistalView{selected_col_x_, selected_col_y_, selected_cell_, selected_segment_, text, dock});
 }
 
 void MainWindow::markState() {
