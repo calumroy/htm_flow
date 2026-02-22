@@ -433,7 +433,6 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   cells_view_ = new ImageView(this);
 
   setDockNestingEnabled(true);
-  setCentralWidget(new QWidget(this));
 
   // Main visual panes as docks so they can be drag-reordered interactively.
   input_dock_ = new QDockWidget("Input", this);
