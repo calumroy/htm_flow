@@ -42,6 +42,8 @@ private slots:
   void markState();
   void pinCurrentProximal();
   void pinCurrentDistal();
+  void saveLayout();
+  void restoreLayout();
 
 private:
   enum class CellDisplayMode { Active, Predictive, Learning };
@@ -74,6 +76,7 @@ private:
                                   int src_col_y,
                                   int src_cell,
                                   int src_segment) const;
+  static QString layoutFilePath();
 
   htm_gui::IHtmRuntime& runtime_;
   htm_gui::Snapshot snapshot_;

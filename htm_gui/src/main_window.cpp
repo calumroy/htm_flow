@@ -7,7 +7,11 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDataStream>
+#include <QDir>
 #include <QDockWidget>
+#include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
@@ -18,6 +22,7 @@
 #include <QPlainTextEdit>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QTimer>
@@ -601,10 +606,16 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   tb->addSeparator();
   tb->addAction(zoom_in);
   tb->addAction(zoom_out);
+  auto* save_layout = new QAction("Save Layout", this);
+  auto* restore_layout = new QAction("Restore Layout", this);
+
   tb->addSeparator();
   tb->addAction(mark);
   tb->addAction(pin_proximal);
   tb->addAction(pin_distal);
+  tb->addSeparator();
+  tb->addAction(save_layout);
+  tb->addAction(restore_layout);
 
   connect(step_one, &QAction::triggered, this, &MainWindow::stepOne);
   connect(step_n, &QAction::triggered, this, &MainWindow::stepN);
@@ -614,6 +625,8 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   connect(mark, &QAction::triggered, this, &MainWindow::markState);
   connect(pin_proximal, &QAction::triggered, this, &MainWindow::pinCurrentProximal);
   connect(pin_distal, &QAction::triggered, this, &MainWindow::pinCurrentDistal);
+  connect(save_layout, &QAction::triggered, this, &MainWindow::saveLayout);
+  connect(restore_layout, &QAction::triggered, this, &MainWindow::restoreLayout);
 
   // Global zoom shortcuts apply to the currently focused ImageView (input / columns / cells).
   zoom_in->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
@@ -674,12 +687,15 @@ void MainWindow::showEvent(QShowEvent* event) {
   }
   initial_dock_layout_done_ = true;
 
-  // Run after show/layout stabilization so dock widths are applied reliably on startup.
   QTimer::singleShot(0, this, [this]() {
-    applyInitialDockLayout();
-    QTimer::singleShot(0, this, [this]() {
+    if (QFile::exists(layoutFilePath())) {
+      restoreLayout();
+    } else {
       applyInitialDockLayout();
-    });
+      QTimer::singleShot(0, this, [this]() {
+        applyInitialDockLayout();
+      });
+    }
   });
 }
 
@@ -1104,6 +1120,65 @@ void MainWindow::pinCurrentDistal() {
 
   pinned_distal_views_.push_back(
       PinnedDistalView{selected_col_x_, selected_col_y_, selected_cell_, selected_segment_, text, dock});
+}
+
+QString MainWindow::layoutFilePath() {
+  const QString config_dir =
+      QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/htm_gui";
+  return config_dir + "/layout.dat";
+}
+
+void MainWindow::saveLayout() {
+  const QString path = layoutFilePath();
+  QDir().mkpath(QFileInfo(path).absolutePath());
+
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly)) {
+    statusBar()->showMessage(QString("Failed to save layout: %1").arg(file.errorString()), 5000);
+    return;
+  }
+
+  QDataStream out(&file);
+  out << quint32(0x48544D4C);  // "HTMLAYOUT" magic
+  out << quint16(1);           // version
+  out << saveGeometry();
+  out << saveState();
+
+  statusBar()->showMessage(QString("Layout saved to %1").arg(path), 3000);
+}
+
+void MainWindow::restoreLayout() {
+  const QString path = layoutFilePath();
+  QFile file(path);
+  if (!file.exists()) {
+    statusBar()->showMessage("No saved layout found.", 3000);
+    return;
+  }
+  if (!file.open(QIODevice::ReadOnly)) {
+    statusBar()->showMessage(QString("Failed to read layout: %1").arg(file.errorString()), 5000);
+    return;
+  }
+
+  QDataStream in(&file);
+  quint32 magic{};
+  quint16 version{};
+  in >> magic >> version;
+
+  if (magic != 0x48544D4C || version != 1) {
+    statusBar()->showMessage("Saved layout file is corrupt or incompatible; ignoring.", 5000);
+    return;
+  }
+
+  QByteArray geometry;
+  QByteArray state;
+  in >> geometry >> state;
+
+  restoreGeometry(geometry);
+  if (!restoreState(state)) {
+    statusBar()->showMessage("Could not fully restore layout (dock mismatch); using defaults.", 5000);
+    return;
+  }
+  statusBar()->showMessage("Layout restored.", 3000);
 }
 
 void MainWindow::markState() {
