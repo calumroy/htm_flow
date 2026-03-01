@@ -212,24 +212,12 @@ int ActiveCellsCalculator::get_best_matching_segment(const std::vector<DistalSyn
   return -1;
 }
 
-int ActiveCellsCalculator::find_num_segs(const std::vector<DistalSynapse>& distal_synapses,
-                                        int origin_col,
-                                        int origin_cell) const {
+int ActiveCellsCalculator::find_num_segs(int origin_col, int origin_cell) const {
+  const int base = (origin_col * cfg_.cells_per_column + origin_cell) * cfg_.max_segments_per_cell;
   int num = 0;
   for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
-    for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
-      const std::size_t idx =
-          idx_distal_synapse(static_cast<std::size_t>(origin_col),
-                             static_cast<std::size_t>(origin_cell),
-                             static_cast<std::size_t>(seg),
-                             static_cast<std::size_t>(syn),
-                             static_cast<std::size_t>(cfg_.cells_per_column),
-                             static_cast<std::size_t>(cfg_.max_segments_per_cell),
-                             static_cast<std::size_t>(cfg_.max_synapses_per_segment));
-      if (distal_synapses[idx].perm > 0.0f) {
-        ++num;
-        break;
-      }
+    if (learn_segs_time_[static_cast<size_t>(base + seg)] >= 0) {
+      ++num;
     }
   }
   return num;
@@ -266,7 +254,7 @@ std::tuple<int, int, bool> ActiveCellsCalculator::get_best_matching_cell(const s
   int least_used_time = time_step;
 
   for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
-    const int num_segs = find_num_segs(distal_synapses, origin_col, cell);
+    const int num_segs = find_num_segs(origin_col, cell);
     if (cell == 0 || num_segs < fewest_segs) {
       cell_least_used_seg = cell;
       fewest_segs = num_segs;
