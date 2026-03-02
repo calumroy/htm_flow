@@ -248,10 +248,11 @@ private:
 
   // --- Best-matching logic (used for learning cell selection) -------------
 
-  /// Count how many connected synapses on a segment end on cells (or columns)
-  /// that were active at t-1. The @p on_cell flag switches between cell-level
-  /// and column-level matching; cell-level is used for learning, column-level
-  /// for prediction.
+  /// Count how many synapses with positive permanence on a segment end on cells
+  /// (or columns) that were active at t-1. Uses perm > 0 (not connect_permanence)
+  /// so sub-connected synapses contribute to matching for learning. The prediction
+  /// path (predict_cells) uses the connected threshold separately.
+  /// The @p on_cell flag switches between cell-level and column-level matching.
   int segment_num_synapses_active(const std::vector<DistalSynapse>& distal_synapses,
                                   int origin_col,
                                   int origin_cell,
@@ -292,7 +293,7 @@ private:
                                                     int time_step) const;
 
   /// Write a 0/1 mask into @p out01 indicating which synapses on the segment
-  /// are both connected and targeting a currently-active cell.
+  /// have positive permanence and target a currently-active cell.
   /// Sequence learning uses this to know which synapses to reinforce.
   void get_segment_active_synapses(const std::vector<DistalSynapse>& distal_synapses,
                                    int origin_col,
