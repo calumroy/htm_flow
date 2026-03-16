@@ -298,7 +298,9 @@ int TemporalPoolerCalculator::segment_num_synapses_active_prev2(
                                                static_cast<std::size_t>(cfg_.max_segments_per_cell),
                                                static_cast<std::size_t>(cfg_.max_synapses_per_segment));
     const DistalSynapse& s = distal_synapses[idx];
-    if (s.perm > cfg_.connect_permanence) {
+    // Match sub-connected synapses as well so freshly-created temporal-pooling
+    // segments can be found and reinforced before they cross connect_permanence.
+    if (s.perm > 0.0f) {
       const int key = idx_cell_flat(s.target_col, s.target_cell);
       if (prev2_set.find(key) != prev2_set.end()) {
         ++count;
@@ -312,11 +314,11 @@ int TemporalPoolerCalculator::get_best_matching_segment_prev2(const std::vector<
                                                              const std::unordered_set<int>& prev2_set,
                                                              int origin_col,
                                                              int origin_cell) const {
-  // Find the segment with the most connected synapses ending on prev2 learning cells.
+  // Find the segment with the most positive-permanence synapses ending on prev2 learning cells.
   // Mirrors python `getBestMatchingSegment`.
   //
-  // Note: like the python code, this is "aggressive": it only uses permanence>connect_permanence
-  // to decide if a synapse exists/connected, and requires >min_num_syn_threshold matches overall.
+  // We intentionally allow sub-connected synapses here (perm > 0) so temporal-pool segments
+  // are reusable while they are still climbing toward connect_permanence.
   int best_seg = 0;
   int best_cnt = -1;
   for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {

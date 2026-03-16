@@ -381,3 +381,58 @@ TEST(TemporalPooler, distal_persistence_does_not_become_sticky_without_activity)
   }
 }
 
+TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/1,
+      /*spatial_permanence_inc=*/0.0f,
+      /*seq_permanence_inc=*/0.04f,
+      /*seq_permanence_dec=*/0.02f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.1f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  // Origin cell: (col0, cell0, seg0)
+  // syn0 is sub-connected but matches the prev2 set and is active now.
+  distal[0] = DistalSynapse{/*target_col=*/1, /*target_cell=*/1, /*perm=*/0.1f};
+  // syn1 is sub-connected and inactive, so it should decay instead of being overwritten.
+  distal[1] = DistalSynapse{/*target_col=*/0, /*target_cell=*/1, /*perm=*/0.1f};
+
+  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_cells_time(2 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_segs_time(2 * 2 * 1, -1);
+
+  // Make origin cell active-predict at t=2.
+  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
+  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
+
+  // Make syn0's endpoint active and newly learning so the segment matches prev2.
+  active_cells_time[idx_cell_time(2, 1, 1, 0)] = 2;
+  std::vector<std::pair<int, int>> new_learn_cells_list = {{1, 1}};
+
+  tp.update_distal(/*time_step=*/2,
+                   new_learn_cells_list,
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  // The segment should be reused and reinforced, not overwritten just because it is
+  // still below connect_permanence.
+  EXPECT_EQ(distal[0].target_col, 1);
+  EXPECT_EQ(distal[0].target_cell, 1);
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.14f);
+  EXPECT_EQ(distal[1].target_col, 0);
+  EXPECT_EQ(distal[1].target_cell, 1);
+  EXPECT_FLOAT_EQ(distal[1].perm, 0.08f);
+}
+
+
