@@ -116,6 +116,8 @@ public:
   void update_proximal(int time_step,
                        const std::vector<int>& col_pot_inputs01,
                        const std::vector<uint8_t>& col_active01,
+                       const std::vector<int>& predict_cells_time,
+                       const std::vector<int>& active_segs_time,
                        std::vector<float>& col_syn_perm,
                        const std::vector<int>& burst_cols_time);
 
@@ -125,7 +127,7 @@ public:
   // Update distal synapses (cell synapses) such that:
   //   - Track per-cell "active-predict streaks" and maintain a smoothed average persistence.
   //   - If a cell was predicting/active last timestep and has remaining persistence, keep it
-  //     in the predictive state even without active segments.
+  //     in the predictive state only when there is recent segment evidence to carry forward.
   //   - If a cell is "active predictive" (was predicting at t-1 and became active at t),
   //     then reinforce a best-matching segment (based on antepenultimate learning cells),
   //     otherwise create/overwrite a new segment.
@@ -154,6 +156,8 @@ public:
   //   6. active_segs_time
   //      Segment time-history: last timestep each segment was active (sequence segment).
   //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
+  //      NOTE: this function MUTATES it when persistence extends a prediction, so the
+  //      burst gate can see matching segment evidence on the next timestep.
   //
   //   7. distal_synapses
   //      Distal synapse tensor (flattened 5D):
@@ -170,7 +174,7 @@ public:
                      const std::vector<int>& learn_cells_time,
                      std::vector<int>& predict_cells_time,
                      const std::vector<int>& active_cells_time,
-                     const std::vector<int>& active_segs_time,
+                     std::vector<int>& active_segs_time,
                      std::vector<sequence_pooler::DistalSynapse>& distal_synapses);
 
   void set_min_num_syn_threshold(int threshold) { cfg_.min_num_syn_threshold = threshold; }
@@ -199,9 +203,22 @@ private:
 
   bool check_col_bursting(const std::vector<int>& burst_cols_time, int col, int time_step) const;
   bool check_cell_time(const std::vector<int>& cells_time, int col, int cell, int time_step) const;
+  bool column_has_temporal_support(const std::vector<int>& predict_cells_time,
+                                   const std::vector<int>& active_segs_time,
+                                   int col,
+                                   int time_step) const;
 
   bool check_cell_predict(const std::vector<int>& predict_cells_time, int col, int cell, int time_step) const;
   void set_predict_cell(std::vector<int>& predict_cells_time, int col, int cell, int time_step) const;
+  int find_recent_active_segment(const std::vector<int>& active_segs_time,
+                                 int col,
+                                 int cell,
+                                 int time_step) const;
+  void set_active_segment(std::vector<int>& active_segs_time,
+                          int col,
+                          int cell,
+                          int seg,
+                          int time_step) const;
 
   bool check_cell_active_predict(const std::vector<int>& active_cells_time,
                                  const std::vector<int>& predict_cells_time,

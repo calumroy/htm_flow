@@ -549,6 +549,8 @@ void HTMLayer::step_once() {
     temporal_pool_calc_.update_proximal(timestep_,
                                         overlap_calc_.get_col_pot_inputs(),
                                         col_active01_,
+                                        predict_cells_calc_.get_predict_cells_time(),
+                                        predict_cells_calc_.get_active_segs_time(),
                                         col_syn_perm_,
                                         active_cells_calc_.get_burst_cols_time());
     temporal_pool_calc_.update_distal(timestep_,
@@ -556,7 +558,7 @@ void HTMLayer::step_once() {
                                       active_cells_calc_.get_learn_cells_time(),
                                       predict_cells_calc_.get_predict_cells_time_mutable(),
                                       active_cells_calc_.get_active_cells_time(),
-                                      predict_cells_calc_.get_active_segs_time(),
+                                      predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
     if (cfg_.log_timings) {
       STOP_STOPWATCH();

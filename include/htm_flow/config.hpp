@@ -99,9 +99,9 @@ struct HTMLayerConfig {
   // --------------------------------------------------------------------------
   bool temp_enabled = true;  ///< Enable/disable temporal pooling entirely
   int temp_delay_length = 4;  ///< How many timesteps to extend prediction persistence
-  bool temp_enable_persistence = true;  ///< Enable temporal pooling persistence mechanism
+  bool temp_enable_persistence = false;  ///< Keep persistence off by default; it is more fragile than base TP learning
   float temp_spatial_permanence_inc = 0.01f;  ///< Proximal learning rate for temporal pooling
-  float temp_sequence_permanence_inc = 0.01f;  ///< Distal learning rate for temporal pooling
+  float temp_sequence_permanence_inc = 0.02f;  ///< Default slightly favors distal TP learning over proximal pressure
   float temp_sequence_permanence_dec = 0.01f;  ///< Distal decay rate for inactive synapses in temporal pooling
 
   // --------------------------------------------------------------------------

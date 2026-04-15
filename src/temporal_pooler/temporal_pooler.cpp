@@ -74,6 +74,25 @@ bool TemporalPoolerCalculator::check_cell_time(const std::vector<int>& cells_tim
   return (t0 == time_step) || (t1 == time_step);
 }
 
+bool TemporalPoolerCalculator::column_has_temporal_support(const std::vector<int>& predict_cells_time,
+                                                           const std::vector<int>& active_segs_time,
+                                                           int col,
+                                                           int time_step) const {
+  for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
+    if (!check_cell_predict(predict_cells_time, col, cell, time_step)) {
+      continue;
+    }
+
+    const int base = idx_cell_seg(col, cell, 0);
+    for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
+      if (active_segs_time[static_cast<std::size_t>(base + seg)] == time_step) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool TemporalPoolerCalculator::check_cell_predict(const std::vector<int>& predict_cells_time,
                                                   int col,
                                                   int cell,
@@ -99,6 +118,30 @@ void TemporalPoolerCalculator::set_predict_cell(std::vector<int>& predict_cells_
   } else {
     predict_cells_time[static_cast<std::size_t>(i1)] = time_step;
   }
+}
+
+int TemporalPoolerCalculator::find_recent_active_segment(const std::vector<int>& active_segs_time,
+                                                         int col,
+                                                         int cell,
+                                                         int time_step) const {
+  const int base = idx_cell_seg(col, cell, 0);
+  for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
+    if (active_segs_time[static_cast<std::size_t>(base + seg)] == time_step) {
+      return seg;
+    }
+  }
+  return -1;
+}
+
+void TemporalPoolerCalculator::set_active_segment(std::vector<int>& active_segs_time,
+                                                  int col,
+                                                  int cell,
+                                                  int seg,
+                                                  int time_step) const {
+  if (seg < 0 || seg >= cfg_.max_segments_per_cell) {
+    return;
+  }
+  active_segs_time[static_cast<std::size_t>(idx_cell_seg(col, cell, seg))] = time_step;
 }
 
 bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>& active_cells_time,
@@ -132,9 +175,13 @@ void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& 
 void TemporalPoolerCalculator::update_proximal(int time_step,
                                               const std::vector<int>& col_pot_inputs01,
                                               const std::vector<uint8_t>& col_active01,
+                                              const std::vector<int>& predict_cells_time,
+                                              const std::vector<int>& active_segs_time,
                                               std::vector<float>& col_syn_perm,
                                               const std::vector<int>& burst_cols_time) {
   assert(static_cast<int>(col_active01.size()) == cfg_.num_columns);
+  assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
+  assert(static_cast<int>(active_segs_time.size()) == cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
   assert(static_cast<int>(burst_cols_time.size()) == cfg_.num_columns * 2);
   assert(static_cast<int>(col_pot_inputs01.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
   assert(static_cast<int>(col_syn_perm.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
@@ -151,12 +198,14 @@ void TemporalPoolerCalculator::update_proximal(int time_step,
 
     const bool burst_now = check_col_bursting(burst_cols_time, c, time_step);
     const bool burst_prev = check_col_bursting(burst_cols_time, c, time_step - 1);
+    const bool temporal_support_prev = column_has_temporal_support(predict_cells_time, active_segs_time, c, time_step - 1);
 
     const std::size_t base = static_cast<std::size_t>(c) * static_cast<std::size_t>(cfg_.num_pot_synapses);
 
     if (cfg_.spatial_permanence_inc > 0.0f) {
-      // Rule A: if column active now and not bursting now, increment synapses whose previous input was active.
-      if (active_now && !burst_now) {
+      // Rule A: if column active now, not bursting now, and recently had real temporal
+      // support, increment synapses whose previous input was active.
+      if (active_now && !burst_now && temporal_support_prev) {
         for (int s = 0; s < cfg_.num_pot_synapses; ++s) {
           const std::size_t idx = base + static_cast<std::size_t>(s);
           if (prev_col_pot_inputs_[idx] == 1) {
@@ -166,9 +215,9 @@ void TemporalPoolerCalculator::update_proximal(int time_step,
         }
       }
 
-      // Rule B: if column was active in previous timestep and not bursting then,
-      // increment synapses whose current input is active.
-      if (active_prev && !burst_prev) {
+      // Rule B: if column was active in previous timestep, not bursting then, and
+      // had real temporal support, increment synapses whose current input is active.
+      if (active_prev && !burst_prev && temporal_support_prev) {
         for (int s = 0; s < cfg_.num_pot_synapses; ++s) {
           const std::size_t idx = base + static_cast<std::size_t>(s);
           if (col_pot_inputs01[idx] == 1) {
@@ -439,7 +488,7 @@ void TemporalPoolerCalculator::update_distal(int time_step,
                                             const std::vector<int>& learn_cells_time,
                                             std::vector<int>& predict_cells_time,
                                             const std::vector<int>& active_cells_time,
-                                            const std::vector<int>& active_segs_time,
+                                            std::vector<int>& active_segs_time,
                                             std::vector<DistalSynapse>& distal_synapses) {
   assert(static_cast<int>(learn_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
   assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
@@ -482,7 +531,8 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const bool was_predict_prev = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
 
     // -------------------------------------------------------------------------
-    // Persistence (optional): extend predictive state briefly even without a segment.
+    // Persistence (optional): extend predictive state briefly by carrying forward
+    // the most recent segment evidence for the same cell.
     //
     // This is deliberately decaying (countdown-based). Without a countdown, the condition
     // "(was_predict_prev || was_active_prev)" can become an absorbing state where once a cell
@@ -511,13 +561,21 @@ void TemporalPoolerCalculator::update_distal(int time_step,
         cells_tracking_num_[static_cast<std::size_t>(flat)] = 0;
       }
 
-      // Apply the countdown: while pers>0, keep the cell predicting at this timestep.
+      // Apply the countdown: while pers>0, keep the cell predicting at this timestep
+      // only if there is a segment that was active on the previous timestep to carry
+      // forward. This keeps predictive state aligned with what the burst gate expects.
       int& pers = cells_persistence_[static_cast<std::size_t>(flat)];
       if (pers > 0 && (was_predict_prev || was_active_prev)) {
+        const int carried_seg = find_recent_active_segment(active_segs_time, col, cell, time_step - 1);
+        if (carried_seg < 0) {
+          pers = 0;
+        } else {
+          set_active_segment(active_segs_time, col, cell, carried_seg, time_step);
         if (!check_cell_predict(predict_cells_time, col, cell, time_step)) {
           set_predict_cell(predict_cells_time, col, cell, time_step);
         }
         pers -= 1;
+        }
       }
     } else {
       // Persistence disabled: make sure internal counters can't accidentally influence state.

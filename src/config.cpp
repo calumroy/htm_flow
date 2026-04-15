@@ -86,6 +86,9 @@ HTMLayerConfig temporal_pooling_test_config() {
   cfg.sequence_permanence_dec = 0.02f;  // permanenceDec in Python
   
   // Temporal pooler
+  // Note: this preset keeps the more aggressive legacy values used by the
+  // Python-comparison temporal-pooling suites. It is intentionally stronger and
+  // persistence-heavy than the safer generic defaults in HTMLayerConfig.
   cfg.temp_enabled = true;
   cfg.temp_delay_length = 3;
   cfg.temp_enable_persistence = true;

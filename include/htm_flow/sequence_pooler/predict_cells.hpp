@@ -49,6 +49,7 @@ public:
   const std::vector<int>& get_predict_cells_time() const;
   std::vector<int>& get_predict_cells_time_mutable();
   const std::vector<int>& get_active_segs_time() const;
+  std::vector<int>& get_active_segs_time_mutable();
   const std::vector<int>& get_seg_ind_update() const;
   const std::vector<int8_t>& get_seg_active_syn() const;
 
