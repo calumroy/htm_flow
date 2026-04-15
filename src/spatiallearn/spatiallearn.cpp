@@ -8,6 +8,15 @@
 namespace spatiallearn
 {
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// SpatialLearnCalculator   Construct the spatial learning calculator and
+    /// initialize cached state used between learning steps.
+    ///
+    /// Why this is needed:
+    /// The calculator keeps previous active columns and input patches so later
+    /// updates can avoid unnecessary relearning work.
+    ///-----------------------------------------------------------------------------
     SpatialLearnCalculator::SpatialLearnCalculator(int numColumns,
                                                    int numPotSynapses,
                                                    float spatialPermanenceInc,
@@ -24,6 +33,21 @@ namespace spatiallearn
     {
     }
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calculate_spatiallearn   Update spatial-learning permanences using the
+    /// legacy 2D input format.
+    ///
+    /// Why this is needed:
+    /// Preserves the older API while routing all learning through the newer 1D
+    /// implementation so behavior stays consistent in one place.
+    ///
+    /// This function performs the following steps:
+    /// 1. Validate the 2D input sizes against the configured layer shape.
+    /// 2. Flatten the 2D permanence and input grids into 1D buffers.
+    /// 3. Delegate learning to the shared 1D implementation.
+    /// 4. Copy the updated permanences back into the 2D output structure.
+    ///-----------------------------------------------------------------------------
     void SpatialLearnCalculator::calculate_spatiallearn(
         std::vector<std::vector<float>> &colSynPerm,
         const std::vector<std::vector<int>> &colPotInputs,
@@ -68,6 +92,20 @@ namespace spatiallearn
         }
     }
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calculate_spatiallearn_1d   Update spatial-learning permanences using 1D
+    /// buffers plus both active-column forms.
+    ///
+    /// Why this is needed:
+    /// Keeps compatibility with callers that still provide an active mask while
+    /// reusing the more direct active-index implementation underneath.
+    ///
+    /// This function performs the following steps:
+    /// 1. Validate that the active mask size matches the configured column count.
+    /// 2. Sanity-check that each provided active index is marked active in the mask.
+    /// 3. Delegate the learning update to the indices-only 1D implementation.
+    ///-----------------------------------------------------------------------------
     void SpatialLearnCalculator::calculate_spatiallearn_1d(
         std::vector<float> &colSynPerm,
         const std::pair<int, int> &colSynPerm_shape,
@@ -93,6 +131,22 @@ namespace spatiallearn
             activeColIndices);
     }
 
+    ///-----------------------------------------------------------------------------
+    ///
+    /// calculate_spatiallearn_1d_active_indices   Update synapse permanences for
+    /// the active columns in the current step.
+    ///
+    /// Why this is needed:
+    /// Reinforces synapses connected to active inputs and weakens the rest so
+    /// each winning column gradually specializes on patterns it should represent.
+    ///
+    /// This function performs the following steps:
+    /// 1. Validate the flattened input shapes and cached state buffers.
+    /// 2. Iterate over the active columns in parallel.
+    /// 3. For newly active columns, apply the standard permanence update.
+    /// 4. For previously active columns, relearn only if the input patch changed.
+    /// 5. Cache the latest active inputs and active-column state for the next step.
+    ///-----------------------------------------------------------------------------
     void SpatialLearnCalculator::calculate_spatiallearn_1d_active_indices(
         std::vector<float> &colSynPerm,
         const std::pair<int, int> &colSynPerm_shape,
