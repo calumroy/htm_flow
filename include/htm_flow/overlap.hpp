@@ -65,6 +65,9 @@ namespace overlap
         /// @return A 1D vector of floats representing the overlap scores for each column (overlap scores plus tiebreaker fractional values).
         std::vector<float> get_col_overlaps();
 
+        void set_connected_perm(float connected_perm) { connected_perm_ = connected_perm; }
+        void set_min_overlap(int min_overlap) { min_overlap_ = min_overlap; }
+
         ///-----------------------------------------------------------------------------
         ///
         /// get_col_pot_inputs - Returns the potential input (0/1) each column sees.

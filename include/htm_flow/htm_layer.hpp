@@ -80,6 +80,7 @@ public:
   void set_input_sequence(int /*id*/) override {}
   int activation_threshold() const override { return cfg_.activation_threshold; }
   std::string name() const override { return name_; }
+  int timestep() const override { return timestep_; }
 
   // --- Layer-specific methods ---
 
@@ -95,8 +96,8 @@ public:
   /// where each cell's activation is 0 or 1.
   std::vector<int> output() const;
 
-  /// Get the current timestep.
-  int timestep() const { return timestep_; }
+  /// Apply a validated runtime patch without rebuilding the layer.
+  RuntimePatchReport apply_runtime_patch(const HTMLayerRuntimePatch& patch);
 
   /// Get the layer configuration.
   const HTMLayerConfig& config() const { return cfg_; }

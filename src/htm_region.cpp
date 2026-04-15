@@ -1,5 +1,6 @@
 #include <htm_flow/htm_region.hpp>
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace htm_flow {
@@ -87,6 +88,32 @@ int HTMRegion::output_cols() const {
     return 0;
   }
   return layers_.back()->output_cols();
+}
+
+RuntimePatchReport HTMRegion::apply_runtime_patch(const HTMRegionRuntimePatch& patch) {
+  RuntimePatchReport report;
+  if (patch.layers.size() > layers_.size()) {
+    report.rejected.push_back("layers count mismatch (patch has " +
+                              std::to_string(patch.layers.size()) +
+                              ", region has " + std::to_string(layers_.size()) + ")");
+  }
+
+  const std::size_t layer_count = std::min(patch.layers.size(), layers_.size());
+  for (std::size_t i = 0; i < layer_count; ++i) {
+    if (patch.layers[i].empty()) {
+      continue;
+    }
+    RuntimePatchReport layer_report = layers_[i]->apply_runtime_patch(patch.layers[i]);
+    for (const auto& applied : layer_report.applied) {
+      report.applied.push_back("layers[" + std::to_string(i) + "]." + applied);
+    }
+    for (const auto& rejected : layer_report.rejected) {
+      report.rejected.push_back("layers[" + std::to_string(i) + "]." + rejected);
+    }
+    cfg_.layers[i] = layers_[i]->config();
+  }
+
+  return report;
 }
 
 void HTMRegion::step(int n) {

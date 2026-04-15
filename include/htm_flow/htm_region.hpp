@@ -70,6 +70,9 @@ public:
   /// Get the current timestep (same across all layers).
   int timestep() const;
 
+  /// Apply a validated runtime patch to one or more layers.
+  RuntimePatchReport apply_runtime_patch(const HTMRegionRuntimePatch& patch);
+
   /// Output dimensions (from the top layer).
   int output_rows() const;
   int output_cols() const;

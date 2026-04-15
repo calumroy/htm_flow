@@ -107,6 +107,15 @@ namespace spatiallearn
             const std::pair<int, int> &colPotInputs_shape,
             const std::vector<int> &activeColIndices);
 
+        void set_learning_rates(float permanence_inc,
+                                float permanence_dec,
+                                float active_col_permanence_dec)
+        {
+            spatialPermanenceInc_ = permanence_inc;
+            spatialPermanenceDec_ = permanence_dec;
+            activeColPermanenceDec_ = active_col_permanence_dec;
+        }
+
     private:
         int numColumns_;                  // Number of columns in the HTM layer
         int numPotSynapses_;              // Number of potential synapses per column

@@ -64,6 +64,9 @@ namespace inhibition
         ///-----------------------------------------------------------------------------
         const std::vector<int>& get_active_column_indices() const;
 
+        void set_min_overlap(int min_overlap) { minOverlap_ = min_overlap; }
+        void set_min_potential_overlap(int min_potential_overlap) { minPotentialOverlap_ = min_potential_overlap; }
+
     private:
 
 

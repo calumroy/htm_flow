@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QImage>
@@ -494,6 +495,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   auto* mark = new QAction("Mark", this);
   auto* pin_proximal = new QAction("Pin Proximal", this);
   auto* pin_distal = new QAction("Pin Distal", this);
+  auto* load_runtime_patch = new QAction("Load Params...", this);
 
   // Space bar steps the simulation (global within the app window).
   step_one->setShortcut(QKeySequence(Qt::Key_Space));
@@ -614,6 +616,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   tb->addAction(pin_proximal);
   tb->addAction(pin_distal);
   tb->addSeparator();
+  tb->addAction(load_runtime_patch);
   tb->addAction(save_layout);
   tb->addAction(restore_layout);
 
@@ -625,6 +628,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
   connect(mark, &QAction::triggered, this, &MainWindow::markState);
   connect(pin_proximal, &QAction::triggered, this, &MainWindow::pinCurrentProximal);
   connect(pin_distal, &QAction::triggered, this, &MainWindow::pinCurrentDistal);
+  connect(load_runtime_patch, &QAction::triggered, this, &MainWindow::loadRuntimePatch);
   connect(save_layout, &QAction::triggered, this, &MainWindow::saveLayout);
   connect(restore_layout, &QAction::triggered, this, &MainWindow::restoreLayout);
 
@@ -1179,6 +1183,23 @@ void MainWindow::restoreLayout() {
     return;
   }
   statusBar()->showMessage("Layout restored.", 3000);
+}
+
+void MainWindow::loadRuntimePatch() {
+  const QString path = QFileDialog::getOpenFileName(
+      this,
+      "Load Runtime Parameter Override",
+      QDir::currentPath(),
+      "YAML Files (*.yaml *.yml);;All Files (*)");
+  if (path.isEmpty()) {
+    return;
+  }
+
+  const htm_gui::RuntimePatchResult result =
+      runtime_.apply_runtime_patch_file(path.toStdString());
+  refresh();
+  statusBar()->showMessage(QString::fromStdString(result.message),
+                           result.ok ? 5000 : 8000);
 }
 
 void MainWindow::markState() {

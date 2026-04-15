@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace htm_flow {
@@ -133,6 +135,77 @@ struct HTMRegionConfig {
 struct HTMNetworkConfig {
   /// Configuration for each region
   std::vector<HTMRegionConfig> regions;
+};
+
+/// Runtime-only patch for a single HTM layer.
+///
+/// These fields are intentionally limited to hot-swappable parameters that can
+/// be updated without rebuilding the network or reallocating learned state.
+struct HTMLayerRuntimePatch {
+  std::optional<float> connected_perm;
+  std::optional<int> min_overlap;
+  std::optional<int> min_potential_overlap;
+
+  std::optional<float> spatial_permanence_inc;
+  std::optional<float> spatial_permanence_dec;
+  std::optional<float> active_col_permanence_dec;
+
+  std::optional<int> min_num_syn_threshold;
+  std::optional<float> new_syn_permanence;
+  std::optional<float> connect_permanence;
+  std::optional<int> activation_threshold;
+  std::optional<float> sequence_permanence_inc;
+  std::optional<float> sequence_permanence_dec;
+
+  std::optional<bool> temp_enabled;
+  std::optional<bool> temp_enable_persistence;
+  std::optional<int> temp_delay_length;
+  std::optional<float> temp_spatial_permanence_inc;
+  std::optional<float> temp_sequence_permanence_inc;
+  std::optional<float> temp_sequence_permanence_dec;
+
+  std::optional<bool> log_timings;
+
+  bool empty() const {
+    return !connected_perm && !min_overlap && !min_potential_overlap &&
+           !spatial_permanence_inc && !spatial_permanence_dec &&
+           !active_col_permanence_dec && !min_num_syn_threshold &&
+           !new_syn_permanence && !connect_permanence &&
+           !activation_threshold && !sequence_permanence_inc &&
+           !sequence_permanence_dec && !temp_enabled &&
+           !temp_enable_persistence && !temp_delay_length &&
+           !temp_spatial_permanence_inc &&
+           !temp_sequence_permanence_inc &&
+           !temp_sequence_permanence_dec && !log_timings;
+  }
+};
+
+/// Runtime-only patch for a region.
+struct HTMRegionRuntimePatch {
+  std::vector<HTMLayerRuntimePatch> layers;
+
+  bool empty() const {
+    for (const auto& layer : layers) {
+      if (!layer.empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+/// Result of applying a runtime patch.
+struct RuntimePatchReport {
+  std::vector<std::string> applied;
+  std::vector<std::string> rejected;
+
+  bool ok() const { return rejected.empty(); }
+};
+
+/// Scheduled runtime override entry loaded from a YAML config.
+struct RuntimeParameterScheduleEntry {
+  int at_timestep = 0;
+  std::string override_path;
 };
 
 // ----------------------------------------------------------------------------

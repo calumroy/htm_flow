@@ -121,11 +121,13 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<htm_gui::IHtmRuntime> runtime;
   std::string config_name = "htm_flow";
   std::string yaml_theme;
+  std::vector<htm_flow::RuntimeParameterScheduleEntry> runtime_schedule;
 
   if (!config_file.empty()) {
     // Load from YAML file
     try {
       auto cfg = htm_flow::load_region_config(config_file);
+      runtime_schedule = htm_flow::load_runtime_parameter_schedule(config_file);
       yaml_theme = parse_gui_theme(config_file);
       config_name = std::filesystem::path(config_file).stem().string();
       
@@ -176,6 +178,22 @@ int main(int argc, char* argv[]) {
 #endif
   }
 
-  runtime->step(steps);
+  std::size_t next_override = 0;
+  for (int i = 0; i < steps; ++i) {
+    while (next_override < runtime_schedule.size() &&
+           runtime_schedule[next_override].at_timestep == runtime->timestep()) {
+      const auto& item = runtime_schedule[next_override];
+      const auto result = runtime->apply_runtime_patch_file(item.override_path);
+      std::ostream& stream = result.ok ? std::cout : std::cerr;
+      stream << "[runtime_patch] t=" << runtime->timestep()
+             << " file=" << item.override_path
+             << " | " << result.message << "\n";
+      if (!result.ok) {
+        return 1;
+      }
+      ++next_override;
+    }
+    runtime->step(1);
+  }
   return 0;
 }

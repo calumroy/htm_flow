@@ -60,6 +60,8 @@ public:
   int cells_per_column() const { return cfg_.cells_per_column; }
   int max_segments_per_cell() const { return cfg_.max_segments_per_cell; }
   int max_synapses_per_segment() const { return cfg_.max_synapses_per_segment; }
+  void set_connect_permanence(float permanence) { cfg_.connect_permanence = permanence; }
+  void set_activation_threshold(int threshold) { cfg_.activation_threshold = threshold; }
 
 private:
   inline int idx_cell_time(int col, int cell, int slot) const {

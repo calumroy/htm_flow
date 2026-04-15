@@ -44,6 +44,7 @@ private slots:
   void pinCurrentDistal();
   void saveLayout();
   void restoreLayout();
+  void loadRuntimePatch();
 
 private:
   enum class CellDisplayMode { Active, Predictive, Learning };

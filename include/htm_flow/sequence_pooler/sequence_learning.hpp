@@ -50,6 +50,12 @@ public:
       std::vector<int>& seg_ind_update_predict,
       std::vector<int8_t>& seg_active_syn_predict);
 
+  void set_connect_permanence(float permanence) { cfg_.connect_permanence = permanence; }
+  void set_learning_rates(float permanence_inc, float permanence_dec) {
+    cfg_.permanence_inc = permanence_inc;
+    cfg_.permanence_dec = permanence_dec;
+  }
+
 private:
   inline int idx_cell_time(int col, int cell, int slot) const {
     return (col * cfg_.cells_per_column + cell) * 2 + slot;

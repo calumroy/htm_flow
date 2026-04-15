@@ -19,6 +19,10 @@ inline std::pair<int, int> unflatten_xy(int idx, int width) {
   return {x, y};
 }
 
+bool is_unit_interval(float value) {
+  return value >= 0.0f && value <= 1.0f;
+}
+
 }  // namespace
 
 HTMLayer::HTMLayer(const HTMLayerConfig& cfg) : HTMLayer(cfg, "HTMLayer") {}
@@ -185,6 +189,213 @@ std::vector<int> HTMLayer::output() const {
 bool HTMLayer::time_is_set(const std::vector<int>& time_tensor2, int idx0, int time_step) {
   return (time_tensor2[static_cast<std::size_t>(idx0)] == time_step) ||
          (time_tensor2[static_cast<std::size_t>(idx0 + 1)] == time_step);
+}
+
+RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& patch) {
+  RuntimePatchReport report;
+  const auto reject = [&report](const std::string& field, const std::string& reason) {
+    report.rejected.push_back(field + " (" + reason + ")");
+  };
+  const auto applied = [&report](const std::string& field) {
+    report.applied.push_back(field);
+  };
+
+  bool update_spatial_learning = false;
+  bool update_sequence_learning = false;
+  bool update_temporal_pool_learning = false;
+
+  if (patch.connected_perm) {
+    if (!is_unit_interval(*patch.connected_perm)) {
+      reject("overlap.connected_perm", "must be in [0,1]");
+    } else {
+      cfg_.connected_perm = *patch.connected_perm;
+      overlap_calc_.set_connected_perm(cfg_.connected_perm);
+      applied("overlap.connected_perm");
+    }
+  }
+
+  if (patch.min_overlap) {
+    if (*patch.min_overlap < 0) {
+      reject("overlap.min_overlap", "must be >= 0");
+    } else {
+      cfg_.min_overlap = *patch.min_overlap;
+      overlap_calc_.set_min_overlap(cfg_.min_overlap);
+      inhibition_calc_.set_min_overlap(cfg_.min_overlap);
+      applied("overlap.min_overlap");
+    }
+  }
+
+  if (patch.min_potential_overlap) {
+    if (*patch.min_potential_overlap < 0) {
+      reject("overlap.min_potential_overlap", "must be >= 0");
+    } else {
+      cfg_.min_potential_overlap = *patch.min_potential_overlap;
+      inhibition_calc_.set_min_potential_overlap(cfg_.min_potential_overlap);
+      applied("overlap.min_potential_overlap");
+    }
+  }
+
+  if (patch.spatial_permanence_inc) {
+    if (*patch.spatial_permanence_inc < 0.0f) {
+      reject("spatial_learning.permanence_inc", "must be >= 0");
+    } else {
+      cfg_.spatial_permanence_inc = *patch.spatial_permanence_inc;
+      update_spatial_learning = true;
+      applied("spatial_learning.permanence_inc");
+    }
+  }
+  if (patch.spatial_permanence_dec) {
+    if (*patch.spatial_permanence_dec < 0.0f) {
+      reject("spatial_learning.permanence_dec", "must be >= 0");
+    } else {
+      cfg_.spatial_permanence_dec = *patch.spatial_permanence_dec;
+      update_spatial_learning = true;
+      applied("spatial_learning.permanence_dec");
+    }
+  }
+  if (patch.active_col_permanence_dec) {
+    if (*patch.active_col_permanence_dec < 0.0f) {
+      reject("spatial_learning.active_col_permanence_dec", "must be >= 0");
+    } else {
+      cfg_.active_col_permanence_dec = *patch.active_col_permanence_dec;
+      update_spatial_learning = true;
+      applied("spatial_learning.active_col_permanence_dec");
+    }
+  }
+  if (update_spatial_learning) {
+    spatial_learn_calc_.set_learning_rates(cfg_.spatial_permanence_inc,
+                                           cfg_.spatial_permanence_dec,
+                                           cfg_.active_col_permanence_dec);
+  }
+
+  if (patch.min_num_syn_threshold) {
+    if (*patch.min_num_syn_threshold < 0) {
+      reject("sequence_memory.min_num_syn_threshold", "must be >= 0");
+    } else {
+      cfg_.min_num_syn_threshold = *patch.min_num_syn_threshold;
+      active_cells_calc_.set_min_num_syn_threshold(cfg_.min_num_syn_threshold);
+      temporal_pool_calc_.set_min_num_syn_threshold(cfg_.min_num_syn_threshold);
+      applied("sequence_memory.min_num_syn_threshold");
+    }
+  }
+
+  if (patch.new_syn_permanence) {
+    if (!is_unit_interval(*patch.new_syn_permanence)) {
+      reject("sequence_memory.new_syn_permanence", "must be in [0,1]");
+    } else {
+      cfg_.new_syn_permanence = *patch.new_syn_permanence;
+      active_cells_calc_.set_new_syn_permanence(cfg_.new_syn_permanence);
+      temporal_pool_calc_.set_new_syn_permanence(cfg_.new_syn_permanence);
+      applied("sequence_memory.new_syn_permanence");
+    }
+  }
+
+  if (patch.connect_permanence) {
+    if (!is_unit_interval(*patch.connect_permanence)) {
+      reject("sequence_memory.connect_permanence", "must be in [0,1]");
+    } else {
+      cfg_.connect_permanence = *patch.connect_permanence;
+      active_cells_calc_.set_connect_permanence(cfg_.connect_permanence);
+      predict_cells_calc_.set_connect_permanence(cfg_.connect_permanence);
+      seq_learn_calc_.set_connect_permanence(cfg_.connect_permanence);
+      temporal_pool_calc_.set_connect_permanence(cfg_.connect_permanence);
+      applied("sequence_memory.connect_permanence");
+    }
+  }
+
+  if (patch.activation_threshold) {
+    if (*patch.activation_threshold < 0) {
+      reject("sequence_memory.activation_threshold", "must be >= 0");
+    } else {
+      cfg_.activation_threshold = *patch.activation_threshold;
+      predict_cells_calc_.set_activation_threshold(cfg_.activation_threshold);
+      applied("sequence_memory.activation_threshold");
+    }
+  }
+
+  if (patch.sequence_permanence_inc) {
+    if (*patch.sequence_permanence_inc < 0.0f) {
+      reject("sequence_memory.permanence_inc", "must be >= 0");
+    } else {
+      cfg_.sequence_permanence_inc = *patch.sequence_permanence_inc;
+      update_sequence_learning = true;
+      applied("sequence_memory.permanence_inc");
+    }
+  }
+  if (patch.sequence_permanence_dec) {
+    if (*patch.sequence_permanence_dec < 0.0f) {
+      reject("sequence_memory.permanence_dec", "must be >= 0");
+    } else {
+      cfg_.sequence_permanence_dec = *patch.sequence_permanence_dec;
+      update_sequence_learning = true;
+      applied("sequence_memory.permanence_dec");
+    }
+  }
+  if (update_sequence_learning) {
+    seq_learn_calc_.set_learning_rates(cfg_.sequence_permanence_inc,
+                                       cfg_.sequence_permanence_dec);
+  }
+
+  if (patch.temp_enabled) {
+    cfg_.temp_enabled = *patch.temp_enabled;
+    applied("temporal_pooling.enabled");
+  }
+
+  if (patch.temp_enable_persistence) {
+    cfg_.temp_enable_persistence = *patch.temp_enable_persistence;
+    temporal_pool_calc_.set_enable_persistence(cfg_.temp_enable_persistence);
+    applied("temporal_pooling.enable_persistence");
+  }
+
+  if (patch.temp_delay_length) {
+    if (*patch.temp_delay_length <= 0) {
+      reject("temporal_pooling.delay_length", "must be > 0");
+    } else {
+      cfg_.temp_delay_length = *patch.temp_delay_length;
+      temporal_pool_calc_.set_delay_length(cfg_.temp_delay_length);
+      applied("temporal_pooling.delay_length");
+    }
+  }
+
+  if (patch.temp_spatial_permanence_inc) {
+    if (*patch.temp_spatial_permanence_inc < 0.0f) {
+      reject("temporal_pooling.spatial_permanence_inc", "must be >= 0");
+    } else {
+      cfg_.temp_spatial_permanence_inc = *patch.temp_spatial_permanence_inc;
+      update_temporal_pool_learning = true;
+      applied("temporal_pooling.spatial_permanence_inc");
+    }
+  }
+  if (patch.temp_sequence_permanence_inc) {
+    if (*patch.temp_sequence_permanence_inc < 0.0f) {
+      reject("temporal_pooling.sequence_permanence_inc", "must be >= 0");
+    } else {
+      cfg_.temp_sequence_permanence_inc = *patch.temp_sequence_permanence_inc;
+      update_temporal_pool_learning = true;
+      applied("temporal_pooling.sequence_permanence_inc");
+    }
+  }
+  if (patch.temp_sequence_permanence_dec) {
+    if (*patch.temp_sequence_permanence_dec < 0.0f) {
+      reject("temporal_pooling.sequence_permanence_dec", "must be >= 0");
+    } else {
+      cfg_.temp_sequence_permanence_dec = *patch.temp_sequence_permanence_dec;
+      update_temporal_pool_learning = true;
+      applied("temporal_pooling.sequence_permanence_dec");
+    }
+  }
+  if (update_temporal_pool_learning) {
+    temporal_pool_calc_.set_learning_rates(cfg_.temp_spatial_permanence_inc,
+                                           cfg_.temp_sequence_permanence_inc,
+                                           cfg_.temp_sequence_permanence_dec);
+  }
+
+  if (patch.log_timings) {
+    cfg_.log_timings = *patch.log_timings;
+    applied("log_timings");
+  }
+
+  return report;
 }
 
 void HTMLayer::step(int n) {

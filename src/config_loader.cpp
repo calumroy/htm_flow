@@ -2,8 +2,10 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 
 namespace htm_flow {
@@ -17,6 +19,36 @@ T get_or(const YAML::Node& node, const std::string& key, T default_value) {
     return node[key].as<T>();
   }
   return default_value;
+}
+
+std::string join_lines(const std::vector<std::string>& lines) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    if (i != 0) {
+      out << '\n';
+    }
+    out << lines[i];
+  }
+  return out.str();
+}
+
+bool has_key(const std::vector<std::string>& allowed, const std::string& key) {
+  return std::find(allowed.begin(), allowed.end(), key) != allowed.end();
+}
+
+void reject_unknown_keys(const YAML::Node& node,
+                         const std::vector<std::string>& allowed,
+                         const std::string& path,
+                         std::vector<std::string>& errors) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  for (const auto& entry : node) {
+    const std::string key = entry.first.as<std::string>();
+    if (!has_key(allowed, key)) {
+      errors.push_back(path + "." + key + " is not hot-swappable.");
+    }
+  }
 }
 
 /// Parse a single layer configuration from a YAML node.
@@ -129,6 +161,143 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
   return cfg;
 }
 
+HTMLayerRuntimePatch parse_runtime_layer_patch_node(const YAML::Node& node,
+                                                    const std::string& path,
+                                                    std::vector<std::string>& errors) {
+  HTMLayerRuntimePatch patch;
+  if (!node || node.IsNull()) {
+    return patch;
+  }
+  if (!node.IsMap()) {
+    errors.push_back(path + " must be a map.");
+    return patch;
+  }
+
+  reject_unknown_keys(node,
+                      {"overlap", "spatial_learning", "sequence_memory",
+                       "temporal_pooling", "log_timings"},
+                      path,
+                      errors);
+
+  if (node["overlap"]) {
+    const auto& overlap = node["overlap"];
+    if (!overlap.IsMap()) {
+      errors.push_back(path + ".overlap must be a map.");
+    } else {
+      reject_unknown_keys(overlap,
+                          {"connected_perm", "min_overlap", "min_potential_overlap"},
+                          path + ".overlap",
+                          errors);
+      if (overlap["connected_perm"]) {
+        patch.connected_perm = overlap["connected_perm"].as<float>();
+      }
+      if (overlap["min_overlap"]) {
+        patch.min_overlap = overlap["min_overlap"].as<int>();
+      }
+      if (overlap["min_potential_overlap"]) {
+        patch.min_potential_overlap = overlap["min_potential_overlap"].as<int>();
+      }
+    }
+  }
+
+  if (node["spatial_learning"]) {
+    const auto& spatial_learning = node["spatial_learning"];
+    if (!spatial_learning.IsMap()) {
+      errors.push_back(path + ".spatial_learning must be a map.");
+    } else {
+      reject_unknown_keys(spatial_learning,
+                          {"permanence_inc", "permanence_dec", "active_col_permanence_dec"},
+                          path + ".spatial_learning",
+                          errors);
+      if (spatial_learning["permanence_inc"]) {
+        patch.spatial_permanence_inc = spatial_learning["permanence_inc"].as<float>();
+      }
+      if (spatial_learning["permanence_dec"]) {
+        patch.spatial_permanence_dec = spatial_learning["permanence_dec"].as<float>();
+      }
+      if (spatial_learning["active_col_permanence_dec"]) {
+        patch.active_col_permanence_dec =
+            spatial_learning["active_col_permanence_dec"].as<float>();
+      }
+    }
+  }
+
+  if (node["sequence_memory"]) {
+    const auto& sequence_memory = node["sequence_memory"];
+    if (!sequence_memory.IsMap()) {
+      errors.push_back(path + ".sequence_memory must be a map.");
+    } else {
+      reject_unknown_keys(sequence_memory,
+                          {"min_num_syn_threshold", "new_syn_permanence",
+                           "connect_permanence", "activation_threshold",
+                           "permanence_inc", "permanence_dec"},
+                          path + ".sequence_memory",
+                          errors);
+      if (sequence_memory["min_num_syn_threshold"]) {
+        patch.min_num_syn_threshold =
+            sequence_memory["min_num_syn_threshold"].as<int>();
+      }
+      if (sequence_memory["new_syn_permanence"]) {
+        patch.new_syn_permanence = sequence_memory["new_syn_permanence"].as<float>();
+      }
+      if (sequence_memory["connect_permanence"]) {
+        patch.connect_permanence = sequence_memory["connect_permanence"].as<float>();
+      }
+      if (sequence_memory["activation_threshold"]) {
+        patch.activation_threshold = sequence_memory["activation_threshold"].as<int>();
+      }
+      if (sequence_memory["permanence_inc"]) {
+        patch.sequence_permanence_inc = sequence_memory["permanence_inc"].as<float>();
+      }
+      if (sequence_memory["permanence_dec"]) {
+        patch.sequence_permanence_dec = sequence_memory["permanence_dec"].as<float>();
+      }
+    }
+  }
+
+  if (node["temporal_pooling"]) {
+    const auto& temporal_pooling = node["temporal_pooling"];
+    if (!temporal_pooling.IsMap()) {
+      errors.push_back(path + ".temporal_pooling must be a map.");
+    } else {
+      reject_unknown_keys(temporal_pooling,
+                          {"enabled", "enable_persistence", "delay_length",
+                           "spatial_permanence_inc", "sequence_permanence_inc",
+                           "sequence_permanence_dec"},
+                          path + ".temporal_pooling",
+                          errors);
+      if (temporal_pooling["enabled"]) {
+        patch.temp_enabled = temporal_pooling["enabled"].as<bool>();
+      }
+      if (temporal_pooling["enable_persistence"]) {
+        patch.temp_enable_persistence =
+            temporal_pooling["enable_persistence"].as<bool>();
+      }
+      if (temporal_pooling["delay_length"]) {
+        patch.temp_delay_length = temporal_pooling["delay_length"].as<int>();
+      }
+      if (temporal_pooling["spatial_permanence_inc"]) {
+        patch.temp_spatial_permanence_inc =
+            temporal_pooling["spatial_permanence_inc"].as<float>();
+      }
+      if (temporal_pooling["sequence_permanence_inc"]) {
+        patch.temp_sequence_permanence_inc =
+            temporal_pooling["sequence_permanence_inc"].as<float>();
+      }
+      if (temporal_pooling["sequence_permanence_dec"]) {
+        patch.temp_sequence_permanence_dec =
+            temporal_pooling["sequence_permanence_dec"].as<float>();
+      }
+    }
+  }
+
+  if (node["log_timings"]) {
+    patch.log_timings = node["log_timings"].as<bool>();
+  }
+
+  return patch;
+}
+
 /// Emit a layer configuration to a YAML emitter.
 void emit_layer_node(YAML::Emitter& out, const HTMLayerConfig& cfg, int layer_index) {
   out << YAML::BeginMap;
@@ -229,6 +398,106 @@ HTMRegionConfig load_region_config(const std::string& yaml_path) {
   }
 }
 
+HTMRegionRuntimePatch load_runtime_patch(const std::string& yaml_path) {
+  try {
+    YAML::Node root = YAML::LoadFile(yaml_path);
+    HTMRegionRuntimePatch patch;
+    std::vector<std::string> errors;
+
+    if (!root || !root.IsMap()) {
+      throw std::runtime_error("Runtime patch root must be a map.");
+    }
+
+    if (root["layers"]) {
+      reject_unknown_keys(root, {"layers"}, "root", errors);
+      if (!root["layers"].IsSequence()) {
+        errors.push_back("root.layers must be a sequence.");
+      } else {
+        for (std::size_t i = 0; i < root["layers"].size(); ++i) {
+          patch.layers.push_back(parse_runtime_layer_patch_node(
+              root["layers"][i], "layers[" + std::to_string(i) + "]", errors));
+        }
+      }
+    } else {
+      patch.layers.push_back(parse_runtime_layer_patch_node(root, "layers[0]", errors));
+    }
+
+    if (!errors.empty()) {
+      throw std::runtime_error(join_lines(errors));
+    }
+    if (patch.empty()) {
+      throw std::runtime_error("Runtime patch does not contain any hot-swappable parameters.");
+    }
+    return patch;
+  } catch (const YAML::Exception& e) {
+    throw std::runtime_error("Failed to load runtime patch from '" + yaml_path + "': " +
+                             e.what());
+  }
+}
+
+std::vector<RuntimeParameterScheduleEntry> load_runtime_parameter_schedule(
+    const std::string& yaml_path) {
+  try {
+    YAML::Node root = YAML::LoadFile(yaml_path);
+    std::vector<RuntimeParameterScheduleEntry> schedule;
+    if (!root || !root.IsMap() || !root["runtime_parameter_schedule"]) {
+      return schedule;
+    }
+
+    const auto& node = root["runtime_parameter_schedule"];
+    if (!node.IsSequence()) {
+      throw std::runtime_error("runtime_parameter_schedule must be a sequence.");
+    }
+
+    const std::filesystem::path base_dir =
+        std::filesystem::path(yaml_path).parent_path();
+    for (std::size_t i = 0; i < node.size(); ++i) {
+      const auto& entry = node[i];
+      std::vector<std::string> errors;
+      if (!entry.IsMap()) {
+        errors.push_back("runtime_parameter_schedule[" + std::to_string(i) +
+                         "] must be a map.");
+      } else {
+        reject_unknown_keys(entry, {"at_timestep", "override"},
+                            "runtime_parameter_schedule[" + std::to_string(i) + "]",
+                            errors);
+      }
+      if (!errors.empty()) {
+        throw std::runtime_error(join_lines(errors));
+      }
+
+      if (!entry["at_timestep"] || !entry["override"]) {
+        throw std::runtime_error("runtime_parameter_schedule[" + std::to_string(i) +
+                                 "] requires both at_timestep and override.");
+      }
+
+      RuntimeParameterScheduleEntry item;
+      item.at_timestep = entry["at_timestep"].as<int>();
+      if (item.at_timestep < 0) {
+        throw std::runtime_error("runtime_parameter_schedule[" + std::to_string(i) +
+                                 "].at_timestep must be >= 0.");
+      }
+
+      std::filesystem::path override_path = entry["override"].as<std::string>();
+      if (override_path.is_relative()) {
+        override_path = base_dir / override_path;
+      }
+      item.override_path = override_path.lexically_normal().string();
+      schedule.push_back(std::move(item));
+    }
+
+    std::stable_sort(schedule.begin(), schedule.end(),
+                     [](const RuntimeParameterScheduleEntry& a,
+                        const RuntimeParameterScheduleEntry& b) {
+                       return a.at_timestep < b.at_timestep;
+                     });
+    return schedule;
+  } catch (const YAML::Exception& e) {
+    throw std::runtime_error("Failed to load runtime schedule from '" + yaml_path +
+                             "': " + e.what());
+  }
+}
+
 void save_region_config(const HTMRegionConfig& cfg, const std::string& yaml_path) {
   YAML::Emitter out;
   out << YAML::BeginMap;
@@ -265,6 +534,32 @@ std::vector<std::string> list_config_files(const std::string& directory) {
   }
   std::sort(files.begin(), files.end());
   return files;
+}
+
+std::string format_runtime_patch_report(const RuntimePatchReport& report) {
+  std::ostringstream out;
+  if (report.applied.empty()) {
+    out << "Applied: none";
+  } else {
+    out << "Applied: ";
+    for (std::size_t i = 0; i < report.applied.size(); ++i) {
+      if (i != 0) {
+        out << ", ";
+      }
+      out << report.applied[i];
+    }
+  }
+
+  if (!report.rejected.empty()) {
+    out << " | Rejected: ";
+    for (std::size_t i = 0; i < report.rejected.size(); ++i) {
+      if (i != 0) {
+        out << ", ";
+      }
+      out << report.rejected[i];
+    }
+  }
+  return out.str();
 }
 
 }  // namespace htm_flow

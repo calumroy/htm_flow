@@ -173,6 +173,19 @@ public:
                      const std::vector<int>& active_segs_time,
                      std::vector<sequence_pooler::DistalSynapse>& distal_synapses);
 
+  void set_min_num_syn_threshold(int threshold) { cfg_.min_num_syn_threshold = threshold; }
+  void set_new_syn_permanence(float permanence) { cfg_.new_syn_permanence = permanence; }
+  void set_connect_permanence(float permanence) { cfg_.connect_permanence = permanence; }
+  void set_delay_length(int delay_length) { cfg_.delay_length = delay_length; }
+  void set_enable_persistence(bool enabled) { cfg_.enable_persistence = enabled; }
+  void set_learning_rates(float spatial_permanence_inc,
+                          float seq_permanence_inc,
+                          float seq_permanence_dec) {
+    cfg_.spatial_permanence_inc = spatial_permanence_inc;
+    cfg_.seq_permanence_inc = seq_permanence_inc;
+    cfg_.seq_permanence_dec = seq_permanence_dec;
+  }
+
 private:
   inline int idx_cell_time(int col, int cell, int slot) const {
     return (col * cfg_.cells_per_column + cell) * 2 + slot;

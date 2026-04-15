@@ -1,5 +1,7 @@
 #include <htm_flow/region_runtime.hpp>
 
+#include <htm_flow/config_loader.hpp>
+
 #include <stdexcept>
 
 namespace htm_flow {
@@ -141,6 +143,20 @@ int HTMRegionRuntime::activation_threshold() const {
 
 std::string HTMRegionRuntime::name() const {
   return name_ + " (Layer " + std::to_string(active_layer_idx_) + "/" + std::to_string(num_layers()) + ")";
+}
+
+htm_gui::RuntimePatchResult HTMRegionRuntime::apply_runtime_patch_file(const std::string& path) {
+  if (!region_) {
+    return {false, "Cannot apply runtime patch: no region is loaded."};
+  }
+
+  try {
+    const HTMRegionRuntimePatch patch = load_runtime_patch(path);
+    const RuntimePatchReport report = region_->apply_runtime_patch(patch);
+    return {report.ok(), format_runtime_patch_report(report)};
+  } catch (const std::exception& e) {
+    return {false, e.what()};
+  }
 }
 
 }  // namespace htm_flow

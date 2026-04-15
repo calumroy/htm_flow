@@ -17,6 +17,11 @@ struct InputSequence {
   std::string name;
 };
 
+struct RuntimePatchResult {
+  bool ok{false};
+  std::string message;
+};
+
 class IHtmRuntime {
 public:
   virtual ~IHtmRuntime() = default;
@@ -57,6 +62,14 @@ public:
 
   // Optional: friendly title for window/status display.
   virtual std::string name() const { return "htm_flow"; }
+
+  // Optional: current runtime timestep.
+  virtual int timestep() const { return snapshot().timestep; }
+
+  // Optional: load and apply a runtime parameter patch from YAML.
+  virtual RuntimePatchResult apply_runtime_patch_file(const std::string& /*path*/) {
+    return {false, "Runtime patch loading is not supported by this runtime."};
+  }
 };
 
 }  // namespace htm_gui

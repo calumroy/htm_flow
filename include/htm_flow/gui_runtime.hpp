@@ -41,6 +41,10 @@ public:
   void set_input_sequence(int id) override { runtime_.set_input_sequence(id); }
   int activation_threshold() const override { return runtime_.activation_threshold(); }
   std::string name() const override { return "htm_flow"; }
+  int timestep() const override { return runtime_.timestep(); }
+  htm_gui::RuntimePatchResult apply_runtime_patch_file(const std::string& path) override {
+    return runtime_.apply_runtime_patch_file(path);
+  }
 
   // --- Access to underlying region ---
   HTMRegion& region() { return runtime_.region(); }

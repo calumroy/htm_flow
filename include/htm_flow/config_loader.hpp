@@ -20,6 +20,22 @@ HTMLayerConfig load_layer_config(const std::string& yaml_path);
 /// @throws std::runtime_error if the file cannot be read or parsed.
 HTMRegionConfig load_region_config(const std::string& yaml_path);
 
+/// Load a runtime-only HTM region patch from a YAML file.
+///
+/// The patch uses the same nested YAML shape as a normal config file, but only a
+/// strict whitelist of hot-swappable parameters is accepted.
+/// @throws std::runtime_error if the file contains unsupported keys or invalid YAML.
+HTMRegionRuntimePatch load_runtime_patch(const std::string& yaml_path);
+
+/// Load a runtime-parameter override schedule from a config YAML file.
+///
+/// Relative override paths are resolved against the directory containing
+/// `yaml_path`.
+std::vector<RuntimeParameterScheduleEntry> load_runtime_parameter_schedule(const std::string& yaml_path);
+
+/// Format a human-readable runtime patch report.
+std::string format_runtime_patch_report(const RuntimePatchReport& report);
+
 /// Save an HTMRegionConfig to a YAML file.
 /// Creates a human-readable YAML file with all layer parameters.
 /// @param cfg The configuration to save.

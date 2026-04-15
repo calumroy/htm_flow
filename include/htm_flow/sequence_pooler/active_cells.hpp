@@ -184,6 +184,9 @@ public:
   ///-----------------------------------------------------------------------------
   int num_columns() const { return cfg_.num_columns; }
   int cells_per_column() const { return cfg_.cells_per_column; }
+  void set_min_num_syn_threshold(int threshold) { cfg_.min_num_syn_threshold = threshold; }
+  void set_new_syn_permanence(float permanence) { cfg_.new_syn_permanence = permanence; }
+  void set_connect_permanence(float permanence) { cfg_.connect_permanence = permanence; }
 
 private:
   // --- Flat-index helpers ------------------------------------------------
