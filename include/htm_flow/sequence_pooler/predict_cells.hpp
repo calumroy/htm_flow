@@ -49,6 +49,10 @@ public:
   const std::vector<int>& get_predict_cells_time() const;
   std::vector<int>& get_predict_cells_time_mutable();
   const std::vector<int>& get_active_segs_time() const;
+  // Returns the predictor-owned active-segment timestamp buffer by reference.
+  // Temporal pooling uses this to carry forward a real segment timestamp when
+  // persistence extends a prediction; callers that only inspect segment state
+  // should use the const accessor above.
   std::vector<int>& get_active_segs_time_mutable();
   const std::vector<int>& get_seg_ind_update() const;
   const std::vector<int8_t>& get_seg_active_syn() const;

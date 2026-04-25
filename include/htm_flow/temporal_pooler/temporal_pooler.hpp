@@ -80,29 +80,45 @@ public:
   // Update proximal synapses (column synapses) such that:
   //   a. For each currently active column, increment permanence values of potential
   //      synapses that were connected to an active input one timestep ago.
-  //      Do not do this for bursting columns.
   //   b. For each column that was active one timestep ago, increment permanence values
   //      of potential synapses that are connected to an active input now.
   //
+  // Both rules are gated by local temporal trust: the column must have had at
+  // least one cell that was predictive AND backed by an active segment at t-1.
+  // This stops TP proximal learning from reinforcing columns that are only
+  // spatial winners and do not yet have distal temporal support.
+  //
   // Inputs:
-  //   1. col_pot_inputs01
+  //   1. time_step
+  //      Current timestep (monotonically increasing int).
+  //
+  //   2. col_pot_inputs01
   //      A 2D tensor (flattened) storing for each column's potential proximal synapses
   //      whether its end is connected to an active input.
   //      Shape: (num_columns, num_pot_synapses). Values: 0/1.
   //
-  //   2. col_active01
+  //   3. col_active01
   //      A 1D tensor storing if a column is active.
   //      Shape: (num_columns). Values: 0/1.
   //
-  //   3. col_syn_perm
+  //   4. predict_cells_time
+  //      Time-history tensor for predictive cells. Used read-only with
+  //      `active_segs_time` to decide whether a column had segment-backed
+  //      temporal support at t-1.
+  //      Shape: (num_columns, cells_per_column, 2).
+  //
+  //   5. active_segs_time
+  //      Segment time-history produced by the predict-cells stage. Used
+  //      read-only here. A column is trusted only if a predictive cell also
+  //      has an active segment timestamp at t-1.
+  //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
+  //
+  //   6. col_syn_perm
   //      A 2D tensor (flattened) storing the permanence values of every potential synapse
   //      for each column.
   //      Shape: (num_columns, num_pot_synapses). Values: [0,1].
   //
-  //   4. time_step
-  //      Current timestep (monotonically increasing int).
-  //
-  //   5. burst_cols_time
+  //   7. burst_cols_time
   //      A 2D tensor (flattened) storing the last two timesteps when a column was bursting.
   //      Shape: (num_columns, 2).
   //
@@ -127,7 +143,9 @@ public:
   // Update distal synapses (cell synapses) such that:
   //   - Track per-cell "active-predict streaks" and maintain a smoothed average persistence.
   //   - If a cell was predicting/active last timestep and has remaining persistence, keep it
-  //     in the predictive state only when there is recent segment evidence to carry forward.
+  //     predictive only when the same cell had a segment active at t-1. That segment timestamp
+  //     is carried forward to the current timestep so the next burst-gate check sees a
+  //     prediction backed by an actual sequence segment, not a bare predictive bit.
   //   - If a cell is "active predictive" (was predicting at t-1 and became active at t),
   //     then reinforce a best-matching segment (based on antepenultimate learning cells),
   //     otherwise create/overwrite a new segment.
@@ -156,8 +174,13 @@ public:
   //   6. active_segs_time
   //      Segment time-history: last timestep each segment was active (sequence segment).
   //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
-  //      NOTE: this function MUTATES it when persistence extends a prediction, so the
-  //      burst gate can see matching segment evidence on the next timestep.
+  //      NOTE: this function mutates the predictor's active-segment timestamp
+  //      buffer only when persistence extends a prediction. `active_segs_time`
+  //      means "last timestep this segment is considered active", not "first
+  //      activation timestep". TP persistence copies the same cell's segment
+  //      timestamp from (t-1) to t. The next sequence-pooler active-cells step checks timestep
+  //      t as "previous time" and avoids bursting only if the same cell was
+  //      predictive and has an active segment timestamp at t.
   //
   //   7. distal_synapses
   //      Distal synapse tensor (flattened 5D):

@@ -558,6 +558,7 @@ void HTMLayer::step_once() {
                                       active_cells_calc_.get_learn_cells_time(),
                                       predict_cells_calc_.get_predict_cells_time_mutable(),
                                       active_cells_calc_.get_active_cells_time(),
+                                      // TP persistence may carry a real segment timestamp forward.
                                       predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
     if (cfg_.log_timings) {

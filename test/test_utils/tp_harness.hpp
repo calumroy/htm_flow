@@ -233,6 +233,7 @@ public:
                                       active_cells_calc_.get_learn_cells_time(),
                                       predict_cells_calc_.get_predict_cells_time_mutable(),
                                       active_cells_calc_.get_active_cells_time(),
+                                      // TP persistence mutates segment timestamps to keep persisted predictions segment-backed.
                                       predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
   }

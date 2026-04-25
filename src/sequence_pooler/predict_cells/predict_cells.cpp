@@ -29,6 +29,9 @@ const std::vector<int>& PredictCellsCalculator::get_active_segs_time() const {
   return active_segs_time_;
 }
 
+// Mutable access is intentionally narrow: temporal pooling persistence may
+// carry forward a segment timestamp that predict-cells already produced at t-1,
+// keeping persisted predictions segment-backed for the next burst-gate check.
 std::vector<int>& PredictCellsCalculator::get_active_segs_time_mutable() {
   return active_segs_time_;
 }
