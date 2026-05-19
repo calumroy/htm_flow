@@ -546,13 +546,6 @@ void HTMLayer::step_once() {
       START_STOPWATCH();
       LOG(INFO, "Starting the temporal pooler calculation.");
     }
-    temporal_pool_calc_.update_proximal(timestep_,
-                                        overlap_calc_.get_col_pot_inputs(),
-                                        col_active01_,
-                                        predict_cells_calc_.get_predict_cells_time(),
-                                        predict_cells_calc_.get_active_segs_time(),
-                                        col_syn_perm_,
-                                        active_cells_calc_.get_burst_cols_time());
     temporal_pool_calc_.update_distal(timestep_,
                                       active_cells_calc_.get_current_learn_cells_list(),
                                       active_cells_calc_.get_learn_cells_time(),
@@ -561,6 +554,18 @@ void HTMLayer::step_once() {
                                       // TP persistence may carry a real segment timestamp forward.
                                       predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
+    const int reinforced_inputs = temporal_pool_calc_.update_proximal(
+        timestep_,
+        overlap_calc_.get_col_pot_inputs(),
+        col_syn_perm_,
+        &col_active01_,
+        &predict_cells_calc_.get_predict_cells_time(),
+        &predict_cells_calc_.get_active_segs_time());
+    if (cfg_.log_timings && cfg_.temp_spatial_permanence_inc > 0.0f) {
+      LOG(INFO, "Temporal pooling proximal reinforcement: reinforced_inputs=" +
+                    std::to_string(reinforced_inputs) +
+                    " permanence_inc=" + std::to_string(cfg_.temp_spatial_permanence_inc));
+    }
     if (cfg_.log_timings) {
       STOP_STOPWATCH();
       PRINT_ELAPSED_TIME();

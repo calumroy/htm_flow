@@ -20,15 +20,89 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   assert(cfg_.num_pot_synapses > 0);
   assert(cfg_.delay_length > 0);
 
-  prev_col_pot_inputs_.assign(cfg_.num_columns * cfg_.num_pot_synapses, 0);
-  prev_col_active_.assign(cfg_.num_columns, 0);
-
   const int num_cells = cfg_.num_columns * cfg_.cells_per_column;
   cells_tracking_num_.assign(num_cells, 0);
   cells_avg_persist_.assign(num_cells, -1.0f);
   cells_persistence_.assign(num_cells, 0);
+  last_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
+  prev_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
 
   new_learn_cells_time_.assign(num_cells * 2, -1);
+}
+
+int TemporalPoolerCalculator::update_proximal(
+    int support_time,
+    const std::vector<int>& col_pot_inputs01,
+    std::vector<float>& col_syn_perm,
+    const std::vector<uint8_t>* col_active01,
+    const std::vector<int>* predict_cells_time,
+    const std::vector<int>* active_segs_time) const {
+  int reinforced_inputs = 0;
+  if (support_time != last_active_predict_support_time_ ||
+      cfg_.spatial_permanence_inc <= 0.0f) {
+    return reinforced_inputs;
+  }
+
+  assert(static_cast<int>(col_pot_inputs01.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
+  assert(static_cast<int>(col_syn_perm.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
+
+  // The extra state is optional so older/unit callers can still exercise the
+  // active-predict path. Without it, we cannot safely reinforce predicted
+  // columns that failed to become active.
+  const bool can_reinforce_predictive_non_active =
+      col_active01 != nullptr && predict_cells_time != nullptr && active_segs_time != nullptr;
+  if (can_reinforce_predictive_non_active) {
+    assert(static_cast<int>(col_active01->size()) == cfg_.num_columns);
+    assert(static_cast<int>(predict_cells_time->size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
+    assert(static_cast<int>(active_segs_time->size()) ==
+           cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
+  }
+
+  // Convert distal confidence into real proximal permanence so columns that TP
+  // predicted can eventually win spatial overlap instead of only predicting.
+  const int n = std::min(cfg_.num_columns,
+                         static_cast<int>(last_active_predict_support_by_column_.size()));
+  for (int col = 0; col < n; ++col) {
+    const int support = last_active_predict_support_by_column_[static_cast<std::size_t>(col)];
+    const bool active_now = can_reinforce_predictive_non_active &&
+                            ((*col_active01)[static_cast<std::size_t>(col)] == 1);
+
+    // Segment-backed prediction that lost inhibition: strengthen current inputs
+    // so this column has a better chance to win this context next time.
+    const bool predictive_non_active =
+        can_reinforce_predictive_non_active && !active_now &&
+        column_has_temporal_support(*predict_cells_time, *active_segs_time, col, support_time);
+
+    // After a correct activation, also learn the next input only if the column
+    // is still predicted by real segment evidence.
+    const bool post_active_predict =
+        predictive_non_active &&
+        prev_active_predict_support_time_ == support_time - 1 &&
+        col < static_cast<int>(prev_active_predict_support_by_column_.size()) &&
+        prev_active_predict_support_by_column_[static_cast<std::size_t>(col)] > 0;
+    if (support <= 0 && !predictive_non_active && !post_active_predict) {
+      continue;
+    }
+    const int effective_support = support + (predictive_non_active ? 1 : 0) +
+                                  (post_active_predict ? 1 : 0);
+    const float inc = cfg_.spatial_permanence_inc * static_cast<float>(effective_support);
+    const std::size_t base =
+        static_cast<std::size_t>(col) * static_cast<std::size_t>(cfg_.num_pot_synapses);
+
+    // Only strengthen inputs that are active now; no temporary overlap bonus or
+    // global correction is introduced.
+    for (int syn = 0; syn < cfg_.num_pot_synapses; ++syn) {
+      const std::size_t idx = base + static_cast<std::size_t>(syn);
+      if (col_pot_inputs01[idx] != 1) {
+        continue;
+      }
+      ++reinforced_inputs;
+      const float p = col_syn_perm[idx] + inc;
+      const float after = (p > 1.0f) ? 1.0f : p;
+      col_syn_perm[idx] = after;
+    }
+  }
+  return reinforced_inputs;
 }
 
 std::uint64_t TemporalPoolerCalculator::splitmix64(std::uint64_t x) {
@@ -50,17 +124,6 @@ std::size_t TemporalPoolerCalculator::deterministic_pick(std::uint64_t seed, std
     return 0;
   }
   return static_cast<std::size_t>(splitmix64(seed) % static_cast<std::uint64_t>(mod));
-}
-
-bool TemporalPoolerCalculator::check_col_bursting(const std::vector<int>& burst_cols_time,
-                                                 int col,
-                                                 int time_step) const {
-  // Check if the given column is bursting at `time_step`.
-  // `burst_cols_time` stores the last two timesteps each column was bursting.
-  const int i0 = col * 2 + 0;
-  const int i1 = col * 2 + 1;
-  return (burst_cols_time[static_cast<std::size_t>(i0)] == time_step) ||
-         (burst_cols_time[static_cast<std::size_t>(i1)] == time_step);
 }
 
 bool TemporalPoolerCalculator::check_cell_time(const std::vector<int>& cells_time,
@@ -170,77 +233,6 @@ void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& 
   }
   const float alpha = 1.0f - 1.0f / static_cast<float>(cfg_.delay_length);
   avg_persist = alpha * avg_persist + (1.0f - alpha) * static_cast<float>(prev_tracking_num);
-}
-
-void TemporalPoolerCalculator::update_proximal(int time_step,
-                                              const std::vector<int>& col_pot_inputs01,
-                                              const std::vector<uint8_t>& col_active01,
-                                              const std::vector<int>& predict_cells_time,
-                                              const std::vector<int>& active_segs_time,
-                                              std::vector<float>& col_syn_perm,
-                                              const std::vector<int>& burst_cols_time) {
-  assert(static_cast<int>(col_active01.size()) == cfg_.num_columns);
-  assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
-  assert(static_cast<int>(active_segs_time.size()) == cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
-  assert(static_cast<int>(burst_cols_time.size()) == cfg_.num_columns * 2);
-  assert(static_cast<int>(col_pot_inputs01.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
-  assert(static_cast<int>(col_syn_perm.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
-
-  tf::Taskflow taskflow;
-
-  // Update permanence values using the previous timestep's buffers.
-  // Why previous buffers?
-  // The temporal proximal rule strengthens synapses that correctly predicted the active input
-  // transition between timesteps, so it needs both (t-1) and (t) activity.
-  auto t_update = taskflow.for_each_index(0, cfg_.num_columns, 1, [&](int c) {
-    const bool active_now = (col_active01[static_cast<std::size_t>(c)] == 1);
-    const bool active_prev = (prev_col_active_[static_cast<std::size_t>(c)] == 1);
-
-    const bool burst_now = check_col_bursting(burst_cols_time, c, time_step);
-    const bool burst_prev = check_col_bursting(burst_cols_time, c, time_step - 1);
-    const bool temporal_support_prev = column_has_temporal_support(predict_cells_time, active_segs_time, c, time_step - 1);
-
-    const std::size_t base = static_cast<std::size_t>(c) * static_cast<std::size_t>(cfg_.num_pot_synapses);
-
-    if (cfg_.spatial_permanence_inc > 0.0f) {
-      // Rule A: if column active now, not bursting now, and recently had real temporal
-      // support, increment synapses whose previous input was active.
-      if (active_now && !burst_now && temporal_support_prev) {
-        for (int s = 0; s < cfg_.num_pot_synapses; ++s) {
-          const std::size_t idx = base + static_cast<std::size_t>(s);
-          if (prev_col_pot_inputs_[idx] == 1) {
-            float p = col_syn_perm[idx] + cfg_.spatial_permanence_inc;
-            col_syn_perm[idx] = (p > 1.0f) ? 1.0f : p;
-          }
-        }
-      }
-
-      // Rule B: if column was active in previous timestep, not bursting then, and
-      // had real temporal support, increment synapses whose current input is active.
-      if (active_prev && !burst_prev && temporal_support_prev) {
-        for (int s = 0; s < cfg_.num_pot_synapses; ++s) {
-          const std::size_t idx = base + static_cast<std::size_t>(s);
-          if (col_pot_inputs01[idx] == 1) {
-            float p = col_syn_perm[idx] + cfg_.spatial_permanence_inc;
-            col_syn_perm[idx] = (p > 1.0f) ? 1.0f : p;
-          }
-        }
-      }
-    }
-  }).name("temporal_pooler_update_proximal");
-
-  // Store current inputs for next timestep (done after updates to preserve old buffers).
-  auto t_store_prev = taskflow.for_each_index(0, cfg_.num_columns, 1, [&](int c) {
-    prev_col_active_[static_cast<std::size_t>(c)] = col_active01[static_cast<std::size_t>(c)];
-    const std::size_t base = static_cast<std::size_t>(c) * static_cast<std::size_t>(cfg_.num_pot_synapses);
-    for (int s = 0; s < cfg_.num_pot_synapses; ++s) {
-      const std::size_t idx = base + static_cast<std::size_t>(s);
-      prev_col_pot_inputs_[idx] = static_cast<int8_t>(col_pot_inputs01[idx]);
-    }
-  }).name("temporal_pooler_store_prev_proximal");
-
-  t_update.precede(t_store_prev);
-  executor_.run(taskflow).wait();
 }
 
 void TemporalPoolerCalculator::update_new_learn_cells_time(
@@ -499,9 +491,16 @@ void TemporalPoolerCalculator::update_distal(int time_step,
                                   cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment;
   assert(distal_synapses.size() == distal_size);
 
+  prev_active_predict_support_by_column_ = last_active_predict_support_by_column_;
+  prev_active_predict_support_time_ = last_active_predict_support_time_;
+
   if (cfg_.seq_permanence_inc <= 0.0f) {
     // Still update the learning-entry log to keep internal state consistent.
     update_new_learn_cells_time(time_step, new_learn_cells_list, learn_cells_time);
+    std::fill(last_active_predict_support_by_column_.begin(),
+              last_active_predict_support_by_column_.end(),
+              0);
+    last_active_predict_support_time_ = time_step;
     return;
   }
 
@@ -520,6 +519,7 @@ void TemporalPoolerCalculator::update_distal(int time_step,
 
   // Step B: per-cell updates (parallel and race-free).
   const int num_cells = cfg_.num_columns * cfg_.cells_per_column;
+  std::vector<uint8_t> active_predict_cells(static_cast<std::size_t>(num_cells), 0);
   tf::Taskflow taskflow;
 
   taskflow.for_each_index(0, num_cells, 1, [&](int flat) {
@@ -527,6 +527,9 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const int cell = flat % cfg_.cells_per_column;
 
     const bool active_predict = check_cell_active_predict(active_cells_time, predict_cells_time, col, cell, time_step);
+    if (active_predict) {
+      active_predict_cells[static_cast<std::size_t>(flat)] = 1;
+    }
     const bool was_active_prev = check_cell_time(active_cells_time, col, cell, time_step - 1);
     const bool was_predict_prev = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
 
@@ -588,9 +591,10 @@ void TemporalPoolerCalculator::update_distal(int time_step,
       const int best_seg = get_best_matching_segment_prev2(distal_synapses, prev2_set, col, cell);
       if (best_seg >= 0) {
         // Reinforce the best-matching segment:
-        // - Increment permanence for synapses whose target cell is active at this timestep.
-        // - Decrement permanence for synapses whose target cell is NOT active (they are not
-        //   contributing to the correct prediction and should gradually weaken).
+        // - Increment permanence for synapses whose targets are in the prev2 learning-cell
+        //   context used to select this segment.
+        // - Decrement permanence for synapses outside that context (they are not
+        //   contributing to this temporal-pooling match and should gradually weaken).
         // - Replace dead synapses (permanence <= 0) with new synapses targeting recent
         //   learning cells, so the segment adapts to the current temporal context.
         for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
@@ -603,7 +607,8 @@ void TemporalPoolerCalculator::update_distal(int time_step,
                                  static_cast<std::size_t>(cfg_.max_segments_per_cell),
                                  static_cast<std::size_t>(cfg_.max_synapses_per_segment));
           const DistalSynapse s = distal_synapses[idx];
-          if (check_cell_time(active_cells_time, s.target_col, s.target_cell, time_step)) {
+          const int target_key = idx_cell_flat(s.target_col, s.target_cell);
+          if (prev2_set.find(target_key) != prev2_set.end()) {
             float p = distal_synapses[idx].perm + cfg_.seq_permanence_inc;
             distal_synapses[idx].perm = (p > 1.0f) ? 1.0f : p;
           } else if (s.perm > 0.0f && cfg_.seq_permanence_dec > 0.0f) {
@@ -632,6 +637,18 @@ void TemporalPoolerCalculator::update_distal(int time_step,
   }).name("temporal_pooler_update_distal_for_each_cell");
 
   executor_.run(taskflow).wait();
+
+  std::fill(last_active_predict_support_by_column_.begin(),
+            last_active_predict_support_by_column_.end(),
+            0);
+  for (int flat = 0; flat < num_cells; ++flat) {
+    if (active_predict_cells[static_cast<std::size_t>(flat)] == 0) {
+      continue;
+    }
+    const int col = flat / cfg_.cells_per_column;
+    ++last_active_predict_support_by_column_[static_cast<std::size_t>(col)];
+  }
+  last_active_predict_support_time_ = time_step;
 }
 
 } // namespace temporal_pooler

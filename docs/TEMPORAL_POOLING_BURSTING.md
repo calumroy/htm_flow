@@ -24,16 +24,23 @@ Temporal pooling can interfere with that in two ways:
    with persistence-based predictive state so it no longer creates the old
    "predictive but still bursts" mismatch by itself.
 
-The current calculator also applies a local trust gate to TP proximal updates:
+The current calculator also applies two local safeguards:
 
-- TP proximal reinforcement only applies to columns that had recent
-  segment-backed temporal support
-- this keeps stronger TP settings from directly reinforcing unstable columns
-  into bursty winners
+- TP proximal reinforcement only applies to columns that had active-predict
+  cells in the previous temporal-pooler distal update, or columns that are
+  currently segment-backed predictive but did not win inhibition.
+- A one-step late bridge reinforces a recently active-predict column only when
+  it is still segment-backed predictive and failed to win inhibition on the
+  next timestep.
+- `temporal_pooling.spatial_permanence_inc` now strengthens real proximal
+  permanences for those supported columns instead of adding a temporary overlap
+  bonus.
+- TP distal reinforcement now rewards synapses targeting the same `prev2`
+  learning-cell context used to select a temporal-pooling segment.
 
 ## Implemented Fixes
 
-Two local fixes are now in place.
+Several local fixes are now in place.
 
 1. **Persistence must stay segment-backed.**
 
@@ -68,17 +75,61 @@ Two local fixes are now in place.
 
 2. **TP proximal learning is trust-gated.**
 
-   `TemporalPoolerCalculator::update_proximal()` now receives read-only
-   `predict_cells_time` and `active_segs_time`. Before applying TP proximal
-   reinforcement to a column, it checks that at least one cell in that column
-   was predictive and had an active segment at `t-1`.
+   `TemporalPoolerCalculator::update_proximal()` is now the runtime proximal
+   TP update. It consumes active-predict support recorded by the preceding
+   `update_distal()` call, plus current predictive-cell and active-segment
+   state, before changing proximal permanence.
 
-   This keeps high `temporal_pooling.spatial_permanence_inc` values from
-   reinforcing columns that are only spatial winners and do not yet have local
-   distal temporal support.
+   This keeps high `temporal_pooling.spatial_permanence_inc` values from being
+   a generic spatial-learning shortcut. TP proximal learning only reinforces
+   columns with local distal evidence: active-predict support, current
+   segment-backed prediction, or the stricter post-active bridge condition.
 
 Both fixes use local per-cell/per-column state already available in the layer.
 No global burst-rate rule or layer-wide normalization was added.
+
+3. **Active-predict support reinforces proximal permanence.**
+
+   `TemporalPoolerCalculator` records which columns had active-predict cells
+   during its distal update. After that same update, `HTMLayer::step_once()` asks
+   the temporal pooler to run `update_proximal()` and reinforce active proximal
+   inputs for those columns using `temporal_pooling.spatial_permanence_inc`.
+
+   This means temporal pooling improves the real proximal support that future
+   overlap calculations use. It is deliberately not a new synapse or long-lived
+   trace; the bookkeeping is derived from the same active-predict condition that
+   TP distal learning uses to reinforce or create segments.
+
+   The same reinforcement path also handles two non-winner bridge cases:
+
+   - **Earlier bridge:** if a column is predictive at the current timestep and
+     has an active segment timestamp, but did not win inhibition, TP gives the
+     column's currently active proximal inputs one local permanence increment.
+     This lets distal TP predictions become future proximal overlap instead of
+     waiting for the column to win inhibition first.
+   - **Later bridge:** if a column had active-predict support on the previous
+     timestep, is still segment-backed predictive on the current timestep, and
+     did not win inhibition, TP gives the currently active proximal inputs one
+     additional local increment. This is the path that lets a correctly
+     predicted activation grow proximal support for inputs just after that
+     activation, but only while distal evidence still says the column belongs.
+
+   The late bridge deliberately requires both previous active-predict support
+   and current segment-backed prediction. Without the current prediction check,
+   TP would smear proximal permanence onto whatever happened to follow a correct
+   activation. Without the previous active-predict check, the rule would be the
+   generic earlier bridge only.
+
+4. **TP distal matching and reinforcement use the same context.**
+
+   `TemporalPoolerCalculator::update_distal()` selects a best-matching segment
+   by counting synapses whose targets are in the `prev2` learning-cell context.
+   It now reinforces synapses targeting that same `prev2` context.
+
+   Previously, a segment could be selected because it matched `prev2`, but then
+   reinforced according to cells active at the current timestep. That mismatch
+   made it hard for TP-created distal synapses to become connected and later
+   drive earlier/later predictive state.
 
 ## Why Bursting Happens
 
@@ -97,11 +148,20 @@ Important supporting code paths:
   - step order is: overlap -> inhibition -> spatial learning -> active cells ->
     predict cells -> sequence learning -> temporal pooler
   - TP runs after normal sequence memory work and writes back into shared state
+  - TP distal records active-predict support, then TP proximal reinforces active
+    proximal inputs for those supported columns so the effect appears in later
+    overlap calculations
 - `htm_flow/src/temporal_pooler/temporal_pooler.cpp`
   - `update_proximal()` changes `col_syn_perm_`
-  - `update_proximal()` now requires recent segment-backed temporal support
-    before it applies TP proximal reinforcement
+  - TP proximal reinforcement now requires active-predict support from the
+    previous TP distal update, or current segment-backed predictive support for
+    a column that did not win inhibition
+  - the late bridge uses the previous distal update's active-predict support
+    plus current segment-backed prediction before reinforcing a non-winning
+    column's current active proximal inputs
   - `update_distal()` changes `distal_synapses_`
+  - reused TP distal segments are matched and reinforced against `prev2`
+    learning-cell context
   - optional persistence now carries forward the same cell's active segment
     timestamp when it extends predictive state
 - `htm_flow/src/sequence_pooler/predict_cells/predict_cells.cpp`
@@ -115,9 +175,14 @@ Important supporting code paths:
   tensors with the normal layer algorithm.
 - The burst spike observed when turning TP on later was useful as a diagnosis,
   but the real goal is a static config that works from the start.
-- At the moment, the safest configuration is still to keep TP enabled from the
-  beginning, keep TP proximal learning weak, and let TP distal learning
-  dominate early.
+- At the moment, the safest configuration is to keep TP proximal learning weak
+  and active-predict-gated, using `temporal_pooling.spatial_permanence_inc` as
+  the main "more TP / less TP" proximal knob.
+- The current proximal bridge model is intentionally local:
+  - active-predict winners reinforce the input that made them win
+  - segment-backed predictive non-winners get an earlier-input bridge
+  - recently active-predict, still-predictive non-winners get a later-input
+    bridge
 - Because TP proximal is now trust-gated, stronger TP settings can be explored
   with less risk of immediately reintroducing Layer 1 burst spikes.
 - Persistence bookkeeping is now internally consistent with the burst gate, but
@@ -136,23 +201,32 @@ Important supporting code paths:
 
 ## Current Config Direction
 
-The current reference config is:
+The delayed-runtime reference config is:
 
-- `configs/word_rows_2layer_text.yaml`
+- `configs/word_rows_2layer_delayed_temporal_pooling_text.yaml`
+- `configs/overrides/word_rows_2layer_enable_temporal_pooling.yaml`
 
-Layer 1 temporal pooling is enabled from the start with:
+Layer 1 temporal pooling is enabled at runtime with:
 
 - `enable_persistence: false`
-- small TP proximal learning
-- stronger TP distal learning
+- `spatial_permanence_inc` as active-predict-gated TP proximal reinforcement
+- moderate TP distal learning
 
 Generic `HTMLayerConfig` defaults now also bias toward safer TP startup:
 
 - `temp_enable_persistence: false`
 - `temp_sequence_permanence_inc > temp_spatial_permanence_inc`
 
-This is meant to avoid the need for timestep-specific runtime patching while
-still allowing temporal pooling to learn.
+This is meant to avoid temporary selection effects that make columns win without
+improving their real proximal support. TP proximal learning now changes the same
+permanences that future overlap calculations inspect, but only for columns that
+had active-predict support or segment-backed predictive support. Runtime logs
+now report only the number of reinforced active proximal inputs. If that count
+is non-zero but active columns do not broaden over time,
+`temporal_pooling.spatial_permanence_inc` may be too small relative to
+`connected_perm` and normal proximal decay. If a small set of columns dominates
+every timestep, the value may be too large or the temporal support gates may be
+too permissive.
 
 ## How To Test
 
@@ -177,7 +251,9 @@ Calculator-level coverage lives in:
 - `htm_flow/test/unit/test_temporal_pooler.cpp`
   - checks that persistence now requires recent segment evidence
   - checks that persistence carries that segment evidence forward
-  - checks the proximal trust gate and the burst guards for both Rule A and Rule B
+  - checks active-predict-gated TP proximal updates
+  - checks predictive non-winner and post-active predictive non-winner proximal
+    reinforcement
 
 Run them with:
 
@@ -204,13 +280,20 @@ When investigating this issue again, check:
   valid segment evidence
 - whether distal learning rates and thresholds make it too hard for TP-created
   synapses to become useful before new columns start winning
+- whether TP distal segment creation/reuse is actually producing connected
+  synapses that meet `activation_threshold` in `PredictCellsCalculator`
+- whether TP proximal reinforcement is firing outside the old saturated winner
+  set; add temporary instrumentation around `update_proximal()` if the aggregate
+  `reinforced_inputs` log is not enough
+- whether `temporal_pooling.spatial_permanence_inc` is too small to overcome
+  normal proximal decay or so large that active-predict-supported columns become
+  overly sticky
 
 ## Future Work
 
 Future improvements should focus on making temporal learning stronger without
-reintroducing burst spikes.
+reintroducing burst spikes while keeping the state model easy to inspect.
 
-The likely next step is not a larger config sweep, but a closer look at whether
-TP proximal learning can be made even less coupled to the shared
-spatial-pooling permanence tensor without losing the local-learning character
-of the algorithm.
+The likely next step is to compare weak and moderate active-predict-gated
+proximal reinforcement settings. Avoid adding another persistent synapse-like
+trace unless this simpler local permanence update proves insufficient.

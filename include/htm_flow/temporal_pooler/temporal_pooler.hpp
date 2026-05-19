@@ -75,69 +75,6 @@ public:
   explicit TemporalPoolerCalculator(const Config& cfg);
 
   // -----------------------------------------------------------------------------
-  // update_proximal (ported from python `updateProximalTempPool`)
-  //
-  // Update proximal synapses (column synapses) such that:
-  //   a. For each currently active column, increment permanence values of potential
-  //      synapses that were connected to an active input one timestep ago.
-  //   b. For each column that was active one timestep ago, increment permanence values
-  //      of potential synapses that are connected to an active input now.
-  //
-  // Both rules are gated by local temporal trust: the column must have had at
-  // least one cell that was predictive AND backed by an active segment at t-1.
-  // This stops TP proximal learning from reinforcing columns that are only
-  // spatial winners and do not yet have distal temporal support.
-  //
-  // Inputs:
-  //   1. time_step
-  //      Current timestep (monotonically increasing int).
-  //
-  //   2. col_pot_inputs01
-  //      A 2D tensor (flattened) storing for each column's potential proximal synapses
-  //      whether its end is connected to an active input.
-  //      Shape: (num_columns, num_pot_synapses). Values: 0/1.
-  //
-  //   3. col_active01
-  //      A 1D tensor storing if a column is active.
-  //      Shape: (num_columns). Values: 0/1.
-  //
-  //   4. predict_cells_time
-  //      Time-history tensor for predictive cells. Used read-only with
-  //      `active_segs_time` to decide whether a column had segment-backed
-  //      temporal support at t-1.
-  //      Shape: (num_columns, cells_per_column, 2).
-  //
-  //   5. active_segs_time
-  //      Segment time-history produced by the predict-cells stage. Used
-  //      read-only here. A column is trusted only if a predictive cell also
-  //      has an active segment timestamp at t-1.
-  //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
-  //
-  //   6. col_syn_perm
-  //      A 2D tensor (flattened) storing the permanence values of every potential synapse
-  //      for each column.
-  //      Shape: (num_columns, num_pot_synapses). Values: [0,1].
-  //
-  //   7. burst_cols_time
-  //      A 2D tensor (flattened) storing the last two timesteps when a column was bursting.
-  //      Shape: (num_columns, 2).
-  //
-  // State used:
-  //   - prev_col_pot_inputs_ (previous timestep's potential-input activity)
-  //   - prev_col_active_     (previous timestep's column active bits)
-  //
-  // Output:
-  //   - Updates `col_syn_perm` in-place and refreshes the prev_* buffers for next timestep.
-  // -----------------------------------------------------------------------------
-  void update_proximal(int time_step,
-                       const std::vector<int>& col_pot_inputs01,
-                       const std::vector<uint8_t>& col_active01,
-                       const std::vector<int>& predict_cells_time,
-                       const std::vector<int>& active_segs_time,
-                       std::vector<float>& col_syn_perm,
-                       const std::vector<int>& burst_cols_time);
-
-  // -----------------------------------------------------------------------------
   // update_distal (ported from python `updateDistalTempPool`)
   //
   // Update distal synapses (cell synapses) such that:
@@ -200,6 +137,70 @@ public:
                      std::vector<int>& active_segs_time,
                      std::vector<sequence_pooler::DistalSynapse>& distal_synapses);
 
+  // -----------------------------------------------------------------------------
+  // update_proximal
+  //
+  // Update proximal synapses (column synapses) using temporal-pooling support
+  // recorded by `update_distal()`. This is the active proximal-learning path used
+  // by HTMLayer.
+  //
+  // Reinforcement is local and segment-backed:
+  //   a. Active-predict columns from the most recent distal update reinforce
+  //      their currently active proximal inputs.
+  //   b. Columns that are currently segment-backed predictive but did not win
+  //      inhibition get one proximal increment on current active inputs. This
+  //      lets distal predictions grow enough proximal overlap to compete later.
+  //   c. If a column had active-predict support one timestep ago, is still
+  //      segment-backed predictive now, and did not win inhibition, it gets one
+  //      additional "post-active" increment for the later-input bridge.
+  //
+  // Inputs:
+  //   1. support_time
+  //      Current timestep. Must match the last call to `update_distal()` for
+  //      active-predict support to be used.
+  //
+  //   2. col_pot_inputs01
+  //      A 2D tensor (flattened) storing for each column's potential proximal
+  //      synapses whether its input endpoint is currently active.
+  //      Shape: (num_columns, num_pot_synapses). Values: 0/1.
+  //
+  //   3. col_syn_perm
+  //      A 2D tensor (flattened) storing proximal permanence values. Updated
+  //      in-place for supported columns and currently active proximal inputs.
+  //      Shape: (num_columns, num_pot_synapses). Values: [0,1].
+  //
+  //   4. col_active01
+  //      Optional current active-column bitfield. Required for predictive
+  //      non-winner and post-active bridge reinforcement.
+  //      Shape: (num_columns). Values: 0/1.
+  //
+  //   5. predict_cells_time
+  //      Optional predictive-cell time-history tensor. Used with
+  //      `active_segs_time` to require segment-backed prediction.
+  //      Shape: (num_columns, cells_per_column, 2).
+  //
+  //   6. active_segs_time
+  //      Optional active-segment timestamp tensor produced by predict-cells.
+  //      A non-winning column is reinforced only if a predictive cell also has
+  //      an active segment at `support_time`.
+  //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
+  //
+  // State used:
+  //   - last_active_predict_support_by_column_ from `update_distal(support_time)`
+  //   - prev_active_predict_support_by_column_ from `update_distal(support_time - 1)`
+  //
+  // Output:
+  //   - Updates `col_syn_perm` in-place and returns the number of currently
+  //     active proximal inputs reinforced.
+  // -----------------------------------------------------------------------------
+  int update_proximal(
+      int support_time,
+      const std::vector<int>& col_pot_inputs01,
+      std::vector<float>& col_syn_perm,
+      const std::vector<uint8_t>* col_active01 = nullptr,
+      const std::vector<int>* predict_cells_time = nullptr,
+      const std::vector<int>* active_segs_time = nullptr) const;
+
   void set_min_num_syn_threshold(int threshold) { cfg_.min_num_syn_threshold = threshold; }
   void set_new_syn_permanence(float permanence) { cfg_.new_syn_permanence = permanence; }
   void set_connect_permanence(float permanence) { cfg_.connect_permanence = permanence; }
@@ -224,7 +225,6 @@ private:
 
   inline int idx_cell_flat(int col, int cell) const { return col * cfg_.cells_per_column + cell; }
 
-  bool check_col_bursting(const std::vector<int>& burst_cols_time, int col, int time_step) const;
   bool check_cell_time(const std::vector<int>& cells_time, int col, int cell, int time_step) const;
   bool column_has_temporal_support(const std::vector<int>& predict_cells_time,
                                    const std::vector<int>& active_segs_time,
@@ -298,12 +298,6 @@ private:
 
   Config cfg_;
 
-  // Proximal state (previous timestep buffers).
-  // These exist so `update_proximal` can look at what was active on the previous timestep
-  // while processing the current timestep (matches python `prevColPotInputs`, `prevColActive`).
-  std::vector<int8_t> prev_col_pot_inputs_; // (num_columns, num_pot_synapses)
-  std::vector<uint8_t> prev_col_active_;   // (num_columns)
-
   // Distal persistence state.
   // These implement the "persistence" idea from the python temporal pooler:
   // - Track how long a cell continues to be correctly predicted (active_predict streak)
@@ -313,6 +307,18 @@ private:
   std::vector<int> cells_tracking_num_;   // (num_columns*cells_per_column)
   std::vector<float> cells_avg_persist_;  // (num_columns*cells_per_column)
   std::vector<int> cells_persistence_;    // (num_columns*cells_per_column)
+
+  // Last distal-update active-predict support, aggregated by origin column.
+  // This is not a new trace: it is one-step bookkeeping for the same cells that
+  // TP distal learning just reinforced or used to create segments.
+  std::vector<int> last_active_predict_support_by_column_; // (num_columns)
+  int last_active_predict_support_time_{-1};
+
+  // Previous distal-update active-predict support. This lets TP reinforce
+  // proximal inputs after a correctly predicted activation only if that column
+  // is still segment-backed predictive but failed to win inhibition.
+  std::vector<int> prev_active_predict_support_by_column_; // (num_columns)
+  int prev_active_predict_support_time_{-1};
 
   // Track last 2 timesteps when a cell first entered learning state.
   // Important: this stores *entry* timesteps only (not subsequent timesteps where the cell

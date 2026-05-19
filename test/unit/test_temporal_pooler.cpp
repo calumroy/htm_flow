@@ -17,231 +17,6 @@ inline int idx_cell_seg(int num_cells_per_col, int max_segments_per_cell, int co
 
 } // namespace
 
-TEST(TemporalPooler, proximal_updates_expected_synapses) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
-      /*num_columns=*/2,
-      /*cells_per_column=*/2,
-      /*max_segments_per_cell=*/1,
-      /*max_synapses_per_segment=*/2,
-      /*num_pot_synapses=*/3,
-      /*spatial_permanence_inc=*/0.1f,
-      /*seq_permanence_inc=*/0.1f,
-      /*seq_permanence_dec=*/0.0f,
-      /*min_num_syn_threshold=*/0,
-      /*new_syn_permanence=*/0.3f,
-      /*connect_permanence=*/0.2f,
-      /*delay_length=*/4,
-  });
-
-  std::vector<float> col_syn_perm(2 * 3, 0.0f);
-  std::vector<int> burst_cols_time(2 * 2, -1);
-  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
-  std::vector<int> active_segs_time(2 * 2 * 1, -1);
-
-  // Step 1: establish prev buffers (no increments because prev buffers are zeroed).
-  std::vector<int> pot_inputs_t1 = {
-      1, 0, 1, // col0
-      0, 1, 0  // col1
-  };
-  std::vector<uint8_t> col_active_t1 = {1, 0};
-  tp.update_proximal(/*time_step=*/1,
-                     pot_inputs_t1,
-                     col_active_t1,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  // Give both columns real temporal support at t=1 so the TP proximal rules are allowed.
-  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
-  active_segs_time[idx_cell_seg(2, 1, 0, 0, 0)] = 1;
-  predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 1;
-  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 1;
-
-  // Step 2: increments based on prev inputs + prev active.
-  std::vector<int> pot_inputs_t2 = {
-      0, 1, 0, // col0
-      1, 1, 1  // col1
-  };
-  std::vector<uint8_t> col_active_t2 = {1, 1};
-  tp.update_proximal(/*time_step=*/2,
-                     pot_inputs_t2,
-                     col_active_t2,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  // Column 0:
-  // - active now => increment where prev inputs were 1 (syn0, syn2)
-  // - was active prev => increment where current inputs are 1 (syn1)
-  EXPECT_FLOAT_EQ(col_syn_perm[0 * 3 + 0], 0.1f);
-  EXPECT_FLOAT_EQ(col_syn_perm[0 * 3 + 1], 0.1f);
-  EXPECT_FLOAT_EQ(col_syn_perm[0 * 3 + 2], 0.1f);
-
-  // Column 1:
-  // - active now => increment where prev inputs were 1 (syn1 only)
-  // - was NOT active prev => no rule-B increment
-  EXPECT_FLOAT_EQ(col_syn_perm[1 * 3 + 0], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[1 * 3 + 1], 0.1f);
-  EXPECT_FLOAT_EQ(col_syn_perm[1 * 3 + 2], 0.0f);
-}
-
-TEST(TemporalPooler, proximal_skips_bursting_columns_for_ruleA) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
-      /*num_columns=*/1,
-      /*cells_per_column=*/2,
-      /*max_segments_per_cell=*/1,
-      /*max_synapses_per_segment=*/2,
-      /*num_pot_synapses=*/3,
-      /*spatial_permanence_inc=*/0.1f,
-      /*seq_permanence_inc=*/0.1f,
-      /*seq_permanence_dec=*/0.0f,
-      /*min_num_syn_threshold=*/0,
-      /*new_syn_permanence=*/0.3f,
-      /*connect_permanence=*/0.2f,
-      /*delay_length=*/4,
-  });
-
-  std::vector<float> col_syn_perm(1 * 3, 0.0f);
-  std::vector<int> burst_cols_time(1 * 2, -1);
-  std::vector<int> predict_cells_time(1 * 2 * 2, -1);
-  std::vector<int> active_segs_time(1 * 2 * 1, -1);
-
-  std::vector<int> pot_inputs_t1 = {1, 1, 1};
-  std::vector<uint8_t> col_active_t1 = {1};
-  tp.update_proximal(/*time_step=*/1,
-                     pot_inputs_t1,
-                     col_active_t1,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
-  active_segs_time[idx_cell_seg(2, 1, 0, 0, 0)] = 1;
-
-  // Mark the column as bursting at time_step 2.
-  burst_cols_time[0] = 2;
-
-  std::vector<int> pot_inputs_t2 = {0, 0, 0};
-  std::vector<uint8_t> col_active_t2 = {1};
-  tp.update_proximal(/*time_step=*/2,
-                     pot_inputs_t2,
-                     col_active_t2,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  // Rule A should be skipped (bursting now), so synapses should NOT have increased
-  // based on prev inputs.
-  EXPECT_FLOAT_EQ(col_syn_perm[0], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[1], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[2], 0.0f);
-}
-
-TEST(TemporalPooler, proximal_skips_bursting_columns_for_ruleB) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
-      /*num_columns=*/1,
-      /*cells_per_column=*/2,
-      /*max_segments_per_cell=*/1,
-      /*max_synapses_per_segment=*/2,
-      /*num_pot_synapses=*/3,
-      /*spatial_permanence_inc=*/0.1f,
-      /*seq_permanence_inc=*/0.1f,
-      /*seq_permanence_dec=*/0.0f,
-      /*min_num_syn_threshold=*/0,
-      /*new_syn_permanence=*/0.3f,
-      /*connect_permanence=*/0.2f,
-      /*delay_length=*/4,
-  });
-
-  std::vector<float> col_syn_perm(1 * 3, 0.0f);
-  std::vector<int> burst_cols_time(1 * 2, -1);
-  std::vector<int> predict_cells_time(1 * 2 * 2, -1);
-  std::vector<int> active_segs_time(1 * 2 * 1, -1);
-
-  // Step 1: establish previous active-column state.
-  std::vector<int> pot_inputs_t1 = {0, 0, 0};
-  std::vector<uint8_t> col_active_t1 = {1};
-  tp.update_proximal(/*time_step=*/1,
-                     pot_inputs_t1,
-                     col_active_t1,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
-  active_segs_time[idx_cell_seg(2, 1, 0, 0, 0)] = 1;
-
-  // Mark the column as bursting on the previous timestep.
-  burst_cols_time[0] = 1;
-
-  // Step 2: Rule B would normally increment all currently active inputs because the
-  // column was active at t=1, but burst_prev should suppress that update.
-  std::vector<int> pot_inputs_t2 = {1, 1, 1};
-  std::vector<uint8_t> col_active_t2 = {0};
-  tp.update_proximal(/*time_step=*/2,
-                     pot_inputs_t2,
-                     col_active_t2,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  EXPECT_FLOAT_EQ(col_syn_perm[0], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[1], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[2], 0.0f);
-}
-
-TEST(TemporalPooler, proximal_requires_temporal_support) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
-      /*num_columns=*/1,
-      /*cells_per_column=*/2,
-      /*max_segments_per_cell=*/1,
-      /*max_synapses_per_segment=*/2,
-      /*num_pot_synapses=*/3,
-      /*spatial_permanence_inc=*/0.1f,
-      /*seq_permanence_inc=*/0.1f,
-      /*seq_permanence_dec=*/0.0f,
-      /*min_num_syn_threshold=*/0,
-      /*new_syn_permanence=*/0.3f,
-      /*connect_permanence=*/0.2f,
-      /*delay_length=*/4,
-  });
-
-  std::vector<float> col_syn_perm(1 * 3, 0.0f);
-  std::vector<int> burst_cols_time(1 * 2, -1);
-  std::vector<int> predict_cells_time(1 * 2 * 2, -1);
-  std::vector<int> active_segs_time(1 * 2 * 1, -1);
-
-  std::vector<int> pot_inputs_t1 = {1, 0, 1};
-  std::vector<uint8_t> col_active_t1 = {1};
-  tp.update_proximal(/*time_step=*/1,
-                     pot_inputs_t1,
-                     col_active_t1,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  std::vector<int> pot_inputs_t2 = {0, 1, 0};
-  std::vector<uint8_t> col_active_t2 = {1};
-  tp.update_proximal(/*time_step=*/2,
-                     pot_inputs_t2,
-                     col_active_t2,
-                     predict_cells_time,
-                     active_segs_time,
-                     col_syn_perm,
-                     burst_cols_time);
-
-  EXPECT_FLOAT_EQ(col_syn_perm[0], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[1], 0.0f);
-  EXPECT_FLOAT_EQ(col_syn_perm[2], 0.0f);
-}
-
 TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
   TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
       /*num_columns=*/2,
@@ -590,9 +365,12 @@ TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
 
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
   // Origin cell: (col0, cell0, seg0)
-  // syn0 is sub-connected but matches the prev2 set and is active now.
+  // syn0 is sub-connected and matches the prev2 set. It is intentionally NOT
+  // active now; TP distal should reinforce the selected prev2 context, not the
+  // current active context.
   distal[0] = DistalSynapse{/*target_col=*/1, /*target_cell=*/1, /*perm=*/0.1f};
-  // syn1 is sub-connected and inactive, so it should decay instead of being overwritten.
+  // syn1 is sub-connected and active now, but outside the prev2 set, so it should
+  // decay instead of being rewarded.
   distal[1] = DistalSynapse{/*target_col=*/0, /*target_cell=*/1, /*perm=*/0.1f};
 
   std::vector<int> learn_cells_time(2 * 2 * 2, -1);
@@ -604,8 +382,9 @@ TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
   active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
   predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
 
-  // Make syn0's endpoint active and newly learning so the segment matches prev2.
-  active_cells_time[idx_cell_time(2, 1, 1, 0)] = 2;
+  // Make syn1's endpoint active now to prove current activity is not the TP distal
+  // reinforcement criterion.
+  active_cells_time[idx_cell_time(2, 0, 1, 0)] = 2;
   std::vector<std::pair<int, int>> new_learn_cells_list = {{1, 1}};
 
   tp.update_distal(/*time_step=*/2,
@@ -624,6 +403,218 @@ TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
   EXPECT_EQ(distal[1].target_col, 0);
   EXPECT_EQ(distal[1].target_cell, 1);
   EXPECT_FLOAT_EQ(distal[1].perm, 0.08f);
+}
+
+TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/3,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/3,
+      /*spatial_permanence_inc=*/0.04f,
+      /*seq_permanence_inc=*/0.04f,
+      /*seq_permanence_dec=*/0.02f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.1f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  std::vector<DistalSynapse> distal(2 * 3 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  std::vector<int> learn_cells_time(2 * 3 * 2, -1);
+  std::vector<int> active_cells_time(2 * 3 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 3 * 2, -1);
+  std::vector<int> active_segs_time(2 * 3 * 1, -1);
+
+  // Two cells in column 0 are active-predict at t=2. Column 1 has only a
+  // generic prediction, so it should not receive TP proximal reinforcement.
+  active_cells_time[idx_cell_time(3, 0, 0, 0)] = 2;
+  active_cells_time[idx_cell_time(3, 0, 1, 0)] = 2;
+  predict_cells_time[idx_cell_time(3, 0, 0, 0)] = 1;
+  predict_cells_time[idx_cell_time(3, 0, 1, 0)] = 1;
+  predict_cells_time[idx_cell_time(3, 1, 0, 0)] = 1;
+
+  tp.update_distal(/*time_step=*/2,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  std::vector<int> pot_inputs = {
+      1, 0, 1, // col0
+      1, 1, 1  // col1
+  };
+  std::vector<float> proximal_perm = {
+      0.25f, 0.0f, 0.35f, // col0
+      0.0f, 0.0f, 0.0f    // col1
+  };
+  const int reinforced_inputs =
+      tp.update_proximal(/*support_time=*/2,
+                         pot_inputs,
+                         proximal_perm);
+
+  EXPECT_EQ(reinforced_inputs, 2);
+  // Two active-predict cells in col0 give 2 * 0.04 reinforcement to active
+  // proximal inputs. Col1 has a generic prediction only, so it is unchanged.
+  EXPECT_FLOAT_EQ(proximal_perm[0], 0.33f);
+  EXPECT_FLOAT_EQ(proximal_perm[1], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[2], 0.43f);
+  EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[4], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[5], 0.0f);
+
+  std::vector<float> stale_perm(2 * 3, 0.0f);
+  EXPECT_EQ(tp.update_proximal(/*support_time=*/1,
+                              pot_inputs,
+                              stale_perm),
+            0);
+  EXPECT_FLOAT_EQ(stale_perm[0], 0.0f);
+  EXPECT_FLOAT_EQ(stale_perm[2], 0.0f);
+}
+
+TEST(TemporalPooler, proximal_update_includes_predictive_non_active_columns) {
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/3,
+      /*spatial_permanence_inc=*/0.04f,
+      /*seq_permanence_inc=*/0.04f,
+      /*seq_permanence_dec=*/0.02f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.1f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_cells_time(2 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_segs_time(2 * 2 * 1, -1);
+
+  // Column 0 is active-predict and gets the existing active support path.
+  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
+  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
+
+  // Column 1 is predictive at t=2 with real segment support, but it did not win
+  // inhibition. TP should still give its current active proximal inputs a local
+  // permanence nudge so distal prediction can become future overlap.
+  predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
+  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 2;
+
+  tp.update_distal(/*time_step=*/2,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  std::vector<uint8_t> col_active = {1, 0};
+  std::vector<int> pot_inputs = {
+      1, 0, 1, // col0
+      0, 1, 1  // col1
+  };
+  std::vector<float> proximal_perm = {
+      0.0f, 0.0f, 0.35f, // col0
+      0.0f, 0.29f, 0.0f  // col1
+  };
+
+  const int reinforced_inputs =
+      tp.update_proximal(/*support_time=*/2,
+                         pot_inputs,
+                         proximal_perm,
+                         &col_active,
+                         &predict_cells_time,
+                         &active_segs_time);
+
+  EXPECT_EQ(reinforced_inputs, 4);
+
+  EXPECT_FLOAT_EQ(proximal_perm[0], 0.04f);
+  EXPECT_FLOAT_EQ(proximal_perm[1], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[2], 0.39f);
+  EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[4], 0.33f);
+  EXPECT_FLOAT_EQ(proximal_perm[5], 0.04f);
+}
+
+TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_columns) {
+  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+      /*num_columns=*/2,
+      /*cells_per_column=*/2,
+      /*max_segments_per_cell=*/1,
+      /*max_synapses_per_segment=*/2,
+      /*num_pot_synapses=*/3,
+      /*spatial_permanence_inc=*/0.04f,
+      /*seq_permanence_inc=*/0.04f,
+      /*seq_permanence_dec=*/0.02f,
+      /*min_num_syn_threshold=*/0,
+      /*new_syn_permanence=*/0.1f,
+      /*connect_permanence=*/0.2f,
+      /*delay_length=*/4,
+  });
+
+  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
+  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_cells_time(2 * 2 * 2, -1);
+  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
+  std::vector<int> active_segs_time(2 * 2 * 1, -1);
+
+  // t=2: column 1 is correctly predicted and active. TP records active-predict
+  // support for the column after its distal update.
+  active_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
+  predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 1;
+  tp.update_distal(/*time_step=*/2,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  // t=3: the same column did not win inhibition, but it is still predictive
+  // with segment evidence. This is the late-side bridge case.
+  predict_cells_time[idx_cell_time(2, 1, 0, 1)] = 3;
+  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 3;
+  tp.update_distal(/*time_step=*/3,
+                   /*new_learn_cells_list=*/{},
+                   learn_cells_time,
+                   predict_cells_time,
+                   active_cells_time,
+                   active_segs_time,
+                   distal);
+
+  std::vector<uint8_t> col_active = {1, 0};
+  std::vector<int> pot_inputs = {
+      1, 1, 1, // col0
+      0, 1, 1  // col1
+  };
+  std::vector<float> proximal_perm = {
+      0.0f, 0.0f, 0.0f,  // col0
+      0.0f, 0.29f, 0.0f  // col1
+  };
+
+  const int reinforced_inputs =
+      tp.update_proximal(/*support_time=*/3,
+                         pot_inputs,
+                         proximal_perm,
+                         &col_active,
+                         &predict_cells_time,
+                         &active_segs_time);
+
+  EXPECT_EQ(reinforced_inputs, 2);
+
+  // The predictive non-active bridge gives one increment, and the stricter
+  // post-active bridge gives one more because the column was active-predict at
+  // the previous timestep and is still segment-backed predictive now.
+  EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
+  EXPECT_FLOAT_EQ(proximal_perm[4], 0.37f);
+  EXPECT_FLOAT_EQ(proximal_perm[5], 0.08f);
 }
 
 

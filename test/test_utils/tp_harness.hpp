@@ -221,13 +221,6 @@ public:
                                                 predict_cells_calc_.get_seg_ind_update_mutable(),
                                                 predict_cells_calc_.get_seg_active_syn_mutable());
 
-    temporal_pool_calc_.update_proximal(time_step,
-                                        overlap_calc_.get_col_pot_inputs(),
-                                        col_active01_,
-                                        predict_cells_calc_.get_predict_cells_time(),
-                                        predict_cells_calc_.get_active_segs_time(),
-                                        col_syn_perm_,
-                                        active_cells_calc_.get_burst_cols_time());
     temporal_pool_calc_.update_distal(time_step,
                                       active_cells_calc_.get_current_learn_cells_list(),
                                       active_cells_calc_.get_learn_cells_time(),
@@ -236,6 +229,12 @@ public:
                                       // TP persistence mutates segment timestamps to keep persisted predictions segment-backed.
                                       predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
+    temporal_pool_calc_.update_proximal(time_step,
+                                        overlap_calc_.get_col_pot_inputs(),
+                                        col_syn_perm_,
+                                        &col_active01_,
+                                        &predict_cells_calc_.get_predict_cells_time(),
+                                        &predict_cells_calc_.get_active_segs_time());
   }
 
   std::vector<int> activeColumnsInt01() {
