@@ -9,6 +9,12 @@ code, and how to test it.
 The symptom is: enabling temporal pooling can increase column bursting in Layer
 1 instead of smoothly improving temporal stability.
 
+Current status: this is improved but not fully fixed. TP proximal learning is
+now constrained by local distal evidence, and TP can strengthen real proximal
+permanences for predicted columns. We still see some Layer 1 bursting with
+temporal pooling enabled, so the remaining work is tuning and diagnosis rather
+than declaring the issue solved.
+
 The main reason is that a column only avoids bursting when a cell was both:
 
 - predictive at `t-1`
@@ -24,13 +30,13 @@ Temporal pooling can interfere with that in two ways:
    with persistence-based predictive state so it no longer creates the old
    "predictive but still bursts" mismatch by itself.
 
-The current calculator also applies two local safeguards:
+The current calculator applies local safeguards:
 
 - TP proximal reinforcement only applies to columns that had active-predict
   cells in the previous temporal-pooler distal update, or columns that are
   currently segment-backed predictive but did not win inhibition.
-- A one-step late bridge reinforces a recently active-predict column only when
-  it is still segment-backed predictive and failed to win inhibition on the
+- A one-step later-input rule reinforces a recently active-predict column only
+  when it is still segment-backed predictive and failed to win inhibition on the
   next timestep.
 - `temporal_pooling.spatial_permanence_inc` now strengthens real proximal
   permanences for those supported columns instead of adding a temporary overlap
@@ -100,25 +106,26 @@ No global burst-rate rule or layer-wide normalization was added.
    trace; the bookkeeping is derived from the same active-predict condition that
    TP distal learning uses to reinforce or create segments.
 
-   The same reinforcement path also handles two non-winner bridge cases:
+   The same reinforcement path also handles two non-winner cases:
 
-   - **Earlier bridge:** if a column is predictive at the current timestep and
-     has an active segment timestamp, but did not win inhibition, TP gives the
-     column's currently active proximal inputs one local permanence increment.
-     This lets distal TP predictions become future proximal overlap instead of
-     waiting for the column to win inhibition first.
-   - **Later bridge:** if a column had active-predict support on the previous
-     timestep, is still segment-backed predictive on the current timestep, and
-     did not win inhibition, TP gives the currently active proximal inputs one
-     additional local increment. This is the path that lets a correctly
-     predicted activation grow proximal support for inputs just after that
-     activation, but only while distal evidence still says the column belongs.
+   - **Predicted but not active:** if a column is predictive at the current
+     timestep and has an active segment timestamp, but did not win inhibition,
+     TP gives the column's currently active proximal inputs one local permanence
+     increment. This lets distal TP predictions become future proximal overlap
+     instead of waiting for the column to win inhibition first.
+   - **Recently active-predict and still predicted:** if a column had
+     active-predict support on the previous timestep, is still segment-backed
+     predictive on the current timestep, and did not win inhibition, TP gives
+     the currently active proximal inputs one additional local increment. This
+     lets a correctly predicted activation grow proximal support for inputs just
+     after that activation, but only while distal evidence still says the column
+     belongs.
 
-   The late bridge deliberately requires both previous active-predict support
-   and current segment-backed prediction. Without the current prediction check,
-   TP would smear proximal permanence onto whatever happened to follow a correct
-   activation. Without the previous active-predict check, the rule would be the
-   generic earlier bridge only.
+   The later-input rule deliberately requires both previous active-predict
+   support and current segment-backed prediction. Without the current prediction
+   check, TP would smear proximal permanence onto whatever happened to follow a
+   correct activation. Without the previous active-predict check, the rule would
+   be the generic predicted-but-not-active case only.
 
 4. **TP distal matching and reinforcement use the same context.**
 
@@ -156,9 +163,9 @@ Important supporting code paths:
   - TP proximal reinforcement now requires active-predict support from the
     previous TP distal update, or current segment-backed predictive support for
     a column that did not win inhibition
-  - the late bridge uses the previous distal update's active-predict support
-    plus current segment-backed prediction before reinforcing a non-winning
-    column's current active proximal inputs
+  - the later-input rule uses the previous distal update's active-predict
+    support plus current segment-backed prediction before reinforcing a
+    non-winning column's current active proximal inputs
   - `update_distal()` changes `distal_synapses_`
   - reused TP distal segments are matched and reinforced against `prev2`
     learning-cell context
@@ -178,11 +185,11 @@ Important supporting code paths:
 - At the moment, the safest configuration is to keep TP proximal learning weak
   and active-predict-gated, using `temporal_pooling.spatial_permanence_inc` as
   the main "more TP / less TP" proximal knob.
-- The current proximal bridge model is intentionally local:
+- The current proximal reinforcement model is intentionally local:
   - active-predict winners reinforce the input that made them win
-  - segment-backed predictive non-winners get an earlier-input bridge
+  - segment-backed predictive non-winners get current-input reinforcement
   - recently active-predict, still-predictive non-winners get a later-input
-    bridge
+    reinforcement step
 - Because TP proximal is now trust-gated, stronger TP settings can be explored
   with less risk of immediately reintroducing Layer 1 burst spikes.
 - Persistence bookkeeping is now internally consistent with the burst gate, but
@@ -297,3 +304,8 @@ reintroducing burst spikes while keeping the state model easy to inspect.
 The likely next step is to compare weak and moderate active-predict-gated
 proximal reinforcement settings. Avoid adding another persistent synapse-like
 trace unless this simpler local permanence update proves insufficient.
+
+Do not treat the current implementation as a final bursting fix. It narrows when
+TP proximal learning is allowed to change shared proximal permanence, but config
+tuning still needs to balance stronger temporal pooling against remaining Layer
+1 bursting.
