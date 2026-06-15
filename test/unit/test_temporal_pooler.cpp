@@ -32,6 +32,9 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
       /*connect_permanence=*/0.2f,
       /*delay_length=*/4,
   });
+  tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
+                                       /*predictive_non_active_scale=*/0.0f,
+                                       /*post_active_scale=*/0.0f);
 
   // Distal synapses: shape (num_columns=2, cells=2, seg=1, syn=2)
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2);
@@ -451,12 +454,13 @@ TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
       0.25f, 0.0f, 0.35f, // col0
       0.0f, 0.0f, 0.0f    // col1
   };
-  const int reinforced_inputs =
+  const auto stats =
       tp.update_proximal(/*support_time=*/2,
                          pot_inputs,
                          proximal_perm);
 
-  EXPECT_EQ(reinforced_inputs, 2);
+  EXPECT_EQ(stats.reinforced_inputs, 2);
+  EXPECT_EQ(stats.reinforced_columns, 1);
   // Two active-predict cells in col0 give 2 * 0.04 reinforcement to active
   // proximal inputs. Col1 has a generic prediction only, so it is unchanged.
   EXPECT_FLOAT_EQ(proximal_perm[0], 0.33f);
@@ -468,8 +472,8 @@ TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
 
   std::vector<float> stale_perm(2 * 3, 0.0f);
   EXPECT_EQ(tp.update_proximal(/*support_time=*/1,
-                              pot_inputs,
-                              stale_perm),
+                               pot_inputs,
+                               stale_perm).reinforced_inputs,
             0);
   EXPECT_FLOAT_EQ(stale_perm[0], 0.0f);
   EXPECT_FLOAT_EQ(stale_perm[2], 0.0f);
@@ -490,6 +494,9 @@ TEST(TemporalPooler, proximal_update_includes_predictive_non_active_columns) {
       /*connect_permanence=*/0.2f,
       /*delay_length=*/4,
   });
+  tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
+                                       /*predictive_non_active_scale=*/1.0f,
+                                       /*post_active_scale=*/0.0f);
 
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
   std::vector<int> learn_cells_time(2 * 2 * 2, -1);
@@ -525,7 +532,7 @@ TEST(TemporalPooler, proximal_update_includes_predictive_non_active_columns) {
       0.0f, 0.29f, 0.0f  // col1
   };
 
-  const int reinforced_inputs =
+  const auto stats =
       tp.update_proximal(/*support_time=*/2,
                          pot_inputs,
                          proximal_perm,
@@ -533,7 +540,7 @@ TEST(TemporalPooler, proximal_update_includes_predictive_non_active_columns) {
                          &predict_cells_time,
                          &active_segs_time);
 
-  EXPECT_EQ(reinforced_inputs, 4);
+  EXPECT_EQ(stats.reinforced_inputs, 4);
 
   EXPECT_FLOAT_EQ(proximal_perm[0], 0.04f);
   EXPECT_FLOAT_EQ(proximal_perm[1], 0.0f);
@@ -558,6 +565,9 @@ TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_c
       /*connect_permanence=*/0.2f,
       /*delay_length=*/4,
   });
+  tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
+                                       /*predictive_non_active_scale=*/1.0f,
+                                       /*post_active_scale=*/1.0f);
 
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
   std::vector<int> learn_cells_time(2 * 2 * 2, -1);
@@ -599,7 +609,7 @@ TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_c
       0.0f, 0.29f, 0.0f  // col1
   };
 
-  const int reinforced_inputs =
+  const auto stats =
       tp.update_proximal(/*support_time=*/3,
                          pot_inputs,
                          proximal_perm,
@@ -607,7 +617,7 @@ TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_c
                          &predict_cells_time,
                          &active_segs_time);
 
-  EXPECT_EQ(reinforced_inputs, 2);
+  EXPECT_EQ(stats.reinforced_inputs, 2);
 
   // The predictive non-active bridge gives one increment, and the stricter
   // post-active bridge gives one more because the column was active-predict at

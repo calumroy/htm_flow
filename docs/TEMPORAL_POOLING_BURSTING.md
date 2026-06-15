@@ -41,6 +41,10 @@ The current calculator applies local safeguards:
 - `temporal_pooling.spatial_permanence_inc` now strengthens real proximal
   permanences for those supported columns instead of adding a temporary overlap
   bonus.
+- TP proximal reinforcement is split into local scale knobs for active-predict
+  winners, predicted non-winners, and the post-active bridge. This lets tuning
+  reduce the risky non-winner path without weakening distal TP learning or the
+  rest of spatial learning.
 - TP distal reinforcement now rewards synapses targeting the same `prev2`
   learning-cell context used to select a temporal-pooling segment.
 
@@ -163,6 +167,9 @@ Important supporting code paths:
   - TP proximal reinforcement now requires active-predict support from the
     previous TP distal update, or current segment-backed predictive support for
     a column that did not win inhibition
+  - `active_predict_proximal_scale`,
+    `predictive_non_active_proximal_scale`, and `post_active_proximal_scale`
+    control how much each local support path contributes
   - the later-input rule uses the previous distal update's active-predict
     support plus current segment-backed prediction before reinforcing a
     non-winning column's current active proximal inputs
@@ -195,6 +202,10 @@ Important supporting code paths:
 - Persistence bookkeeping is now internally consistent with the burst gate, but
   persistence is still disabled by default because it is more fragile than base
   TP learning.
+- If delayed TP causes new winners to burst, first reduce
+  `predictive_non_active_proximal_scale` or `post_active_proximal_scale`. Those
+  paths intentionally teach columns that did not win inhibition, so they are the
+  first local knobs to check before lowering all TP learning.
 - Carrying a segment timestamp forward is intentionally narrow: it only happens
   for a cell that already had an active segment on the previous timestep. This
   makes persistence visible to the next burst-gate check, but it also means

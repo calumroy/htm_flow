@@ -30,17 +30,17 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   new_learn_cells_time_.assign(num_cells * 2, -1);
 }
 
-int TemporalPoolerCalculator::update_proximal(
+TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_proximal(
     int support_time,
     const std::vector<int>& col_pot_inputs01,
     std::vector<float>& col_syn_perm,
     const std::vector<uint8_t>* col_active01,
     const std::vector<int>* predict_cells_time,
     const std::vector<int>* active_segs_time) const {
-  int reinforced_inputs = 0;
+  ProximalUpdateStats stats;
   if (support_time != last_active_predict_support_time_ ||
       cfg_.spatial_permanence_inc <= 0.0f) {
-    return reinforced_inputs;
+    return stats;
   }
 
   assert(static_cast<int>(col_pot_inputs01.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
@@ -62,7 +62,9 @@ int TemporalPoolerCalculator::update_proximal(
   // predicted can eventually win spatial overlap instead of only predicting.
   const int n = std::min(cfg_.num_columns,
                          static_cast<int>(last_active_predict_support_by_column_.size()));
-  for (int col = 0; col < n; ++col) {
+  std::vector<ProximalUpdateStats> per_column_stats(static_cast<std::size_t>(n));
+  tf::Taskflow taskflow;
+  taskflow.for_each_index(0, n, 1, [&](int col) {
     const int support = last_active_predict_support_by_column_[static_cast<std::size_t>(col)];
     const bool active_now = can_reinforce_predictive_non_active &&
                             ((*col_active01)[static_cast<std::size_t>(col)] == 1);
@@ -80,14 +82,22 @@ int TemporalPoolerCalculator::update_proximal(
         prev_active_predict_support_time_ == support_time - 1 &&
         col < static_cast<int>(prev_active_predict_support_by_column_.size()) &&
         prev_active_predict_support_by_column_[static_cast<std::size_t>(col)] > 0;
-    if (support <= 0 && !predictive_non_active && !post_active_predict) {
-      continue;
+    const float active_predict_strength =
+        static_cast<float>(support) * cfg_.active_predict_proximal_scale;
+    const float predictive_non_active_strength =
+        predictive_non_active ? cfg_.predictive_non_active_proximal_scale : 0.0f;
+    const float post_active_strength =
+        post_active_predict ? cfg_.post_active_proximal_scale : 0.0f;
+    const float total_strength =
+        active_predict_strength + predictive_non_active_strength + post_active_strength;
+    if (total_strength <= 0.0f) {
+      return;
     }
-    const int effective_support = support + (predictive_non_active ? 1 : 0) +
-                                  (post_active_predict ? 1 : 0);
-    const float inc = cfg_.spatial_permanence_inc * static_cast<float>(effective_support);
+    const float inc = cfg_.spatial_permanence_inc * total_strength;
     const std::size_t base =
         static_cast<std::size_t>(col) * static_cast<std::size_t>(cfg_.num_pot_synapses);
+    auto& local = per_column_stats[static_cast<std::size_t>(col)];
+    local.reinforced_columns = 1;
 
     // Only strengthen inputs that are active now; no temporary overlap bonus or
     // global correction is introduced.
@@ -96,13 +106,27 @@ int TemporalPoolerCalculator::update_proximal(
       if (col_pot_inputs01[idx] != 1) {
         continue;
       }
-      ++reinforced_inputs;
+      ++local.reinforced_inputs;
+      const bool was_connected = col_syn_perm[idx] >= cfg_.connect_permanence;
       const float p = col_syn_perm[idx] + inc;
       const float after = (p > 1.0f) ? 1.0f : p;
+      if (!was_connected && after >= cfg_.connect_permanence) {
+        ++local.newly_connected;
+      }
+      local.permanence_delta += after - col_syn_perm[idx];
       col_syn_perm[idx] = after;
     }
+  }).name("temporal_pooler_update_proximal_for_each_column");
+
+  executor_.run(taskflow).wait();
+
+  for (const auto& local : per_column_stats) {
+    stats.reinforced_columns += local.reinforced_columns;
+    stats.reinforced_inputs += local.reinforced_inputs;
+    stats.newly_connected += local.newly_connected;
+    stats.permanence_delta += local.permanence_delta;
   }
-  return reinforced_inputs;
+  return stats;
 }
 
 std::uint64_t TemporalPoolerCalculator::splitmix64(std::uint64_t x) {

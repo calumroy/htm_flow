@@ -98,6 +98,9 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
           cfg_.max_synapses_per_segment,
           num_pot_syn_,
           cfg_.temp_spatial_permanence_inc,
+          cfg_.temp_active_predict_proximal_scale,
+          cfg_.temp_predictive_non_active_proximal_scale,
+          cfg_.temp_post_active_proximal_scale,
           cfg_.temp_sequence_permanence_inc,
           cfg_.temp_sequence_permanence_dec,
           cfg_.min_num_syn_threshold,
@@ -203,6 +206,7 @@ RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& pat
   bool update_spatial_learning = false;
   bool update_sequence_learning = false;
   bool update_temporal_pool_learning = false;
+  bool update_temporal_pool_proximal_scales = false;
 
   if (patch.connected_perm) {
     if (!is_unit_interval(*patch.connected_perm)) {
@@ -384,10 +388,44 @@ RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& pat
       applied("temporal_pooling.sequence_permanence_dec");
     }
   }
+  if (patch.temp_active_predict_proximal_scale) {
+    if (*patch.temp_active_predict_proximal_scale < 0.0f) {
+      reject("temporal_pooling.active_predict_proximal_scale", "must be >= 0");
+    } else {
+      cfg_.temp_active_predict_proximal_scale = *patch.temp_active_predict_proximal_scale;
+      update_temporal_pool_proximal_scales = true;
+      applied("temporal_pooling.active_predict_proximal_scale");
+    }
+  }
+  if (patch.temp_predictive_non_active_proximal_scale) {
+    if (*patch.temp_predictive_non_active_proximal_scale < 0.0f) {
+      reject("temporal_pooling.predictive_non_active_proximal_scale", "must be >= 0");
+    } else {
+      cfg_.temp_predictive_non_active_proximal_scale =
+          *patch.temp_predictive_non_active_proximal_scale;
+      update_temporal_pool_proximal_scales = true;
+      applied("temporal_pooling.predictive_non_active_proximal_scale");
+    }
+  }
+  if (patch.temp_post_active_proximal_scale) {
+    if (*patch.temp_post_active_proximal_scale < 0.0f) {
+      reject("temporal_pooling.post_active_proximal_scale", "must be >= 0");
+    } else {
+      cfg_.temp_post_active_proximal_scale = *patch.temp_post_active_proximal_scale;
+      update_temporal_pool_proximal_scales = true;
+      applied("temporal_pooling.post_active_proximal_scale");
+    }
+  }
   if (update_temporal_pool_learning) {
     temporal_pool_calc_.set_learning_rates(cfg_.temp_spatial_permanence_inc,
                                            cfg_.temp_sequence_permanence_inc,
                                            cfg_.temp_sequence_permanence_dec);
+  }
+  if (update_temporal_pool_proximal_scales) {
+    temporal_pool_calc_.set_proximal_reinforcement_scales(
+        cfg_.temp_active_predict_proximal_scale,
+        cfg_.temp_predictive_non_active_proximal_scale,
+        cfg_.temp_post_active_proximal_scale);
   }
 
   if (patch.log_timings) {
@@ -554,7 +592,7 @@ void HTMLayer::step_once() {
                                       // TP persistence may carry a real segment timestamp forward.
                                       predict_cells_calc_.get_active_segs_time_mutable(),
                                       distal_synapses_);
-    const int reinforced_inputs = temporal_pool_calc_.update_proximal(
+    const auto proximal_stats = temporal_pool_calc_.update_proximal(
         timestep_,
         overlap_calc_.get_col_pot_inputs(),
         col_syn_perm_,
@@ -562,8 +600,11 @@ void HTMLayer::step_once() {
         &predict_cells_calc_.get_predict_cells_time(),
         &predict_cells_calc_.get_active_segs_time());
     if (cfg_.log_timings && cfg_.temp_spatial_permanence_inc > 0.0f) {
-      LOG(INFO, "Temporal pooling proximal reinforcement: reinforced_inputs=" +
-                    std::to_string(reinforced_inputs) +
+      LOG(INFO, "Temporal pooling proximal reinforcement: columns=" +
+                    std::to_string(proximal_stats.reinforced_columns) +
+                    " active_inputs=" + std::to_string(proximal_stats.reinforced_inputs) +
+                    " newly_connected=" + std::to_string(proximal_stats.newly_connected) +
+                    " permanence_delta=" + std::to_string(proximal_stats.permanence_delta) +
                     " permanence_inc=" + std::to_string(cfg_.temp_spatial_permanence_inc));
     }
     if (cfg_.log_timings) {
