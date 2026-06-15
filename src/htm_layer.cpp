@@ -23,6 +23,13 @@ bool is_unit_interval(float value) {
   return value >= 0.0f && value <= 1.0f;
 }
 
+std::uint32_t initial_seed(const HTMLayerConfig& cfg) {
+  if (cfg.random_seed) {
+    return *cfg.random_seed;
+  }
+  return std::random_device{}();
+}
+
 }  // namespace
 
 HTMLayer::HTMLayer(const HTMLayerConfig& cfg) : HTMLayer(cfg, "HTMLayer") {}
@@ -33,7 +40,7 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
       timestep_(0),
       num_pot_syn_(cfg_.pot_width * cfg_.pot_height),
       num_columns_(cfg_.num_column_rows * cfg_.num_column_cols),
-      gen_(std::random_device{}()),
+      gen_(initial_seed(cfg)),
       input_(std::make_shared<std::vector<int>>(
           static_cast<std::size_t>(cfg_.num_input_rows) * static_cast<std::size_t>(cfg_.num_input_cols), 0)),
       col_syn_perm_(static_cast<std::size_t>(num_columns_) * static_cast<std::size_t>(num_pot_syn_)),

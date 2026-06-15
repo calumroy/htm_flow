@@ -108,6 +108,15 @@ public:
   /// Get active column indices (sparse).
   const std::vector<int>& active_column_indices() const { return active_col_indices_; }
 
+  /// Get per-column burst timestamps from the active-cells stage.
+  const std::vector<int>& burst_columns_time() const { return active_cells_calc_.get_burst_cols_time(); }
+
+  /// Get predictive-cell timestamps from the predict-cells stage.
+  const std::vector<int>& predict_cells_time() const { return predict_cells_calc_.get_predict_cells_time(); }
+
+  /// Get active-segment timestamps from the predict-cells stage.
+  const std::vector<int>& active_segments_time() const { return predict_cells_calc_.get_active_segs_time(); }
+
   /// Output dimensions for use as input to the next layer.
   int output_rows() const { return cfg_.num_column_rows; }
   int output_cols() const { return cfg_.num_column_cols * cfg_.cells_per_column; }

@@ -169,6 +169,9 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
 
   // Runtime options
   cfg.log_timings = get_or(node, "log_timings", cfg.log_timings);
+  if (node["random_seed"]) {
+    cfg.random_seed = node["random_seed"].as<std::uint32_t>();
+  }
 
   return cfg;
 }

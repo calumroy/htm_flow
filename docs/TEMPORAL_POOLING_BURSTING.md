@@ -15,6 +15,19 @@ permanences for predicted columns. We still see some Layer 1 bursting with
 temporal pooling enabled, so the remaining work is tuning and diagnosis rather
 than declaring the issue solved.
 
+Headless true-burst diagnostics show that the current repeated-sequence failure
+mode is mostly **no previous prediction** for newly bursting Layer 1 columns.
+That means the burst gate is not ignoring valid predictive segment evidence;
+proximal TP can make columns win before distal sequence memory predicts them.
+The reference delayed config uses a single runtime override with
+active-predict reinforcement plus a moderate post-active bridge while leaving
+the riskiest predicted-non-active path disabled.
+Layer 1 also uses `sequence_memory.cells_per_column: 6` and
+`sequence_memory.activation_threshold: 4`. Four cells per column left familiar
+branching transitions under-represented; threshold `6` left familiar transitions
+under-predicted, while threshold `3` produced too much multi-cell predictive
+activity.
+
 The main reason is that a column only avoids bursting when a cell was both:
 
 - predictive at `t-1`
@@ -199,6 +212,11 @@ Important supporting code paths:
     reinforcement step
 - Because TP proximal is now trust-gated, stronger TP settings can be explored
   with less risk of immediately reintroducing Layer 1 burst spikes.
+- If `new_true_burst_causes` reports `no_prev_prediction`, the problem is not
+  segment timestamp persistence. It means proximal pressure is activating
+  columns that distal sequence memory did not predict on the previous timestep.
+  Back off `spatial_permanence_inc`, `predictive_non_active_proximal_scale`, and
+  `post_active_proximal_scale` before changing active-cells bursting logic.
 - Persistence bookkeeping is now internally consistent with the burst gate, but
   persistence is still disabled by default because it is more fragile than base
   TP learning.
@@ -224,11 +242,18 @@ The delayed-runtime reference config is:
 - `configs/word_rows_2layer_delayed_temporal_pooling_text.yaml`
 - `configs/overrides/word_rows_2layer_enable_temporal_pooling.yaml`
 
-Layer 1 temporal pooling is enabled at runtime with:
+Layer 1 temporal pooling is enabled at timestep 1000 with:
 
 - `enable_persistence: false`
-- `spatial_permanence_inc` as active-predict-gated TP proximal reinforcement
+- `spatial_permanence_inc: 0.12`
+- `active_predict_proximal_scale: 0.25`
+- `post_active_proximal_scale: 0.5`
+- `predictive_non_active_proximal_scale: 0.0`
 - moderate TP distal learning
+
+Layer 1 also uses six cells per column and sequence-memory
+`activation_threshold: 4` so learned distal segments can predict familiar
+word-row transitions without becoming overly broad.
 
 Generic `HTMLayerConfig` defaults now also bias toward safer TP startup:
 

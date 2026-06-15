@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -111,6 +112,7 @@ struct HTMLayerConfig {
   // Runtime options
   // --------------------------------------------------------------------------
   bool log_timings = false;  ///< Log per-stage timing information for profiling
+  std::optional<std::uint32_t> random_seed;  ///< Optional deterministic layer seed
 };
 
 /// Configuration for an HTM region (a stack of layers).
