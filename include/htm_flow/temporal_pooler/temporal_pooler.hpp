@@ -37,10 +37,6 @@ public:
     // safest proximal TP path because it reinforces columns that already avoided
     // bursting.
     float active_predict_proximal_scale = 0.25f;
-    // Scale reinforcement for segment-backed predictive columns that did not win
-    // inhibition. This can help predicted columns become future winners, but too
-    // much can make columns win before their distal context is reliable.
-    float predictive_non_active_proximal_scale = 0.0f;
     // Scale the one-step bridge for columns that were active-predict on the
     // previous timestep and are still segment-backed predictive but inactive now.
     float post_active_proximal_scale = 0.0f;
@@ -226,10 +222,8 @@ public:
   void set_delay_length(int delay_length) { cfg_.delay_length = delay_length; }
   void set_enable_persistence(bool enabled) { cfg_.enable_persistence = enabled; }
   void set_proximal_reinforcement_scales(float active_predict_scale,
-                                         float predictive_non_active_scale,
                                          float post_active_scale) {
     cfg_.active_predict_proximal_scale = active_predict_scale;
-    cfg_.predictive_non_active_proximal_scale = predictive_non_active_scale;
     cfg_.post_active_proximal_scale = post_active_scale;
   }
   void set_learning_rates(float spatial_permanence_inc,

@@ -55,9 +55,9 @@ The current calculator applies local safeguards:
   permanences for those supported columns instead of adding a temporary overlap
   bonus.
 - TP proximal reinforcement is split into local scale knobs for active-predict
-  winners, predicted non-winners, and the post-active bridge. This lets tuning
-  reduce the risky non-winner path without weakening distal TP learning or the
-  rest of spatial learning.
+  winners and the post-active bridge. The direct predicted-non-winner proximal
+  path was removed because it made tuning harder and tended to create
+  unpredicted winners.
 - TP distal reinforcement now rewards synapses targeting the same `prev2`
   learning-cell context used to select a temporal-pooling segment.
 
@@ -180,9 +180,8 @@ Important supporting code paths:
   - TP proximal reinforcement now requires active-predict support from the
     previous TP distal update, or current segment-backed predictive support for
     a column that did not win inhibition
-  - `active_predict_proximal_scale`,
-    `predictive_non_active_proximal_scale`, and `post_active_proximal_scale`
-    control how much each local support path contributes
+  - `active_predict_proximal_scale` and `post_active_proximal_scale` control
+    how much each local support path contributes
   - the later-input rule uses the previous distal update's active-predict
     support plus current segment-backed prediction before reinforcing a
     non-winning column's current active proximal inputs
@@ -215,15 +214,15 @@ Important supporting code paths:
 - If `new_true_burst_causes` reports `no_prev_prediction`, the problem is not
   segment timestamp persistence. It means proximal pressure is activating
   columns that distal sequence memory did not predict on the previous timestep.
-  Back off `spatial_permanence_inc`, `predictive_non_active_proximal_scale`, and
-  `post_active_proximal_scale` before changing active-cells bursting logic.
+  Back off `spatial_permanence_inc` and `post_active_proximal_scale` before
+  changing active-cells bursting logic.
 - Persistence bookkeeping is now internally consistent with the burst gate, but
   persistence is still disabled by default because it is more fragile than base
   TP learning.
 - If delayed TP causes new winners to burst, first reduce
-  `predictive_non_active_proximal_scale` or `post_active_proximal_scale`. Those
-  paths intentionally teach columns that did not win inhibition, so they are the
-  first local knobs to check before lowering all TP learning.
+  `post_active_proximal_scale`. That path teaches columns shortly after a
+  correct activation, so it is the first local knob to check before lowering all
+  TP learning.
 - Carrying a segment timestamp forward is intentionally narrow: it only happens
   for a cell that already had an active segment on the previous timestep. This
   makes persistence visible to the next burst-gate check, but it also means
@@ -248,7 +247,6 @@ Layer 1 temporal pooling is enabled at timestep 1000 with:
 - `spatial_permanence_inc: 0.12`
 - `active_predict_proximal_scale: 0.25`
 - `post_active_proximal_scale: 0.5`
-- `predictive_non_active_proximal_scale: 0.0`
 - moderate TP distal learning
 
 Layer 1 also uses six cells per column and sequence-memory

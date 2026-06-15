@@ -103,7 +103,6 @@ struct HTMLayerConfig {
   bool temp_enable_persistence = false;  ///< Keep persistence off by default; it is more fragile than base TP learning
   float temp_spatial_permanence_inc = 0.01f;  ///< Proximal learning rate for temporal pooling
   float temp_active_predict_proximal_scale = 0.25f;  ///< Scale for correctly predicted active columns
-  float temp_predictive_non_active_proximal_scale = 0.0f;  ///< Scale for predicted non-winning columns
   float temp_post_active_proximal_scale = 0.0f;  ///< Scale for the one-step predicted non-winner bridge
   float temp_sequence_permanence_inc = 0.02f;  ///< Default slightly favors distal TP learning over proximal pressure
   float temp_sequence_permanence_dec = 0.01f;  ///< Distal decay rate for inactive synapses in temporal pooling
@@ -167,7 +166,6 @@ struct HTMLayerRuntimePatch {
   std::optional<int> temp_delay_length;
   std::optional<float> temp_spatial_permanence_inc;
   std::optional<float> temp_active_predict_proximal_scale;
-  std::optional<float> temp_predictive_non_active_proximal_scale;
   std::optional<float> temp_post_active_proximal_scale;
   std::optional<float> temp_sequence_permanence_inc;
   std::optional<float> temp_sequence_permanence_dec;
@@ -184,7 +182,6 @@ struct HTMLayerRuntimePatch {
            !temp_enable_persistence && !temp_delay_length &&
            !temp_spatial_permanence_inc &&
            !temp_active_predict_proximal_scale &&
-           !temp_predictive_non_active_proximal_scale &&
            !temp_post_active_proximal_scale &&
            !temp_sequence_permanence_inc &&
            !temp_sequence_permanence_dec && !log_timings;

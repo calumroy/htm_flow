@@ -33,7 +33,6 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
       /*delay_length=*/4,
   });
   tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*predictive_non_active_scale=*/0.0f,
                                        /*post_active_scale=*/0.0f);
 
   // Distal synapses: shape (num_columns=2, cells=2, seg=1, syn=2)
@@ -479,77 +478,6 @@ TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
   EXPECT_FLOAT_EQ(stale_perm[2], 0.0f);
 }
 
-TEST(TemporalPooler, proximal_update_includes_predictive_non_active_columns) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
-      /*num_columns=*/2,
-      /*cells_per_column=*/2,
-      /*max_segments_per_cell=*/1,
-      /*max_synapses_per_segment=*/2,
-      /*num_pot_synapses=*/3,
-      /*spatial_permanence_inc=*/0.04f,
-      /*seq_permanence_inc=*/0.04f,
-      /*seq_permanence_dec=*/0.02f,
-      /*min_num_syn_threshold=*/0,
-      /*new_syn_permanence=*/0.1f,
-      /*connect_permanence=*/0.2f,
-      /*delay_length=*/4,
-  });
-  tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*predictive_non_active_scale=*/1.0f,
-                                       /*post_active_scale=*/0.0f);
-
-  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
-  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
-  std::vector<int> active_cells_time(2 * 2 * 2, -1);
-  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
-  std::vector<int> active_segs_time(2 * 2 * 1, -1);
-
-  // Column 0 is active-predict and gets the existing active support path.
-  active_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
-  predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 1;
-
-  // Column 1 is predictive at t=2 with real segment support, but it did not win
-  // inhibition. TP should still give its current active proximal inputs a local
-  // permanence nudge so distal prediction can become future overlap.
-  predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
-  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 2;
-
-  tp.update_distal(/*time_step=*/2,
-                   /*new_learn_cells_list=*/{},
-                   learn_cells_time,
-                   predict_cells_time,
-                   active_cells_time,
-                   active_segs_time,
-                   distal);
-
-  std::vector<uint8_t> col_active = {1, 0};
-  std::vector<int> pot_inputs = {
-      1, 0, 1, // col0
-      0, 1, 1  // col1
-  };
-  std::vector<float> proximal_perm = {
-      0.0f, 0.0f, 0.35f, // col0
-      0.0f, 0.29f, 0.0f  // col1
-  };
-
-  const auto stats =
-      tp.update_proximal(/*support_time=*/2,
-                         pot_inputs,
-                         proximal_perm,
-                         &col_active,
-                         &predict_cells_time,
-                         &active_segs_time);
-
-  EXPECT_EQ(stats.reinforced_inputs, 4);
-
-  EXPECT_FLOAT_EQ(proximal_perm[0], 0.04f);
-  EXPECT_FLOAT_EQ(proximal_perm[1], 0.0f);
-  EXPECT_FLOAT_EQ(proximal_perm[2], 0.39f);
-  EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
-  EXPECT_FLOAT_EQ(proximal_perm[4], 0.33f);
-  EXPECT_FLOAT_EQ(proximal_perm[5], 0.04f);
-}
-
 TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_columns) {
   TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
       /*num_columns=*/2,
@@ -566,7 +494,6 @@ TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_c
       /*delay_length=*/4,
   });
   tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*predictive_non_active_scale=*/1.0f,
                                        /*post_active_scale=*/1.0f);
 
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});

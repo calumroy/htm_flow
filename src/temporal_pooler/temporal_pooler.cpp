@@ -84,12 +84,10 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
         prev_active_predict_support_by_column_[static_cast<std::size_t>(col)] > 0;
     const float active_predict_strength =
         static_cast<float>(support) * cfg_.active_predict_proximal_scale;
-    const float predictive_non_active_strength =
-        predictive_non_active ? cfg_.predictive_non_active_proximal_scale : 0.0f;
     const float post_active_strength =
         post_active_predict ? cfg_.post_active_proximal_scale : 0.0f;
     const float total_strength =
-        active_predict_strength + predictive_non_active_strength + post_active_strength;
+        active_predict_strength + post_active_strength;
     if (total_strength <= 0.0f) {
       return;
     }
