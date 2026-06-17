@@ -30,6 +30,18 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   new_learn_cells_time_.assign(num_cells * 2, -1);
 }
 
+// Increase proximal permanence for columns supported by distal temporal pooling.
+//
+// There are two additive sources:
+// - Current active-predict support from update_distal(support_time). This
+//   reinforces columns that were predicted and became active.
+// - If col_active01, predict_cells_time, and active_segs_time are provided, an
+//   inactive column can also be reinforced when it is still predicted by an
+//   active segment and had active-predict support one timestep ago. This helps
+//   it learn current inputs so it can win overlap later.
+//
+// Those optional arguments are required for the second source because they identify
+// which columns are active now and which predictions have active segment evidence.
 TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_proximal(
     int support_time,
     const std::vector<int>& col_pot_inputs01,

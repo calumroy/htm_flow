@@ -17,8 +17,8 @@ namespace temporal_pooler {
 // - Proximal temporal pooling: update proximal permanence values using *previous* and
 //   *current* potential-input activity, skipping bursting columns.
 // - Distal temporal pooling: track per-cell persistence and reinforce/create distal
-//   segments for "active predictive" cells. Also extends predictive state for a
-//   persistence window even without active segments.
+//   segments for "active predictive" cells. Persistence can extend predictive
+//   state only while carrying forward same-cell segment evidence.
 class TemporalPoolerCalculator {
 public:
   struct Config {
@@ -37,8 +37,8 @@ public:
     // safest proximal TP path because it reinforces columns that already avoided
     // bursting.
     float active_predict_proximal_scale = 0.25f;
-    // Scale the one-step bridge for columns that were active-predict on the
-    // previous timestep and are still segment-backed predictive but inactive now.
+    // Scale the extra proximal update for columns that were active-predict on
+    // the previous timestep and are still segment-backed predictive but inactive now.
     float post_active_proximal_scale = 0.0f;
     // The value by which distal (cell) synapse permanence values are incremented for active synapses.
     float seq_permanence_inc = 0.0f;
@@ -66,13 +66,14 @@ public:
     //   `enable_persistence = false`.
     int delay_length = 1;
 
-    // If true, extend predictive state for a short "persistence window" even when no segment is active.
+    // If true, extend predictive state for a short "persistence window" when the
+    // same cell had active segment evidence on the previous timestep.
     //
     // Motivation / intent (matches python `np_temporal.py`):
     // - Cells that have been correctly predicted for several consecutive steps tend to stay active for a while.
     // - We track streak length ("active_predict" streak) and learn a smoothed average.
-    // - When a streak ends, we allow the cell to remain predictive for a small number of steps ("coast"),
-    //   which helps temporal continuity through brief gaps/noise.
+    // - When a streak ends, we allow the cell to remain predictive for a small number of steps
+    //   ("coast"), but only by carrying forward the same cell's active segment timestamp.
     //
     // If false:
     // - The temporal pooler still reinforces / creates distal synapses for active-predict cells.
@@ -94,6 +95,8 @@ public:
   //   - If a cell is "active predictive" (was predicting at t-1 and became active at t),
   //     then reinforce a best-matching segment (based on antepenultimate learning cells),
   //     otherwise create/overwrite a new segment.
+  //   - If `seq_permanence_inc <= 0` (distal permanence increases disabled),
+  //     update learning-entry tracking and support counts only.
   //
   // Inputs:
   //   1. time_step
@@ -152,15 +155,20 @@ public:
   // recorded by `update_distal()`. This is the active proximal-learning path used
   // by HTMLayer.
   //
-  // Reinforcement is local and segment-backed:
-  //   a. Active-predict columns from the most recent distal update reinforce
-  //      their currently active proximal inputs.
-  //   b. Columns that are currently segment-backed predictive but did not win
-  //      inhibition get one proximal increment on current active inputs. This
-  //      lets distal predictions grow enough proximal overlap to compete later.
-  //   c. If a column had active-predict support one timestep ago, is still
-  //      segment-backed predictive now, and did not win inhibition, it gets one
-  //      additional "post-active" increment for the later-input bridge.
+  // Proximal permanence can be increased in two cases:
+  //   a. A column has active-predict support from `update_distal(support_time)`.
+  //      Increase active proximal inputs by
+  //      `spatial_permanence_inc * active_predict_proximal_scale * support_count`.
+  //      This reinforces columns that were predicted and became active.
+  //   b. If `col_active01`, `predict_cells_time`, and `active_segs_time` are
+  //      provided, an inactive column can also be reinforced when it is still
+  //      segment-backed predictive and had active-predict support at
+  //      `support_time - 1`.
+  //      Add `spatial_permanence_inc * post_active_proximal_scale`.
+  //      This helps predicted columns learn current inputs so they can win overlap later.
+  //
+  // Those optional arguments are needed for case b: they tell this function
+  // which columns are active now and which predictions have active segment evidence.
   //
   // Inputs:
   //   1. support_time
@@ -179,7 +187,7 @@ public:
   //
   //   4. col_active01
   //      Optional current active-column bitfield. Required for predictive
-  //      non-winner and post-active bridge reinforcement.
+  //      non-winner and post-active reinforcement.
   //      Shape: (num_columns). Values: 0/1.
   //
   //   5. predict_cells_time
@@ -198,8 +206,9 @@ public:
   //   - prev_active_predict_support_by_column_ from `update_distal(support_time - 1)`
   //
   // Output:
-  //   - Updates `col_syn_perm` in-place and returns the number of currently
-  //     active proximal inputs reinforced.
+  //   - Updates `col_syn_perm` in-place and returns `ProximalUpdateStats`
+  //     describing reinforced columns/inputs, newly connected synapses, and total
+  //     permanence delta.
   // -----------------------------------------------------------------------------
   struct ProximalUpdateStats {
     int reinforced_columns = 0;
