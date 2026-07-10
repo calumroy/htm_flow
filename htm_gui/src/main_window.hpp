@@ -11,6 +11,7 @@
 #include <htm_gui/runtime.hpp>
 
 class QDockWidget;
+class QComboBox;
 class QPlainTextEdit;
 class QShowEvent;
 class QString;
@@ -97,6 +98,7 @@ private:
 
   QWidget* sequence_widget_{nullptr};  // null when runtime doesn't support input selection
   QWidget* layer_widget_{nullptr};     // null when runtime doesn't support layer selection
+  QComboBox* input_sequence_combo_{nullptr};
 
   ImageView* input_view_{nullptr};
   ImageView* columns_view_{nullptr};

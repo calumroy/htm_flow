@@ -550,6 +550,7 @@ MainWindow::MainWindow(htm_gui::IHtmRuntime& runtime, QWidget* parent)
     w->setLayout(layout);
     tb->addWidget(w);
     sequence_widget_ = w;
+    input_sequence_combo_ = combo;
   }
 
   // Optional layer selector dropdown. Only shown when the runtime has multiple layers.
@@ -776,6 +777,18 @@ void MainWindow::refresh() {
   updateDistalSynapsePanel();
   updatePinnedProximalPanels();
   updatePinnedDistalPanels();
+
+  if (input_sequence_combo_) {
+    const int cur_id = runtime_.input_sequence();
+    for (int i = 0; i < input_sequence_combo_->count(); ++i) {
+      if (input_sequence_combo_->itemData(i).toInt() == cur_id &&
+          input_sequence_combo_->currentIndex() != i) {
+        const QSignalBlocker blocker(input_sequence_combo_);
+        input_sequence_combo_->setCurrentIndex(i);
+        break;
+      }
+    }
+  }
 
   std::string msg = "t=" + std::to_string(snapshot_.timestep) +
                     " active_cols=" + std::to_string(snapshot_.active_column_indices.size()) +
