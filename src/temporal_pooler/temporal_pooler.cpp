@@ -94,8 +94,11 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
         prev_active_predict_support_time_ == support_time - 1 &&
         col < static_cast<int>(prev_active_predict_support_by_column_.size()) &&
         prev_active_predict_support_by_column_[static_cast<std::size_t>(col)] > 0;
+    // Proximal synapses belong to the column. Once any cell in the column was
+    // correctly predicted and became active, apply one column-level increase.
+    // Do not make the increase depend on the number of matching cells.
     const float active_predict_strength =
-        static_cast<float>(support) * cfg_.active_predict_proximal_scale;
+        support > 0 ? cfg_.active_predict_proximal_scale : 0.0f;
     const float post_active_strength =
         post_active_predict ? cfg_.post_active_proximal_scale : 0.0f;
     const float total_strength =
@@ -686,7 +689,7 @@ void TemporalPoolerCalculator::update_distal(int time_step,
       continue;
     }
     const int col = flat / cfg_.cells_per_column;
-    ++last_active_predict_support_by_column_[static_cast<std::size_t>(col)];
+    last_active_predict_support_by_column_[static_cast<std::size_t>(col)] = 1;
   }
   last_active_predict_support_time_ = time_step;
 }
