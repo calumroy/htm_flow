@@ -83,18 +83,12 @@ The increase for each currently active proximal input is:
 ```text
 spatial_permanence_inc
   * active_predict_proximal_scale
-  * number of correctly predicted active cells in the column
 ```
 
-The last multiplier is a count, not a yes/no check. For example, two correctly
-predicted active cells cause twice the increase of one cell. The intent is to
-treat more matching cells as stronger evidence.
-
-This count has a cost. Proximal synapses belong to the column, not to individual
-cells. The count therefore makes learning depend on how many cells the column
-contains and how broad its predictions are. A future implementation could use a
-yes/no check instead. That would make this setting easier to tune across layer
-sizes. The current implementation does not do that.
+This is a yes/no check at the column level. One or more correctly predicted
+active cells authorize one increase. Several matching cells do not multiply the
+increase. Proximal synapses belong to the column, so this behavior does not
+depend on how many cells in that column made the correct prediction.
 
 Values below `1.0` reduce the base increase. Values above `1.0` increase it.
 

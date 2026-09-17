@@ -475,7 +475,7 @@ TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
   EXPECT_FLOAT_EQ(distal[1].perm, 0.08f);
 }
 
-TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
+TEST(TemporalPooler, proximal_update_applies_once_for_multiple_active_predict_cells) {
   TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
       /*num_columns=*/2,
       /*cells_per_column=*/3,
@@ -532,11 +532,11 @@ TEST(TemporalPooler, proximal_update_uses_last_active_predict_support) {
 
   EXPECT_EQ(stats.reinforced_inputs, 2);
   EXPECT_EQ(stats.reinforced_columns, 1);
-  // Two active-predict cells in col0 give 2 * 0.04 reinforcement to active
-  // proximal inputs. Col1 has a generic prediction only, so it is unchanged.
-  EXPECT_FLOAT_EQ(proximal_perm[0], 0.33f);
+  // Two active-predict cells in col0 authorize one 0.04 column-level increase.
+  // Col1 has a generic prediction only, so it is unchanged.
+  EXPECT_FLOAT_EQ(proximal_perm[0], 0.29f);
   EXPECT_FLOAT_EQ(proximal_perm[1], 0.0f);
-  EXPECT_FLOAT_EQ(proximal_perm[2], 0.43f);
+  EXPECT_FLOAT_EQ(proximal_perm[2], 0.39f);
   EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
   EXPECT_FLOAT_EQ(proximal_perm[4], 0.0f);
   EXPECT_FLOAT_EQ(proximal_perm[5], 0.0f);

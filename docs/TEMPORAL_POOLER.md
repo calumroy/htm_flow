@@ -195,7 +195,7 @@ It also stores:
 - The length of each active-predict streak.
 - The learned average streak length.
 - A persistence countdown for each cell.
-- Active-predict support counts for each column.
+- Whether each column has active-predict support.
 - Recent learning-cell entry events.
 
 ## Processing Steps
@@ -310,8 +310,10 @@ The permanence increase is:
 ```text
 spatial_permanence_inc
   * active_predict_proximal_scale
-  * active_predict_cell_count_for_column
 ```
+
+One or more active-predict cells authorize one column-level increase. Multiple
+active-predict cells in the same column do not multiply the increase.
 
 This update makes an already correct input-to-column mapping more reliable.
 
@@ -407,16 +409,13 @@ Type: Non-negative floating-point value.
 Purpose: Scales proximal reinforcement for columns that were correctly
 predicted and became active.
 
-The value is also multiplied by the number of active-predict cells in the
-column.
-
-Example with one active-predict cell:
+Example:
 
 ```text
 spatial_permanence_inc = 0.12
 active_predict_proximal_scale = 5.0
 
-increase = 0.12 * 5.0 * 1 = 0.60
+increase = 0.12 * 5.0 = 0.60
 ```
 
 This setting strengthens correct winners. It does not directly make the same
@@ -652,11 +651,9 @@ The same numeric scale can behave differently when:
 - The number of winners changes.
 - Input sparsity changes.
 - Potential-pool size changes.
-- Several cells in one column are active-predict.
 
-The active-predict update multiplies by the number of supported cells. A scale
-that is safe with one supported cell can be excessive with several supported
-cells.
+The active-predict update is applied once per supported column. The number of
+active-predict cells in that column does not change the increase.
 
 ### Proximal pooling can outrun distal prediction
 

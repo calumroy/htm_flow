@@ -160,7 +160,8 @@ public:
   // Proximal permanence can be increased in two cases:
   //   a. A column has active-predict support from `update_distal(support_time)`.
   //      Increase active proximal inputs by
-  //      `spatial_permanence_inc * active_predict_proximal_scale * support_count`.
+  //      `spatial_permanence_inc * active_predict_proximal_scale`.
+  //      One or more correctly predicted active cells authorize one increase.
   //      This reinforces columns that were predicted and became active.
   //   b. If `col_active01`, `predict_cells_time`, and `active_segs_time` are
   //      provided, an inactive column can also be reinforced when it is still
@@ -340,7 +341,7 @@ private:
   std::vector<float> cells_avg_persist_;  // (num_columns*cells_per_column)
   std::vector<int> cells_persistence_;    // (num_columns*cells_per_column)
 
-  // Last distal-update active-predict support, aggregated by origin column.
+  // Last distal-update active-predict support, stored as 0 or 1 per column.
   // This is not a new trace: it is one-step bookkeeping for the same cells that
   // TP distal learning just reinforced or used to create segments.
   std::vector<int> last_active_predict_support_by_column_; // (num_columns)
