@@ -1183,129 +1183,131 @@ TEST(InhibitionCalculatorTest, Case5) {
     ASSERT_EQ(activeColumns, expected_activeColumns);
 }
 
-TEST(InhibitionCalculatorTest, LargeInput) {
-    int num_column_cols = 1000;
-    int num_column_rows = 1000; 
-    int inhibition_width = 20;
-    int inhibition_height = 20;
-    int desired_local_activity = 2;
-    int min_overlap = 1;
-    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
-    bool center_pot_synapses = true;  
-    bool wrapMode = true;
-    bool strict_local_activity = false;
+//Comment out for now as the test takes awhile to run and slows down normal testing.
+// TEST(InhibitionCalculatorTest, LargeInput) {
+//     int num_column_cols = 1000;
+//     int num_column_rows = 1000; 
+//     int inhibition_width = 20;
+//     int inhibition_height = 20;
+//     int desired_local_activity = 2;
+//     int min_overlap = 1;
+//     int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
+//     bool center_pot_synapses = true;  
+//     bool wrapMode = true;
+//     bool strict_local_activity = false;
 
-    START_STOPWATCH();
+//     START_STOPWATCH();
 
-    // Generate colOverlapGrid with incremental values
-    std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
-    for (int row = 0; row < num_column_rows; ++row) {
-        for (int col = 0; col < num_column_cols; ++col) {
-            colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
-        }
-    }
-    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+//     // Generate colOverlapGrid with incremental values
+//     std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
+//     for (int row = 0; row < num_column_rows; ++row) {
+//         for (int col = 0; col < num_column_cols; ++col) {
+//             colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
+//         }
+//     }
+//     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    // potColOverlapGrid is the same as colOverlapGrid plus 1
-    std::vector<float> potColOverlapGrid = colOverlapGrid;
-    for (int i = 0; i < num_column_cols * num_column_rows; ++i) {
-        potColOverlapGrid[i] += 1;
-    }
+//     // potColOverlapGrid is the same as colOverlapGrid plus 1
+//     std::vector<float> potColOverlapGrid = colOverlapGrid;
+//     for (int i = 0; i < num_column_cols * num_column_rows; ++i) {
+//         potColOverlapGrid[i] += 1;
+//     }
 
-    // Create an instance of InhibitionCalculator
-    inhibition::InhibitionCalculator inhibitionCalc(
-        num_column_cols,
-        num_column_rows,
-        inhibition_width,
-        inhibition_height,
-        desired_local_activity,
-        min_overlap,
-        min_potential_overlap,
-        center_pot_synapses,
-        wrapMode,
-        strict_local_activity);
+//     // Create an instance of InhibitionCalculator
+//     inhibition::InhibitionCalculator inhibitionCalc(
+//         num_column_cols,
+//         num_column_rows,
+//         inhibition_width,
+//         inhibition_height,
+//         desired_local_activity,
+//         min_overlap,
+//         min_potential_overlap,
+//         center_pot_synapses,
+//         wrapMode,
+//         strict_local_activity);
 
-    STOP_STOPWATCH();
-    unsigned long long startup_time_taken = GET_ELAPSED_TIME();
+//     STOP_STOPWATCH();
+//     unsigned long long startup_time_taken = GET_ELAPSED_TIME();
     
-    START_STOPWATCH();
+//     START_STOPWATCH();
 
-    // Run the inhibition calculation
-    inhibitionCalc.calculate_inhibition(
-        colOverlapGrid, colOverlapGridShape,
-        potColOverlapGrid, colOverlapGridShape);
+//     // Run the inhibition calculation
+//     inhibitionCalc.calculate_inhibition(
+//         colOverlapGrid, colOverlapGridShape,
+//         potColOverlapGrid, colOverlapGridShape);
 
-    STOP_STOPWATCH();
-    // Print out the startup time 
-    LOG(INFO, "Startup time ms: ");
-    LOG(INFO, std::to_string(startup_time_taken));
-    // Print out the inhibition calculation time
-    LOG(INFO, "Inhibition calculation time: ");
-    PRINT_ELAPSED_TIME();
+//     STOP_STOPWATCH();
+//     // Print out the startup time 
+//     LOG(INFO, "Startup time ms: ");
+//     LOG(INFO, std::to_string(startup_time_taken));
+//     // Print out the inhibition calculation time
+//     LOG(INFO, "Inhibition calculation time: ");
+//     PRINT_ELAPSED_TIME();
 
-    // No assertions; this is a performance test
-    ASSERT_TRUE(true);
-}
+//     // No assertions; this is a performance test
+//     ASSERT_TRUE(true);
+// }
 
-TEST(InhibitionCalculatorTest, RunTime) {
-    // This test is to measure the performance of the inhibition calculation
-    // The inhibition calculation is run multiple times to test performance
-    // Running this test on my laptop: 16 CPU(s) 11th Gen Intel(R) Core(TM) i9-11900H
-    //         Build in Release mode
-    //         [INFO] TestBody (897): Total time for 10 cycles: 
-    //         Elapsed time: 454 milliseconds
-    int numCycles = 10;
-    int num_column_cols = 1000;
-    int num_column_rows = 1000;
-    int inhibition_width = 10;
-    int inhibition_height = 10;
-    int desired_local_activity = 2;
-    int min_overlap = 1;
-    int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
-    bool center_pot_synapses = true;  
-    bool wrapMode = false;
-    bool strict_local_activity = false;
-    // Generate colOverlapGrid with incremental values
-    std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
-    for (int row = 0; row < num_column_rows; ++row) {
-        for (int col = 0; col < num_column_cols; ++col) {
-            colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
-        }
-    }
-    std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
+//Comment out for now as the test takes awhile to run and slows down normal testing.
+// TEST(InhibitionCalculatorTest, RunTime) {
+//     // This test is to measure the performance of the inhibition calculation
+//     // The inhibition calculation is run multiple times to test performance
+//     // Running this test on my laptop: 16 CPU(s) 11th Gen Intel(R) Core(TM) i9-11900H
+//     //         Build in Release mode
+//     //         [INFO] TestBody (897): Total time for 10 cycles: 
+//     //         Elapsed time: 454 milliseconds
+//     int numCycles = 10;
+//     int num_column_cols = 1000;
+//     int num_column_rows = 1000;
+//     int inhibition_width = 10;
+//     int inhibition_height = 10;
+//     int desired_local_activity = 2;
+//     int min_overlap = 1;
+//     int min_potential_overlap = min_overlap;  // Preserve legacy behavior for unit tests.
+//     bool center_pot_synapses = true;  
+//     bool wrapMode = false;
+//     bool strict_local_activity = false;
+//     // Generate colOverlapGrid with incremental values
+//     std::vector<float> colOverlapGrid(num_column_cols * num_column_rows);
+//     for (int row = 0; row < num_column_rows; ++row) {
+//         for (int col = 0; col < num_column_cols; ++col) {
+//             colOverlapGrid[row * num_column_cols + col] = 1 + col + num_column_cols * row;
+//         }
+//     }
+//     std::pair<int, int> colOverlapGridShape = {num_column_rows, num_column_cols};
 
-    // potColOverlapGrid is the same as colOverlapGrid
-    std::vector<float> potColOverlapGrid = colOverlapGrid;
+//     // potColOverlapGrid is the same as colOverlapGrid
+//     std::vector<float> potColOverlapGrid = colOverlapGrid;
 
-    // Create an instance of InhibitionCalculator
-    inhibition::InhibitionCalculator inhibitionCalc(
-        num_column_cols,
-        num_column_rows,
-        inhibition_width,
-        inhibition_height,
-        desired_local_activity,
-        min_overlap,
-        min_potential_overlap,
-        center_pot_synapses,
-        wrapMode,
-        strict_local_activity);
+//     // Create an instance of InhibitionCalculator
+//     inhibition::InhibitionCalculator inhibitionCalc(
+//         num_column_cols,
+//         num_column_rows,
+//         inhibition_width,
+//         inhibition_height,
+//         desired_local_activity,
+//         min_overlap,
+//         min_potential_overlap,
+//         center_pot_synapses,
+//         wrapMode,
+//         strict_local_activity);
 
-    START_STOPWATCH();
+//     START_STOPWATCH();
 
-    // Run the inhibition calculation multiple times to test performance
-    for (int i = 0; i < numCycles; ++i) {
-        inhibitionCalc.calculate_inhibition(
-            colOverlapGrid, colOverlapGridShape,
-            potColOverlapGrid, colOverlapGridShape);
-    }
+//     // Run the inhibition calculation multiple times to test performance
+//     for (int i = 0; i < numCycles; ++i) {
+//         inhibitionCalc.calculate_inhibition(
+//             colOverlapGrid, colOverlapGridShape,
+//             potColOverlapGrid, colOverlapGridShape);
+//     }
 
-    STOP_STOPWATCH();
-    LOG(INFO, "Total time for " + std::to_string(numCycles) + " cycles: ");
-    PRINT_ELAPSED_TIME();
+//     STOP_STOPWATCH();
+//     LOG(INFO, "Total time for " + std::to_string(numCycles) + " cycles: ");
+//     PRINT_ELAPSED_TIME();
 
-    // No assertions; this is a performance test
-    ASSERT_TRUE(true);
-}
+//     // No assertions; this is a performance test
+//     ASSERT_TRUE(true);
+// }
 
 TEST(InhibitionCalculatorTest, SerialSortedVsParallel) {
     // Test to verify that the serial sorted implementation produces the same results as the parallel implementation
