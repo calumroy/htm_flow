@@ -144,6 +144,8 @@ public:
             cfg_.max_synapses_per_segment,
             num_pot_syn_,
             cfg_.temp_spatial_perm_inc,
+            /*active_predict_proximal_scale=*/0.25f,
+            /*post_active_proximal_scale=*/0.0f,
             cfg_.temp_seq_perm_inc,
             cfg_.temp_seq_perm_dec,
             cfg_.min_num_syn_threshold,

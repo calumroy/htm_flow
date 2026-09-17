@@ -15,7 +15,8 @@ namespace temporal_pooler {
 //
 // Responsibilities:
 // - Proximal temporal pooling: update proximal permanence values using *previous* and
-//   *current* potential-input activity, skipping bursting columns.
+//   *current* potential-input activity. Burst-created cell activity is not
+//   treated as a correct prediction.
 // - Distal temporal pooling: track per-cell persistence and reinforce/create distal
 //   segments for "active predictive" cells. Persistence can extend predictive
 //   state only while carrying forward same-cell segment evidence.
@@ -92,7 +93,8 @@ public:
   //     predictive only when the same cell had a segment active at t-1. That segment timestamp
   //     is carried forward to the current timestep so the next burst-gate check sees a
   //     prediction backed by an actual sequence segment, not a bare predictive bit.
-  //   - If a cell is "active predictive" (was predicting at t-1 and became active at t),
+  //   - If a cell is "active predictive" (was segment-backed predictive at
+  //     t-1 and became active at t),
   //     then reinforce a best-matching segment (based on antepenultimate learning cells),
   //     otherwise create/overwrite a new segment.
   //   - If `seq_permanence_inc <= 0` (distal permanence increases disabled),
@@ -274,6 +276,7 @@ private:
 
   bool check_cell_active_predict(const std::vector<int>& active_cells_time,
                                  const std::vector<int>& predict_cells_time,
+                                 const std::vector<int>& active_segs_time,
                                  int col,
                                  int cell,
                                  int time_step) const;

@@ -243,14 +243,18 @@ void TemporalPoolerCalculator::set_active_segment(std::vector<int>& active_segs_
 
 bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>& active_cells_time,
                                                         const std::vector<int>& predict_cells_time,
+                                                        const std::vector<int>& active_segs_time,
                                                         int col,
                                                         int cell,
                                                         int time_step) const {
-  // Check if a cell is active now AND was predicting one timestep before.
-  // Mirrors python `checkCellActivePredict`.
+  // Use the same evidence as the active-cell burst gate. A predictive
+  // timestamp without an active segment can coincide with burst activity and
+  // must not authorize temporal-pooling learning.
   const bool cell_active = check_cell_time(active_cells_time, col, cell, time_step);
   const bool was_predict = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
-  return cell_active && was_predict;
+  const bool had_active_segment =
+      find_recent_active_segment(active_segs_time, col, cell, time_step - 1) >= 0;
+  return cell_active && was_predict && had_active_segment;
 }
 
 void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& avg_persist) const {
@@ -560,7 +564,9 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const int col = flat / cfg_.cells_per_column;
     const int cell = flat % cfg_.cells_per_column;
 
-    const bool active_predict = check_cell_active_predict(active_cells_time, predict_cells_time, col, cell, time_step);
+    const bool active_predict = check_cell_active_predict(
+        active_cells_time, predict_cells_time, active_segs_time, col, cell,
+        time_step);
     if (active_predict) {
       active_predict_cells[static_cast<std::size_t>(flat)] = 1;
     }
