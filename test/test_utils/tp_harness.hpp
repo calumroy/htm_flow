@@ -3,18 +3,26 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <memory>
 #include <random>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include <htm_gui/runtime.hpp>
+
 #include <htm_flow/inhibition.hpp>
 #include <htm_flow/overlap.hpp>
+#include <htm_flow/overlap_utils.hpp>
 #include <htm_flow/sequence_pooler/active_cells.hpp>
 #include <htm_flow/sequence_pooler/predict_cells.hpp>
 #include <htm_flow/sequence_pooler/sequence_learning.hpp>
 #include <htm_flow/sequence_pooler/sequence_types.hpp>
 #include <htm_flow/spatiallearn.hpp>
+#include <htm_flow/step_observer.hpp>
 #include <htm_flow/temporal_pooler/temporal_pooler.hpp>
+
+#include "test_gui.hpp"
 
 namespace temporal_pooling_test_utils {
 
@@ -22,7 +30,7 @@ namespace temporal_pooling_test_utils {
 // End-to-end pipeline harnesses (mirror htm_flow/src/main.cpp, but deterministic)
 // -----------------------------------------------------------------------------
 
-class HtmPipelineHarness {
+class HtmPipelineHarness : public htm_gui::IHtmRuntime, public htm_flow::StepObservable {
 public:
   struct Config {
     // Input grid shape (rows, cols)
@@ -156,6 +164,8 @@ public:
             cfg_.temp_delay_length,
             cfg_.temp_enable_persistence,
         }),
+        current_input_(std::make_shared<std::vector<int>>(
+            static_cast<std::size_t>(cfg_.input_rows * cfg_.input_cols), 0)),
         rng_(cfg_.rng_seed) {
     col_syn_perm_.assign(static_cast<std::size_t>(num_columns_ * num_pot_syn_), 0.0f);
     std::uniform_real_distribution<float> up(0.0f, 1.0f);
@@ -184,6 +194,9 @@ public:
   }
 
   void step(int time_step, const std::vector<int>& input_grid01) {
+    notify_before_step();
+    timestep_ = time_step;
+    current_input_ = std::make_shared<std::vector<int>>(input_grid01);
     overlap_calc_.calculate_overlap(col_syn_perm_, col_syn_perm_shape_, input_grid01, input_shape_);
     const std::vector<float> col_overlap_scores = overlap_calc_.get_col_overlaps();
 
@@ -239,6 +252,7 @@ public:
                                         &col_active01_,
                                         &predict_cells_calc_.get_predict_cells_time(),
                                         &predict_cells_calc_.get_active_segs_time());
+    notify_after_step();
   }
 
   std::vector<int> activeColumnsInt01() {
@@ -268,6 +282,134 @@ public:
   std::mt19937& rng() { return rng_; }
   const Config& cfg() const { return cfg_; }
 
+  htm_gui::Snapshot snapshot() const override {
+    htm_gui::Snapshot s;
+    s.timestep = timestep_;
+    s.input_shape = {cfg_.input_rows, cfg_.input_cols};
+    s.columns_shape = {cfg_.col_rows, cfg_.col_cols};
+    s.cells_per_column = cfg_.cells_per_column;
+    s.input = current_input_;
+    s.active_column_indices = prev_active_col_indices_;
+    s.column_cell_masks.resize(static_cast<std::size_t>(num_columns_));
+
+    const auto& active = active_cells_calc_.get_active_cells_time();
+    const auto& learning = active_cells_calc_.get_learn_cells_time();
+    const auto& predictive = predict_cells_calc_.get_predict_cells_time();
+    for (int col = 0; col < num_columns_; ++col) {
+      htm_gui::ColumnCellMasks masks;
+      for (int cell = 0; cell < cfg_.cells_per_column && cell < 64; ++cell) {
+        const int base = (col * cfg_.cells_per_column + cell) * 2;
+        const std::uint64_t bit = std::uint64_t{1} << cell;
+        const auto set_at_time = [&](const std::vector<int>& values) {
+          return values[static_cast<std::size_t>(base)] == timestep_ ||
+                 values[static_cast<std::size_t>(base + 1)] == timestep_;
+        };
+        if (set_at_time(active)) masks.active |= bit;
+        if (set_at_time(predictive)) masks.predictive |= bit;
+        if (set_at_time(learning)) masks.learning |= bit;
+      }
+      s.column_cell_masks[static_cast<std::size_t>(col)] = masks;
+    }
+    return s;
+  }
+
+  void step(int /*n*/ = 1) override {}
+
+  htm_gui::ProximalSynapseQuery query_proximal(int column_x, int column_y) const override {
+    htm_gui::ProximalSynapseQuery q;
+    q.column_x = column_x;
+    q.column_y = column_y;
+    if (column_x < 0 || column_x >= cfg_.col_cols ||
+        column_y < 0 || column_y >= cfg_.col_rows) {
+      return q;
+    }
+
+    const int col = column_x + column_y * cfg_.col_cols;
+    const auto& overlaps = overlap_calc_.get_col_overlaps();
+    const auto& potential_overlaps = overlap_calc_.get_col_pot_overlaps();
+    q.overlap = overlaps[static_cast<std::size_t>(col)];
+    q.potential_overlap = potential_overlaps[static_cast<std::size_t>(col)];
+
+    const auto steps = overlap_utils::get_step_sizes(
+        cfg_.input_cols, cfg_.input_rows, cfg_.col_cols, cfg_.col_rows,
+        cfg_.pot_w, cfg_.pot_h);
+    const int row_offset = cfg_.center_pot_synapses ? cfg_.pot_h / 2 : 0;
+    const int col_offset = cfg_.center_pot_synapses ? cfg_.pot_w / 2 : 0;
+    q.synapses.reserve(static_cast<std::size_t>(num_pot_syn_));
+    for (int row = 0; row < cfg_.pot_h; ++row) {
+      for (int column = 0; column < cfg_.pot_w; ++column) {
+        int input_y = column_y * steps.second + row - row_offset;
+        int input_x = column_x * steps.first + column - col_offset;
+        if (cfg_.wrap_input) {
+          input_y = (input_y % cfg_.input_rows + cfg_.input_rows) % cfg_.input_rows;
+          input_x = (input_x % cfg_.input_cols + cfg_.input_cols) % cfg_.input_cols;
+        }
+
+        const int synapse = row * cfg_.pot_w + column;
+        const float permanence =
+            col_syn_perm_[static_cast<std::size_t>(col * num_pot_syn_ + synapse)];
+        htm_gui::ProximalSynapseInfo info;
+        info.input_x = input_x;
+        info.input_y = input_y;
+        if (input_x >= 0 && input_x < cfg_.input_cols &&
+            input_y >= 0 && input_y < cfg_.input_rows) {
+          info.input_value = (*current_input_)[static_cast<std::size_t>(
+              input_y * cfg_.input_cols + input_x)];
+        } else {
+          info.input_x = -1;
+          info.input_y = -1;
+        }
+        info.permanence = permanence;
+        info.connected = permanence > cfg_.connected_perm;
+        q.synapses.push_back(info);
+      }
+    }
+    return q;
+  }
+
+  int num_segments(int /*column_x*/, int /*column_y*/, int /*cell*/) const override {
+    return cfg_.max_segments_per_cell;
+  }
+
+  htm_gui::DistalSynapseQuery query_distal(
+      int column_x, int column_y, int cell, int segment) const override {
+    htm_gui::DistalSynapseQuery q;
+    q.src_column_x = column_x;
+    q.src_column_y = column_y;
+    q.src_cell = cell;
+    q.segment = segment;
+    if (column_x < 0 || column_x >= cfg_.col_cols ||
+        column_y < 0 || column_y >= cfg_.col_rows ||
+        cell < 0 || cell >= cfg_.cells_per_column ||
+        segment < 0 || segment >= cfg_.max_segments_per_cell) {
+      return q;
+    }
+
+    const int col = column_x + column_y * cfg_.col_cols;
+    q.synapses.reserve(static_cast<std::size_t>(cfg_.max_synapses_per_segment));
+    for (int synapse = 0; synapse < cfg_.max_synapses_per_segment; ++synapse) {
+      const std::size_t index = sequence_pooler::idx_distal_synapse(
+          static_cast<std::size_t>(col), static_cast<std::size_t>(cell),
+          static_cast<std::size_t>(segment), static_cast<std::size_t>(synapse),
+          static_cast<std::size_t>(cfg_.cells_per_column),
+          static_cast<std::size_t>(cfg_.max_segments_per_cell),
+          static_cast<std::size_t>(cfg_.max_synapses_per_segment));
+      const auto& distal = distal_synapses_[index];
+      q.synapses.push_back({
+          distal.target_col % cfg_.col_cols,
+          distal.target_col / cfg_.col_cols,
+          distal.target_cell,
+          distal.perm,
+          distal.perm > cfg_.connect_permanence,
+      });
+    }
+    return q;
+  }
+
+  int activation_threshold() const override { return cfg_.activation_threshold; }
+  std::string name() const override { return "HtmPipelineHarness"; }
+  int timestep() const override { return timestep_; }
+
 private:
   Config cfg_;
   int num_columns_;
@@ -289,10 +431,12 @@ private:
 
   std::vector<uint8_t> col_active01_;
   std::vector<int> prev_active_col_indices_;
+  std::shared_ptr<std::vector<int>> current_input_;
+  int timestep_{0};
   std::mt19937 rng_;
 };
 
-class TwoLayerHtmHarness {
+class TwoLayerHtmHarness : public htm_gui::IHtmRuntime, public htm_flow::StepObservable {
 public:
   struct Config {
     HtmPipelineHarness::Config l0{};
@@ -310,9 +454,11 @@ public:
   }
 
   void step(int time_step, const std::vector<int>& input0) {
+    notify_before_step();
     l0_.step(time_step, input0);
     const std::vector<int> l0_out = l0_.activeColumnsInt01();
     l1_.step(time_step, l0_out);
+    notify_after_step();
   }
 
   HtmPipelineHarness& layer0() { return l0_; }
@@ -321,6 +467,32 @@ public:
   const HtmPipelineHarness& layer1() const { return l1_; }
 
   std::mt19937& rng() { return rng_; }
+
+  htm_gui::Snapshot snapshot() const override { return activeLayer().snapshot(); }
+  void step(int /*n*/ = 1) override {}
+  htm_gui::ProximalSynapseQuery query_proximal(int x, int y) const override {
+    return activeLayer().query_proximal(x, y);
+  }
+  int num_segments(int x, int y, int cell) const override {
+    return activeLayer().num_segments(x, y, cell);
+  }
+  htm_gui::DistalSynapseQuery query_distal(
+      int x, int y, int cell, int segment) const override {
+    return activeLayer().query_distal(x, y, cell, segment);
+  }
+  std::vector<htm_gui::InputSequence> layer_options() const override {
+    return {{0, "Layer 0"}, {1, "Layer 1"}};
+  }
+  int num_layers() const override { return 2; }
+  int active_layer() const override { return active_layer_; }
+  void set_active_layer(int index) override {
+    if (index == 0 || index == 1) active_layer_ = index;
+  }
+  int activation_threshold() const override {
+    return activeLayer().activation_threshold();
+  }
+  std::string name() const override { return "TwoLayerHtmHarness"; }
+  int timestep() const override { return activeLayer().timestep(); }
 
 private:
   static HtmPipelineHarness::Config withSeed(HtmPipelineHarness::Config c, std::uint32_t seed) {
@@ -332,6 +504,11 @@ private:
   std::mt19937 rng_;
   HtmPipelineHarness l0_;
   HtmPipelineHarness l1_;
+  int active_layer_{0};
+
+  const HtmPipelineHarness& activeLayer() const {
+    return active_layer_ == 0 ? l0_ : l1_;
+  }
 };
 
 // Run N steps with an injected step function and input generator.

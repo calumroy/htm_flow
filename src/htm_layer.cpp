@@ -436,7 +436,9 @@ void HTMLayer::step(int n) {
     return;
   }
   for (int i = 0; i < n; ++i) {
+    notify_before_step();
     step_once();
+    notify_after_step();
   }
 }
 

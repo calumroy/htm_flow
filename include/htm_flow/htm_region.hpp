@@ -6,6 +6,7 @@
 
 #include <htm_flow/config.hpp>
 #include <htm_flow/htm_layer.hpp>
+#include <htm_flow/step_observer.hpp>
 
 namespace htm_flow {
 
@@ -38,7 +39,7 @@ namespace htm_flow {
 ///   region.step(1);
 ///   auto pooled_output = region.output();
 /// @endcode
-class HTMRegion {
+class HTMRegion : public StepObservable {
 public:
   explicit HTMRegion(const HTMRegionConfig& cfg);
   HTMRegion(const HTMRegionConfig& cfg, const std::string& name);

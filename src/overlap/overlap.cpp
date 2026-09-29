@@ -207,7 +207,7 @@ namespace overlap
     }
 
     // Return the column overlap values with tiebreaker values.
-    std::vector<float> OverlapCalculator::get_col_overlaps()
+    std::vector<float> OverlapCalculator::get_col_overlaps() const
     {
         // Return a copy of the col_overlaps_ vector.
         return col_overlaps_tie_;

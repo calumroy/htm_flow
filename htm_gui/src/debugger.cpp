@@ -5,6 +5,8 @@
 #include <iostream>
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QMetaObject>
 #include <QPalette>
 #include <QStyleFactory>
 
@@ -82,6 +84,12 @@ int run_debugger(int argc, char** argv, IHtmRuntime& runtime, const DebuggerOpti
 
   window.show();
   return app.exec();
+}
+
+void request_debugger_exit() {
+  if (QCoreApplication* app = QCoreApplication::instance()) {
+    QMetaObject::invokeMethod(app, "quit", Qt::QueuedConnection);
+  }
 }
 
 }  // namespace htm_gui

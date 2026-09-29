@@ -18,6 +18,7 @@
 #include <htm_flow/sequence_pooler/sequence_learning.hpp>
 #include <htm_flow/sequence_pooler/sequence_types.hpp>
 #include <htm_flow/temporal_pooler/temporal_pooler.hpp>
+#include <htm_flow/step_observer.hpp>
 
 namespace htm_flow {
 
@@ -64,7 +65,7 @@ namespace htm_flow {
 ///   auto snap = layer.snapshot();  // For GUI visualization
 ///   auto cell_output = layer.output();  // For feeding to next layer
 /// @endcode
-class HTMLayer : public htm_gui::IHtmRuntime {
+class HTMLayer : public htm_gui::IHtmRuntime, public StepObservable {
 public:
   explicit HTMLayer(const HTMLayerConfig& cfg);
   HTMLayer(const HTMLayerConfig& cfg, const std::string& name);

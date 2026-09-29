@@ -228,6 +228,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinc
                                         /*num_steps=*/260,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
+  htm_test_gui::startGui(htm);
   time_step += 260;
 
   // Capture representatives for each after learning.

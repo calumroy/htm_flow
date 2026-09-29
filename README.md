@@ -117,6 +117,53 @@ cd htm_gui
 ./run_debug.sh --help
 ```
 
+## Debugging a Running Test with the GUI
+
+`debug_region` creates a separate network. To inspect the exact network owned by
+a test, add this line at the point where GUI-controlled stepping should begin:
+
+```cpp
+htm_test_gui::startGui(htm);
+```
+
+The call does nothing during an ordinary test run. With the GUI test runner, it
+shows the current state and pauses at the next `htm.step(...)`. **Step** runs one
+existing test step and **N steps** runs that many existing test steps. The test
+continues to provide its own inputs, timestamps, loops, metrics, and assertions.
+Closing the window releases the pause and lets the test finish normally.
+
+For example, Suite4 starts the debugger after both training patterns and before
+the representative cycles:
+
+```cpp
+temporal_pooling_test_utils::runSteps(time_step,
+                                      /*num_steps=*/260,
+                                      [&](int t, const std::vector<int>& in) { htm.step(t, in); },
+                                      [&]() { return inputs.next(htm.rng()); });
+htm_test_gui::startGui(htm);
+time_step += 260;
+```
+
+Run that test without installing Qt6 locally:
+
+```bash
+./htm_gui/run_test_gui.sh \
+  TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
+```
+
+For a native Qt6 build:
+
+```bash
+./build.sh Debug GUI
+./build/htm_flow_tests --gui \
+  --gtest_filter=TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
+```
+
+The same call supports `HtmPipelineHarness`, `TwoLayerHtmHarness`, `HTMLayer`,
+and `HTMRegion`. Temporal-pooling harness headers already include the helper.
+Other tests should include `test/test_utils/test_gui.hpp`. Run one GUI-enabled
+test at a time because one test network is attached to the debugger process.
+
 ## YAML Configuration Files
 
 Configurations are stored in the `configs/` directory as YAML files. This makes it easy to create and share network configurations without modifying C++ code.

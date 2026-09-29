@@ -201,6 +201,7 @@ if(BUILD_TESTS)
   # Collect test source files only (no need to list library sources; they come
   # from htm_flow_core).
   file(GLOB_RECURSE TEST_FILES ./test/*.cpp)
+  list(FILTER TEST_FILES EXCLUDE REGEX ".*test_gui_main\\.cpp$")
 
   # Filter out the GPU test files if GPU flag is set to FALSE
   if(NOT USE_GPU)
@@ -215,9 +216,19 @@ if(BUILD_TESTS)
 
   # Link your test executable to the Google Test library and other libraries
   if(USE_GPU)
-    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest gtest_main task_gpu_test gpu_overlap)
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest task_gpu_test gpu_overlap)
   else()
-    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest gtest_main)
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest)
+  endif()
+
+  if(HTM_FLOW_WITH_GUI AND TARGET htm_gui)
+    target_sources(${PROJECT_NAME}_tests PRIVATE
+      ./test/test_utils/test_gui_main.cpp
+    )
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE htm_gui)
+    target_compile_definitions(${PROJECT_NAME}_tests PRIVATE HTM_FLOW_WITH_GUI)
+  else()
+    target_link_libraries(${PROJECT_NAME}_tests PRIVATE gtest_main)
   endif()
 
   # Register individual gtest TEST() cases with CTest so `ctest -R <pattern>` works.
