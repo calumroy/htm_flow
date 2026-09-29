@@ -70,6 +70,8 @@ public:
 
     // Temporal pooler
     float temp_spatial_perm_inc = 0.05f;
+    float temp_active_predict_proximal_scale = 0.25f;
+    float temp_post_active_proximal_scale = 0.0f;
     float temp_seq_perm_inc = 0.05f;
     float temp_seq_perm_dec = 0.0f;
     int temp_delay_length = 4;
@@ -144,8 +146,8 @@ public:
             cfg_.max_synapses_per_segment,
             num_pot_syn_,
             cfg_.temp_spatial_perm_inc,
-            /*active_predict_proximal_scale=*/0.25f,
-            /*post_active_proximal_scale=*/0.0f,
+            cfg_.temp_active_predict_proximal_scale,
+            cfg_.temp_post_active_proximal_scale,
             cfg_.temp_seq_perm_inc,
             cfg_.temp_seq_perm_dec,
             cfg_.min_num_syn_threshold,
