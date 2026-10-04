@@ -107,43 +107,37 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
   /*
   Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_tempEquality
 
-  What we are testing (and why this test is structured this way):
-  - Goal: show that "temporal pooling" can form for multiple patterns WITHOUT collapsing them
-    into one indistinguishable representation.
-  - If two input patterns do not share any input features, then a sane higher-level pooled
-    representation should also have low overlap between them.
+  Purpose:
+  Show that the model can learn two patterns and still keep their outputs apart.
 
-  What exactly is the "pattern" here?
-  - A pattern is a repeating SEQUENCE of vertical-line inputs over a fixed cycle length.
-  - EvenPositions: the vertical line appears only at even x positions across the cycle.
-  - OddPositions: the vertical line appears only at odd x positions across the cycle.
-  - Those two sets are disjoint, so at the raw-input level they share (almost) no active bits.
+  What:
+  Even lines use only even x positions.
+  Odd lines use only odd x positions.
+  They share almost no input cells.
+  The second layer should also use mostly different cells for each pattern.
+  We read the cells the second layer uses while learning.
+  That is the output this test compares.
 
-  Why a 2-layer hierarchy?
-  - Python Suite4 measured a higher layer's learning cells (`getLearningCellsOutput`) to see the
-    pooled representation in a "top layer".
-  - In htm_flow we approximate depth by stacking two full pipelines:
-      layer0(active_columns) -> layer1(input_grid)
-    and we measure layer1's learning cells as the "pooled" representation.
+  Why the limit is 0.60:
+  Some cells can stay active after the input changes.
+  A small model can also share some cells between patterns.
+  The test checks that the two outputs are not almost the same.
+  It allows them to share some cells.
 
-  What do we measure and why?
-  - We compute a representative top-layer SDR for each pattern (one per cycle) and compare them
-    with `similarityPercent = |A ∩ B| / |A|`.
-  - If the system keeps patterns distinct, this similarity should be bounded away from 1.
+  Pass:
+  Similarity between the two second-layer outputs is 0.60 or less.
+  Similarity is the share of active cells in the first output that are also active in the second.
 
-  Why the threshold is not tiny (0.60 instead of, say, 0.10):
-  - Temporal pooling + persistence can reuse some cells across contexts.
-  - Small models and tie-breakers can introduce shared structure.
-  - The important thing is: "not almost identical", not "perfectly disjoint".
+  Fail:
+  The second layer uses almost the same cells for both patterns.
+
+  Steps:
+  1. Train on even lines for train_steps.
+  2. Record the second-layer cells used across one full even-line cycle.
+  3. Train on odd lines for train_steps.
+  4. Record the second-layer cells used across one full odd-line cycle.
+  5. Compare the two records. Similarity must be 0.60 or less.
   */
-
-  // Step-by-step:
-  // 1) Build a deterministic 2-layer feed-forward HTM (no feedback).
-  // 2) Train on Pattern 1 long enough for its pooled representation to emerge.
-  // 3) Capture Pattern 1’s top-layer representative SDR over one full cycle.
-  // 4) Train on Pattern 2 long enough for its pooled representation to emerge.
-  // 5) Capture Pattern 2’s top-layer representative SDR over one full cycle.
-  // 6) Assert that the two representatives do not overlap "too much".
 
   TwoLayerHtmHarness htm(suiteConfig());
 
@@ -153,30 +147,32 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
   inputs.setSequenceProbability(1.0);
 
   const int seq_len = inputs.seqLen();
+  // Steps used to train each pattern. Change this value only.
+  const int train_steps = 320;
   int time_step = 1;
 
-  // Learn pattern 1: EvenPositions.
+  // Train on even lines, then record one full cycle.
   inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
   inputs.setIndex(0);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/320,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  time_step += 320;
+  time_step += train_steps;
   const std::vector<uint8_t> repP1 = representativeOverCycle(htm, inputs, time_step, seq_len);
 
-  // Learn pattern 2: OddPositions.
+  // Train on odd lines, then record one full cycle.
   inputs.setPattern(VerticalLineInputs::Pattern::OddPositions);
   inputs.setIndex(0);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/320,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  time_step += 320;
+  time_step += train_steps;
   const std::vector<uint8_t> repP2 = representativeOverCycle(htm, inputs, time_step, seq_len);
 
   const double sim = similarityPercent(repP1, repP2);
-  EXPECT_LE(sim, 0.60) << "Disjoint input patterns should not produce highly overlapping pooled outputs";
+  EXPECT_LE(sim, 0.60) << "Even lines and odd lines should not produce almost the same second-layer output";
 }
 
 TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinct) {
@@ -260,38 +256,45 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
   /*
   Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_tempDiffPooled
 
-  What we are testing:
-  - Temporal pooling is not only about pooling WITHIN a single pattern/sequence.
-    In the Python suite, after enough alternations between Pattern 1 and Pattern 2, the
-    *transition itself* can become predictable / "pooled", producing a more stable top output.
+  Purpose:
+  Show that switching between two patterns many times can make their outputs more alike.
+  Each pattern should still stay stable on its own.
 
-  Concrete interpretation in this C++ test:
-  - Before alternation training:
-    - EvenPositions and OddPositions should produce somewhat different top representations.
-  - After alternation training:
-    - The system has learned the macro-sequence "...Even cycle... -> ...Odd cycle... -> ...Even cycle...".
-    - So the top representations for Even and Odd are allowed to become more similar than they were initially.
+  What:
+  First, train each pattern alone and record how similar the second-layer outputs are.
+  Then switch between one even-line cycle and one odd-line cycle, alternate_count times.
+  After that, the cells used inside one pattern should stay mostly the same from step to step.
+  The two patterns may share more cells than they did before the switching.
 
-  What signals do we measure?
-  - (A) Temporal pooling percent on the TOP layer’s learning-cells output while replaying each pattern.
-        This checks that each pattern is still being pooled (stability within pattern remains).
-  - (B) Similarity between the representative SDRs for Even vs Odd, before and after alternation training.
-        This checks that the alternation training did not make things less consistent.
+  Why the test does not require the two outputs to become the same:
+  The Python test expects the two patterns to merge into one stable output.
+  That result depends strongly on the settings.
+  This test checks the direction only.
+  Switching must not make the two outputs less similar.
 
-  Why we only assert "similarity should not decrease":
-  - The exact “should become one stable pattern” requirement in Python is very parameter-sensitive,
-    especially across different implementations.
-  - This assertion still tests the *directional* claim (alternation doesn’t make the two patterns diverge more),
-    without locking us into brittle >0.9 thresholds that may fail under deterministic tie-breaks.
+  Pass:
+  The stability score for even lines is 0.30 or more.
+  The stability score for odd lines is 0.30 or more.
+  The stability score is the share of second-layer cells that stay active
+  from one step to the next while one pattern repeats.
+  Final similarity is not more than 0.05 below the early similarity.
+
+  Fail:
+  The cells for one pattern change a lot from step to step.
+  After switching, the two patterns share fewer cells than they did at the start.
+
+  Steps:
+  1. Train on even lines for train_steps.
+     Record the second-layer cells for one even-line cycle.
+  2. Train on odd lines for train_steps.
+     Record the second-layer cells for one odd-line cycle.
+  3. Compare those two early records.
+  4. Switch between one even-line cycle and one odd-line cycle, alternate_count times.
+  5. Run one even-line cycle and one odd-line cycle again.
+     Measure how stable each pattern's cells are.
+  6. Record one more even-line cycle and one more odd-line cycle.
+  7. Compare the final records with the early records.
   */
-
-  // Step-by-step:
-  // 1) Train on EvenPositions alone, capture "early" top representation.
-  // 2) Train on OddPositions alone, capture "early" top representation.
-  // 3) Alternate Even and Odd many times to teach the macro transition.
-  // 4) Re-run Even then Odd and measure:
-  //    - pooling percent on each (stability within pattern)
-  //    - similarity between final Even and final Odd (transition pooling direction)
 
   TwoLayerHtmHarness htm(suiteConfig());
 
@@ -301,31 +304,35 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
   inputs.setSequenceProbability(1.0);
   const int seq_len = inputs.seqLen();
 
+  // Steps used to train each pattern before switching. Change this value only.
+  const int train_steps = 220;
+  // Number of even-then-odd switches. Change this value only.
+  const int alternate_count = 12;
   int time_step = 1;
 
-  // First: learn each pattern on its own and record early representatives (pre-transition pooling).
+  // Train each pattern alone and record the early second-layer output.
   inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/220,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  time_step += 220;
+  time_step += train_steps;
   inputs.setIndex(0);
   const std::vector<uint8_t> repEvenEarly = representativeOverCycle(htm, inputs, time_step, seq_len);
 
   inputs.setPattern(VerticalLineInputs::Pattern::OddPositions);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/220,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  time_step += 220;
+  time_step += train_steps;
   inputs.setIndex(0);
   const std::vector<uint8_t> repOddEarly = representativeOverCycle(htm, inputs, time_step, seq_len);
 
   const double simEarly = similarityPercent(repEvenEarly, repOddEarly);
 
-  // Now: alternate patterns many times to “teach” the transition.
-  for (int i = 0; i < 12; ++i) {
+  // Switch between the two patterns so the model can learn the change from one to the other.
+  for (int i = 0; i < alternate_count; ++i) {
     inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
     inputs.setIndex(0);
     temporal_pooling_test_utils::runSteps(time_step,
@@ -343,7 +350,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
     time_step += seq_len;
   }
 
-  // Measure pooling percent while re-running each pattern once.
+  // Measure how stable each pattern's cells are across one cycle.
   TemporalPoolingMeasure mEven;
   TemporalPoolingMeasure mOdd;
   double pooledEven = 0.0;
@@ -367,7 +374,7 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
     ++time_step;
   }
 
-  // Capture final representatives and compare.
+  // Record one more cycle of each pattern and compare with the early records.
   inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
   inputs.setIndex(0);
   const std::vector<uint8_t> repEvenFinal = representativeOverCycle(htm, inputs, time_step, seq_len);
@@ -379,6 +386,6 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
 
   EXPECT_GE(pooledEven, 0.30);
   EXPECT_GE(pooledOdd, 0.30);
-  EXPECT_GE(simFinal, simEarly - 0.05) << "After many alternations, similarity should not decrease";
+  EXPECT_GE(simFinal, simEarly - 0.05) << "After switching between the two patterns, similarity should not fall";
 }
 
