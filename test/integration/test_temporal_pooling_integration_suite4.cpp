@@ -182,28 +182,38 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempEquality_two_disjoint_patterns_d
 TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinct) {
   /*
   Python reference: HTM/tests/temporalPooling/test_temporalPoolingSuite4.py::test_temporalDiff
-  (and the general "different patterns should remain different" intent throughout Suite4)
 
-  What we are testing:
-  - After the system has seen BOTH patterns, each pattern should still map to a distinct
-    pooled representation at the top layer.
+  Purpose:
+  Show that two different inputs still produce two different outputs
+  after the model has learned both.
 
-  Why this is a separate test from test_tempEquality:
-  - The first test trains pattern1 then pattern2 and immediately compares.
-  - This test explicitly emphasizes "after both are learned", i.e. we allow both to shape the model
-    before we evaluate distinctness.
+  What:
+  Even lines and odd lines do not share input positions.
+  Even lines use only even x positions.
+  Odd lines use only odd x positions.
+  After training on both, the second layer should still use a different set of cells for each.
 
-  What would make this test fail (useful failure modes):
-  - The top layer becomes dominated by persistence / tie-breakers and always picks the same cells.
-  - The model is too small / too sparse and ends up with an almost-constant learning set.
+  Why this test is separate from test_tempEquality:
+  test_tempEquality trains one pattern, records it, then trains the other and compares.
+  This test trains both patterns first.
+  Both patterns can change the model before the comparison.
+
+  Pass:
+  Similarity between the two second-layer outputs is 0.70 or less.
+  Similarity is the share of active cells in the first output that are also active in the second.
+
+  Fail:
+  The second layer keeps the same cells active for both patterns.
+  This can happen when cells stay active after the input changes,
+  or when the model is so small that almost the same cells learn every input.
+
+  Steps:
+  1. Train on even lines for train_steps.
+  2. Train on odd lines for train_steps.
+  3. Record the second-layer cells used across one full even-line cycle.
+  4. Record the second-layer cells used across one full odd-line cycle.
+  5. Compare the two records. They must not be almost the same.
   */
-
-  // Step-by-step:
-  // 1) Train on EvenPositions for a while.
-  // 2) Train on OddPositions for a while.
-  // 3) Capture representative pooled SDR for EvenPositions.
-  // 4) Capture representative pooled SDR for OddPositions.
-  // 5) Assert they are not (nearly) identical.
 
   TwoLayerHtmHarness htm(suiteConfig());
 
@@ -213,25 +223,27 @@ TEST(TemporalPoolingIntegrationSuite4, test_temporalDiff_patterns_remain_distinc
   inputs.setSequenceProbability(1.0);
   const int seq_len = inputs.seqLen();
 
+  // Steps used to train each pattern. Change this value only.
+  const int train_steps = 1000;
   int time_step = 1;
 
-  // Learn both patterns.
+  // Train on even lines, then odd lines.
   inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
+  htm_test_gui::startGui(htm);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/260,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  time_step += 260;
 
+  time_step += train_steps;
   inputs.setPattern(VerticalLineInputs::Pattern::OddPositions);
   temporal_pooling_test_utils::runSteps(time_step,
-                                        /*num_steps=*/260,
+                                        train_steps,
                                         [&](int t, const std::vector<int>& in) { htm.step(t, in); },
                                         [&]() { return inputs.next(htm.rng()); });
-  htm_test_gui::startGui(htm);
-  time_step += 260;
+  time_step += train_steps;
 
-  // Capture representatives for each after learning.
+  // Record one full cycle of each pattern after both have been trained.
   inputs.setPattern(VerticalLineInputs::Pattern::EvenPositions);
   inputs.setIndex(0);
   const std::vector<uint8_t> repEven = representativeOverCycle(htm, inputs, time_step, seq_len);
