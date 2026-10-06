@@ -170,6 +170,14 @@ bool TemporalPoolerCalculator::check_cell_time(const std::vector<int>& cells_tim
   return (t0 == time_step) || (t1 == time_step);
 }
 
+bool TemporalPoolerCalculator::check_column_time(const std::vector<int>& columns_time,
+                                                 int col,
+                                                 int time_step) const {
+  const int t0 = columns_time[static_cast<std::size_t>(col * 2)];
+  const int t1 = columns_time[static_cast<std::size_t>(col * 2 + 1)];
+  return (t0 == time_step) || (t1 == time_step);
+}
+
 bool TemporalPoolerCalculator::column_has_temporal_support(const std::vector<int>& predict_cells_time,
                                                            const std::vector<int>& active_segs_time,
                                                            int col,
@@ -216,12 +224,17 @@ int TemporalPoolerCalculator::find_recent_active_segment(const std::vector<int>&
 bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>& active_cells_time,
                                                         const std::vector<int>& predict_cells_time,
                                                         const std::vector<int>& active_segs_time,
+                                                        const std::vector<int>& burst_cols_time,
                                                         int col,
                                                         int cell,
                                                         int time_step) const {
-  // Use the same evidence as the active-cell burst gate. A predictive
-  // timestamp without an active segment can coincide with burst activity and
-  // must not authorize temporal-pooling learning.
+  // Activity created by a current burst is not a correct prediction and must
+  // not authorize temporal-pooling learning.
+  if (check_column_time(burst_cols_time, col, time_step)) {
+    return false;
+  }
+
+  // Require the same prediction evidence as the active-cell burst gate.
   const bool cell_active = check_cell_time(active_cells_time, col, cell, time_step);
   const bool was_predict = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
   const bool had_active_segment =
@@ -475,11 +488,13 @@ void TemporalPoolerCalculator::update_distal(int time_step,
                                             const std::vector<int>& predict_cells_time,
                                             const std::vector<int>& active_cells_time,
                                             const std::vector<int>& active_segs_time,
+                                            const std::vector<int>& burst_cols_time,
                                             std::vector<DistalSynapse>& distal_synapses) {
   assert(static_cast<int>(learn_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
   assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
   assert(static_cast<int>(active_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
   assert(static_cast<int>(active_segs_time.size()) == cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
+  assert(static_cast<int>(burst_cols_time.size()) == cfg_.num_columns * 2);
 
   const std::size_t distal_size = static_cast<std::size_t>(cfg_.num_columns) * cfg_.cells_per_column *
                                   cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment;
@@ -521,7 +536,7 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const int cell = flat % cfg_.cells_per_column;
 
     const bool active_predict = check_cell_active_predict(
-        active_cells_time, predict_cells_time, active_segs_time, col, cell,
+        active_cells_time, predict_cells_time, active_segs_time, burst_cols_time, col, cell,
         time_step);
     if (active_predict) {
       active_predict_cells[static_cast<std::size_t>(flat)] = 1;

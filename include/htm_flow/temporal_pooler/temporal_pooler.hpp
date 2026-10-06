@@ -98,7 +98,13 @@ public:
   //      Used to require segment-backed prediction at t-1 and to pick the least
   //      recently used segment to overwrite.
   //
-  //   7. distal_synapses
+  //   7. burst_cols_time
+  //      Time-history tensor: last two timesteps each column was bursting.
+  //      Shape: (num_columns, 2).
+  //      Cells activated by a current burst cannot authorize temporal-pooling
+  //      distal or proximal learning.
+  //
+  //   8. distal_synapses
   //      Distal synapse tensor (flattened 5D):
   //        distal_synapses[col][cell][seg][syn] == {target_col, target_cell, perm}
   //      Shape: (num_columns, cells_per_column, max_segments_per_cell, max_synapses_per_segment).
@@ -114,6 +120,7 @@ public:
                      const std::vector<int>& predict_cells_time,
                      const std::vector<int>& active_cells_time,
                      const std::vector<int>& active_segs_time,
+                     const std::vector<int>& burst_cols_time,
                      std::vector<sequence_pooler::DistalSynapse>& distal_synapses);
 
   // -----------------------------------------------------------------------------
@@ -222,6 +229,7 @@ private:
   inline int idx_cell_flat(int col, int cell) const { return col * cfg_.cells_per_column + cell; }
 
   bool check_cell_time(const std::vector<int>& cells_time, int col, int cell, int time_step) const;
+  bool check_column_time(const std::vector<int>& columns_time, int col, int time_step) const;
   bool column_has_temporal_support(const std::vector<int>& predict_cells_time,
                                    const std::vector<int>& active_segs_time,
                                    int col,
@@ -236,6 +244,7 @@ private:
   bool check_cell_active_predict(const std::vector<int>& active_cells_time,
                                  const std::vector<int>& predict_cells_time,
                                  const std::vector<int>& active_segs_time,
+                                 const std::vector<int>& burst_cols_time,
                                  int col,
                                  int cell,
                                  int time_step) const;

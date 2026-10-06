@@ -107,6 +107,7 @@ An active-predict cell:
 
 1. Was predictive at timestep `t-1`.
 2. Became active at timestep `t`.
+3. Belongs to a column that did not burst at timestep `t`.
 
 This means the layer made a correct prediction.
 
@@ -185,6 +186,7 @@ The temporal pooler uses state produced by earlier layer stages:
 - Current and previous active-cell timestamps.
 - Current and previous predictive-cell timestamps.
 - The last active timestep for each distal segment.
+- Current and previous bursting-column timestamps.
 - Distal synapses between cells.
 - Current potential proximal inputs for each column.
 - Current proximal permanence values.
@@ -232,10 +234,18 @@ Earlier context       Previous input       Current input
 For each cell, the pooler checks:
 
 ```text
-predictive at t-1 AND active at t
+predictive at t-1
+AND active segment at t-1
+AND active at t
+AND column did not burst at t
 ```
 
-Cells that satisfy both conditions are active-predict cells.
+Cells that satisfy all conditions are active-predict cells.
+
+A cell can become predictive after its column bursts because prediction is
+calculated after current activity. Predictive state shown at timestep `t`
+forecasts timestep `t+1`; it did not prevent a burst at `t`. Burst-created cell
+activity cannot authorize temporal-pooling learning.
 
 The temporal pooler reads predictive state but never sets it. Only
 `PredictCellsCalculator` makes a cell predictive, and only when one of its
@@ -281,7 +291,7 @@ This path reinforces a column that was predicted and then won.
 
 ```text
 t-1: column has a predictive cell
-t:   column wins and that cell becomes active
+t:   column wins without bursting and that cell becomes active
      -> reinforce the column against input at t
 ```
 

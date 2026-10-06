@@ -569,6 +569,7 @@ void HTMLayer::step_once() {
                                       predict_cells_calc_.get_predict_cells_time(),
                                       active_cells_calc_.get_active_cells_time(),
                                       predict_cells_calc_.get_active_segs_time(),
+                                      active_cells_calc_.get_burst_cols_time(),
                                       distal_synapses_);
     const auto proximal_stats = temporal_pool_calc_.update_proximal(
         timestep_,

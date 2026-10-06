@@ -34,7 +34,8 @@ missed familiar transitions. A threshold of `3` predicted too many cells.
 ## Terms Used In This Guide
 
 - **Correctly predicted activation:** A cell was predictive on the previous
-  timestep, had an active distal segment, and is active now.
+  timestep, had an active distal segment, is active now, and belongs to a
+  column that did not burst now.
 - **Burst:** A column wins, but none of its cells had a valid prediction from the
   previous timestep. The column activates all its cells because it does not know
   which temporal context applies.
@@ -62,12 +63,17 @@ t:   column 7 wins and that cell becomes active
      -> strengthen column 7's proximal connections to the input at t
 ```
 
-A burst does not qualify. The code requires the same cell to have all three
-conditions:
+A burst does not qualify. The code requires all of these conditions:
 
 1. Predictive at `t-1`.
 2. Backed by an active distal segment at `t-1`.
 3. Active at `t`.
+4. The column did not burst at `t`.
+
+Predictive state displayed at timestep `t` is calculated after current cell
+activity and forecasts `t+1`. A cell can therefore appear predictive on the
+same timestep that its column bursts. That prediction did not prevent the
+current burst and cannot authorize temporal-pooling active-predict learning.
 
 The increase for each currently active proximal input is:
 

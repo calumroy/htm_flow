@@ -239,6 +239,7 @@ public:
                                       predict_cells_calc_.get_predict_cells_time(),
                                       active_cells_calc_.get_active_cells_time(),
                                       predict_cells_calc_.get_active_segs_time(),
+                                      active_cells_calc_.get_burst_cols_time(),
                                       distal_synapses_);
     temporal_pool_calc_.update_proximal(time_step,
                                         overlap_calc_.get_col_pot_inputs(),

@@ -43,6 +43,8 @@ The current calculator applies local safeguards:
 - TP proximal reinforcement only applies to columns that had active-predict
   cells in the previous temporal-pooler distal update, or columns that are
   currently segment-backed predictive but did not win inhibition.
+- Cells made active because their column is currently bursting cannot count as
+  active-predict support for TP distal or proximal learning.
 - A one-step later-input rule reinforces a recently active-predict column only
   when it is still segment-backed predictive and failed to win inhibition on the
   next timestep.
@@ -82,6 +84,11 @@ Several local fixes are now in place.
    a generic spatial-learning shortcut. TP proximal learning only reinforces
    columns with local distal evidence: active-predict support, current
    segment-backed prediction, or the stricter post-active bridge condition.
+
+   Active-predict support also requires that the column did not burst on the
+   current timestep. A burst activates every cell, so treating that activity as
+   a successful prediction would let a prediction created after one burst
+   reinforce itself during a later burst.
 
 Both fixes use local per-cell/per-column state already available in the layer.
 No global burst-rate rule or layer-wide normalization was added.
@@ -141,6 +148,12 @@ The key rule is:
 - if no cell in the column was predictive at `t-1` and had an active segment at
   `t-1`, the column bursts
 
+Prediction is calculated after active cells. A cell displayed as predictive at
+time `t` is forecasting `t+1`; it did not predict or prevent a burst at `t`.
+After a burst, all cells are active and can therefore make segments predictive.
+The temporal pooler excludes that burst-created activity from active-predict
+learning while the column is still bursting.
+
 Important supporting code paths:
 
 - `htm_flow/src/htm_layer.cpp`
@@ -155,6 +168,7 @@ Important supporting code paths:
   - TP proximal reinforcement now requires active-predict support from the
     previous TP distal update, or current segment-backed predictive support for
     a column that did not win inhibition
+  - current bursting columns do not produce active-predict support
   - `active_predict_proximal_scale` and `post_active_proximal_scale` control
     how much each local support path contributes
   - the later-input rule uses the previous distal update's active-predict
