@@ -203,7 +203,6 @@ public:
     inhibition_calc_.calculate_inhibition(col_overlap_scores, col_grid_shape_,
                                           overlap_calc_.get_col_pot_overlaps(), col_grid_shape_);
     const std::vector<int>& active_col_indices = inhibition_calc_.get_active_column_indices();
-
     for (int c : prev_active_col_indices_) {
       col_active01_[static_cast<std::size_t>(c)] = 0;
     }
@@ -281,7 +280,6 @@ public:
 
   std::mt19937& rng() { return rng_; }
   const Config& cfg() const { return cfg_; }
-
   htm_gui::Snapshot snapshot() const override {
     htm_gui::Snapshot s;
     s.timestep = timestep_;

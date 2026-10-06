@@ -45,7 +45,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.desired_local_activity  = 4;
   cfg.l0.connected_perm          = 0.3f;
   cfg.l0.min_overlap             = 2;
-  cfg.l0.min_potential_overlap   = 0;
+  cfg.l0.min_potential_overlap   = 1;
   cfg.l0.spatial_perm_inc        = 0.05f;
   cfg.l0.spatial_perm_dec        = 0.02f;
   cfg.l0.active_col_perm_dec     = 0.01f;

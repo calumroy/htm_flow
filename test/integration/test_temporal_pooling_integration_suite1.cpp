@@ -31,7 +31,7 @@ HtmPipelineHarness::Config suiteConfig() {
   c.desired_local_activity  = 6;
   c.connected_perm          = 0.3f;
   c.min_overlap             = 2;
-  c.min_potential_overlap   = 0;
+  c.min_potential_overlap   = 1;
   c.spatial_perm_inc        = 0.05f;
   c.spatial_perm_dec        = 0.02f;
   c.active_col_perm_dec     = 0.01f;

@@ -36,7 +36,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.desired_local_activity  = 6;
   cfg.l0.connected_perm          = 0.3f;
   cfg.l0.min_overlap             = 2;
-  cfg.l0.min_potential_overlap   = 0;
+  cfg.l0.min_potential_overlap   = 1;
   cfg.l0.spatial_perm_inc        = 0.05f;
   cfg.l0.spatial_perm_dec        = 0.02f;
   cfg.l0.active_col_perm_dec     = 0.01f;
@@ -383,7 +383,6 @@ TEST(TemporalPoolingIntegrationSuite4, test_tempDiffPooled_transition_can_become
   const std::vector<uint8_t> repOddFinal = representativeOverCycle(htm, inputs, time_step, seq_len);
 
   const double simFinal = similarityPercent(repEvenFinal, repOddFinal);
-
   EXPECT_GE(pooledEven, 0.30);
   EXPECT_GE(pooledOdd, 0.30);
   EXPECT_GE(simFinal, simEarly - 0.05) << "After switching between the two patterns, similarity should not fall";
