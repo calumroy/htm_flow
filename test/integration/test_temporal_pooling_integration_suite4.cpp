@@ -51,8 +51,6 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.seq_perm_dec            = 0.02f;
   cfg.l0.temp_spatial_perm_inc   = 0.05f;
   cfg.l0.temp_seq_perm_inc       = 0.05f;
-  cfg.l0.temp_delay_length       = 4;
-  cfg.l0.temp_enable_persistence = true;
   cfg.l0.rng_seed                = 123u;
 
   // Layer 1 — same params, but input matches layer 0's column grid

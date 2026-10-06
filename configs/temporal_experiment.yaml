@@ -42,7 +42,6 @@ layers:
       permanence_dec: 0.02           # permanenceDec in Python
     temporal_pooling:
       enabled: true
-      delay_length: 3
       spatial_permanence_inc: 0.1
       sequence_permanence_inc: 0.1
 
@@ -68,6 +67,5 @@ layers:
       activation_threshold: 6
     temporal_pooling:
       enabled: true
-      delay_length: 3
       spatial_permanence_inc: 0.1
       sequence_permanence_inc: 0.1

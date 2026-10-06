@@ -43,7 +43,6 @@ layers:
       permanence_dec: 0.05
     temporal_pooling:
       enabled: false  # No pooling at sensory level
-      delay_length: 4
       spatial_permanence_inc: 0.01
       sequence_permanence_inc: 0.01
 
@@ -88,6 +87,5 @@ layers:
       max_synapses_per_segment: 20
     temporal_pooling:
       enabled: true   # Pooling ONLY at top level
-      delay_length: 4
       spatial_permanence_inc: 0.1
       sequence_permanence_inc: 0.1

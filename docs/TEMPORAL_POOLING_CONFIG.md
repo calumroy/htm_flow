@@ -15,8 +15,6 @@ runtime_parameter_schedule:
 
 temporal_pooling:
   enabled: true
-  enable_persistence: false
-  delay_length: 16
   spatial_permanence_inc: 0.12
   active_predict_proximal_scale: 0.25
   post_active_proximal_scale: 0.5
@@ -25,7 +23,7 @@ temporal_pooling:
 ```
 
 This starts temporal pooling after sequence memory has had 1000 timesteps to
-learn. It keeps persistence off while the other settings are tuned.
+learn.
 
 For the current word-row Layer 1 config, use
 `sequence_memory.cells_per_column: 6` and
@@ -49,13 +47,6 @@ missed familiar transitions. A threshold of `3` predicted too many cells.
 - `enabled`: turns temporal pooling on for the layer. In delayed configs, keep
   this `false` in the base config and enable it with a runtime override after
   sequence memory has had time to form.
-
-- `enable_persistence`: can keep a cell predictive after its normal prediction
-  ends. Keep this `false` while tuning. An old prediction can interfere with a
-  later sequence.
-
-- `delay_length`: controls how quickly the learned persistence duration changes.
-  It has no effect on predictions when `enable_persistence` is `false`.
 
 - `spatial_permanence_inc`: is the base increase for proximal permanence. Both
   scale settings below multiply this value.
@@ -141,15 +132,13 @@ was predicted on the previous timestep. The column then bursts.
 
 ## Tuning Order
 
-1. Keep `enable_persistence: false`.
-2. Tune `sequence_permanence_inc` until more familiar inputs have valid
+1. Tune `sequence_permanence_inc` until more familiar inputs have valid
    predictions.
-3. Increase `spatial_permanence_inc` slowly with a low
+2. Increase `spatial_permanence_inc` slowly with a low
    `active_predict_proximal_scale`.
-4. Increase `post_active_proximal_scale` if columns do not yet win for more than
+3. Increase `post_active_proximal_scale` if columns do not yet win for more than
    one position in a learned sequence.
-5. If bursting increases, reduce `post_active_proximal_scale` first.
-6. Test `enable_persistence: true` only after temporal pooling works without it.
+4. If bursting increases, reduce `post_active_proximal_scale` first.
 
 ## What To Watch
 
@@ -181,8 +170,6 @@ Bad signs:
 - A small set of columns wins for unrelated inputs:
   `spatial_permanence_inc` or `post_active_proximal_scale` may be too high, or
   spatial learning had already collapsed before temporal pooling started.
-- Bursting rises after persistence is enabled: turn persistence off and tune the
-  other settings first.
 
 ## Current Caveat
 

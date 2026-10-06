@@ -16,7 +16,6 @@ namespace {
 htm_flow::HTMLayerConfig make_layer_config() {
   auto cfg = htm_flow::small_test_config();
   cfg.temp_enabled = true;
-  cfg.temp_delay_length = 4;
   return cfg;
 }
 
@@ -53,7 +52,7 @@ TEST(RuntimePatchConfigLoader, ParsesHotSwappableFieldsAndSchedule) {
       activation_threshold: 7
     temporal_pooling:
       enabled: false
-      delay_length: 6
+      spatial_permanence_inc: 0.06
 )");
   const auto schedule_path = write_temp_yaml(
       "runtime_patch_schedule",
@@ -68,13 +67,13 @@ TEST(RuntimePatchConfigLoader, ParsesHotSwappableFieldsAndSchedule) {
   ASSERT_TRUE(patch.layers[0].spatial_permanence_inc.has_value());
   ASSERT_TRUE(patch.layers[0].activation_threshold.has_value());
   ASSERT_TRUE(patch.layers[0].temp_enabled.has_value());
-  ASSERT_TRUE(patch.layers[0].temp_delay_length.has_value());
+  ASSERT_TRUE(patch.layers[0].temp_spatial_permanence_inc.has_value());
   EXPECT_FLOAT_EQ(*patch.layers[0].connected_perm, 0.45f);
   EXPECT_EQ(*patch.layers[0].min_overlap, 4);
   EXPECT_FLOAT_EQ(*patch.layers[0].spatial_permanence_inc, 0.02f);
   EXPECT_EQ(*patch.layers[0].activation_threshold, 7);
   EXPECT_FALSE(*patch.layers[0].temp_enabled);
-  EXPECT_EQ(*patch.layers[0].temp_delay_length, 6);
+  EXPECT_FLOAT_EQ(*patch.layers[0].temp_spatial_permanence_inc, 0.06f);
 
   const auto schedule = htm_flow::load_runtime_parameter_schedule(schedule_path.string());
   ASSERT_EQ(schedule.size(), 1u);
@@ -97,7 +96,6 @@ TEST(RuntimePatchConfigLoader, RejectsUnsupportedStructuralFields) {
     EXPECT_NE(std::string(e.what()).find("not hot-swappable"), std::string::npos);
   }
 }
-
 TEST(RuntimePatchIntegration, LayerApplyPatchPreservesTimestepAndUpdatesConfig) {
   const auto cfg = make_layer_config();
   htm_flow::HTMLayer layer(cfg, "PatchLayer");
@@ -108,14 +106,14 @@ TEST(RuntimePatchIntegration, LayerApplyPatchPreservesTimestepAndUpdatesConfig) 
   htm_flow::HTMLayerRuntimePatch patch;
   patch.spatial_permanence_inc = 0.17f;
   patch.activation_threshold = 9;
-  patch.temp_delay_length = 6;
+  patch.temp_spatial_permanence_inc = 0.06f;
 
   const auto report = layer.apply_runtime_patch(patch);
   EXPECT_TRUE(report.ok());
   EXPECT_EQ(layer.timestep(), 1);
   EXPECT_FLOAT_EQ(layer.config().spatial_permanence_inc, 0.17f);
   EXPECT_EQ(layer.config().activation_threshold, 9);
-  EXPECT_EQ(layer.config().temp_delay_length, 6);
+  EXPECT_FLOAT_EQ(layer.config().temp_spatial_permanence_inc, 0.06f);
 
   layer.step(1);
   EXPECT_EQ(layer.timestep(), 2);

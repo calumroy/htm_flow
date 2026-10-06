@@ -82,8 +82,6 @@ public:
     float temp_post_active_proximal_scale = 0.0f;
     float temp_seq_perm_inc = 0.05f;
     float temp_seq_perm_dec = 0.0f;
-    int temp_delay_length = 4;
-    bool temp_enable_persistence = true;
 
     // Determinism
     std::uint32_t rng_seed = 123u;
@@ -161,8 +159,6 @@ public:
             cfg_.min_num_syn_threshold,
             cfg_.new_syn_permanence,
             cfg_.connect_permanence,
-            cfg_.temp_delay_length,
-            cfg_.temp_enable_persistence,
         }),
         current_input_(std::make_shared<std::vector<int>>(
             static_cast<std::size_t>(cfg_.input_rows * cfg_.input_cols), 0)),
@@ -240,10 +236,9 @@ public:
     temporal_pool_calc_.update_distal(time_step,
                                       active_cells_calc_.get_current_learn_cells_list(),
                                       active_cells_calc_.get_learn_cells_time(),
-                                      predict_cells_calc_.get_predict_cells_time_mutable(),
+                                      predict_cells_calc_.get_predict_cells_time(),
                                       active_cells_calc_.get_active_cells_time(),
-                                      // TP persistence mutates segment timestamps to keep persisted predictions segment-backed.
-                                      predict_cells_calc_.get_active_segs_time_mutable(),
+                                      predict_cells_calc_.get_active_segs_time(),
                                       distal_synapses_);
     temporal_pool_calc_.update_proximal(time_step,
                                         overlap_calc_.get_col_pot_inputs(),

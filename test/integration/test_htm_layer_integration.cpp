@@ -57,8 +57,6 @@ htm_flow::HTMLayerConfig suiteConfig() {
   cfg.sequence_permanence_dec   = 0.05f;
   // Temporal pooler
   cfg.temp_enabled              = true;
-  cfg.temp_delay_length         = 4;
-  cfg.temp_enable_persistence   = true;
   cfg.temp_spatial_permanence_inc  = 0.01f;
   cfg.temp_sequence_permanence_inc = 0.01f;
   // Runtime

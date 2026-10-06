@@ -18,12 +18,8 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   assert(cfg_.max_segments_per_cell > 0);
   assert(cfg_.max_synapses_per_segment > 0);
   assert(cfg_.num_pot_synapses > 0);
-  assert(cfg_.delay_length > 0);
 
   const int num_cells = cfg_.num_columns * cfg_.cells_per_column;
-  cells_tracking_num_.assign(num_cells, 0);
-  cells_avg_persist_.assign(num_cells, -1.0f);
-  cells_persistence_.assign(num_cells, 0);
   last_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
   prev_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
 
@@ -204,22 +200,6 @@ bool TemporalPoolerCalculator::check_cell_predict(const std::vector<int>& predic
   return (p0 == time_step) || (p1 == time_step);
 }
 
-void TemporalPoolerCalculator::set_predict_cell(std::vector<int>& predict_cells_time,
-                                               int col,
-                                               int cell,
-                                               int time_step) const {
-  // Set the given cell into a predictive state for the given timestep.
-  // The tensor stores the last two predictive timesteps: we overwrite the older entry.
-  // Mirrors python `setPredictCell`.
-  const int i0 = idx_cell_time(col, cell, 0);
-  const int i1 = idx_cell_time(col, cell, 1);
-  if (predict_cells_time[static_cast<std::size_t>(i0)] <= predict_cells_time[static_cast<std::size_t>(i1)]) {
-    predict_cells_time[static_cast<std::size_t>(i0)] = time_step;
-  } else {
-    predict_cells_time[static_cast<std::size_t>(i1)] = time_step;
-  }
-}
-
 int TemporalPoolerCalculator::find_recent_active_segment(const std::vector<int>& active_segs_time,
                                                          int col,
                                                          int cell,
@@ -231,17 +211,6 @@ int TemporalPoolerCalculator::find_recent_active_segment(const std::vector<int>&
     }
   }
   return -1;
-}
-
-void TemporalPoolerCalculator::set_active_segment(std::vector<int>& active_segs_time,
-                                                  int col,
-                                                  int cell,
-                                                  int seg,
-                                                  int time_step) const {
-  if (seg < 0 || seg >= cfg_.max_segments_per_cell) {
-    return;
-  }
-  active_segs_time[static_cast<std::size_t>(idx_cell_seg(col, cell, seg))] = time_step;
 }
 
 bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>& active_cells_time,
@@ -258,22 +227,6 @@ bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>&
   const bool had_active_segment =
       find_recent_active_segment(active_segs_time, col, cell, time_step - 1) >= 0;
   return cell_active && was_predict && had_active_segment;
-}
-
-void TemporalPoolerCalculator::update_avg_persist(int prev_tracking_num, float& avg_persist) const {
-  // Update the average persistence count with an ARMA-style smoothing filter.
-  // Mirrors python `updateAvgPesist`, but *fixes* the python bug where the value
-  // was computed and then discarded.
-  //
-  // `delay_length` controls smoothing (larger => slower changes).
-  // This average is only *used* to seed a finite persistence countdown when
-  // `cfg_.enable_persistence` is true.
-  if (avg_persist < 0.0f) {
-    avg_persist = static_cast<float>(prev_tracking_num);
-    return;
-  }
-  const float alpha = 1.0f - 1.0f / static_cast<float>(cfg_.delay_length);
-  avg_persist = alpha * avg_persist + (1.0f - alpha) * static_cast<float>(prev_tracking_num);
 }
 
 void TemporalPoolerCalculator::update_new_learn_cells_time(
@@ -519,9 +472,9 @@ void TemporalPoolerCalculator::overwrite_segment_with_prev2(
 void TemporalPoolerCalculator::update_distal(int time_step,
                                             const std::vector<std::pair<int, int>>& new_learn_cells_list,
                                             const std::vector<int>& learn_cells_time,
-                                            std::vector<int>& predict_cells_time,
+                                            const std::vector<int>& predict_cells_time,
                                             const std::vector<int>& active_cells_time,
-                                            std::vector<int>& active_segs_time,
+                                            const std::vector<int>& active_segs_time,
                                             std::vector<DistalSynapse>& distal_synapses) {
   assert(static_cast<int>(learn_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
   assert(static_cast<int>(predict_cells_time.size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
@@ -572,61 +525,6 @@ void TemporalPoolerCalculator::update_distal(int time_step,
         time_step);
     if (active_predict) {
       active_predict_cells[static_cast<std::size_t>(flat)] = 1;
-    }
-    const bool was_active_prev = check_cell_time(active_cells_time, col, cell, time_step - 1);
-    const bool was_predict_prev = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
-
-    // -------------------------------------------------------------------------
-    // Persistence (optional): extend predictive state briefly by carrying forward
-    // the most recent segment evidence for the same cell.
-    //
-    // This is deliberately decaying (countdown-based). Without a countdown, the condition
-    // "(was_predict_prev || was_active_prev)" can become an absorbing state where once a cell
-    // predicts it keeps predicting forever, even if distal support disappears.
-    // -------------------------------------------------------------------------
-    if (cfg_.enable_persistence) {
-      if (active_predict) {
-        cells_tracking_num_[static_cast<std::size_t>(flat)] += 1;
-        // While the cell is in an active-predict streak, we are not "coasting" on persistence.
-        cells_persistence_[static_cast<std::size_t>(flat)] = 0;
-      } else {
-        // If the prediction streak ended but the cell is still active, update avg persistence.
-        if (cells_tracking_num_[static_cast<std::size_t>(flat)] > 0 &&
-            check_cell_time(active_cells_time, col, cell, time_step)) {
-          update_avg_persist(cells_tracking_num_[static_cast<std::size_t>(flat)],
-                             cells_avg_persist_[static_cast<std::size_t>(flat)]);
-        }
-
-        // If a streak just ended, seed a finite "persistence countdown" based on the learned average.
-        if (cells_tracking_num_[static_cast<std::size_t>(flat)] > 0) {
-          const float avg = cells_avg_persist_[static_cast<std::size_t>(flat)];
-          const int countdown = (avg > 0.0f) ? static_cast<int>(std::lround(avg)) : 0;
-          cells_persistence_[static_cast<std::size_t>(flat)] = countdown;
-        }
-
-        cells_tracking_num_[static_cast<std::size_t>(flat)] = 0;
-      }
-
-      // Apply the countdown: while pers>0, keep the cell predicting at this timestep
-      // only if there is a segment that was active on the previous timestep to carry
-      // forward. This keeps predictive state aligned with what the burst gate expects.
-      int& pers = cells_persistence_[static_cast<std::size_t>(flat)];
-      if (pers > 0 && (was_predict_prev || was_active_prev)) {
-        const int carried_seg = find_recent_active_segment(active_segs_time, col, cell, time_step - 1);
-        if (carried_seg < 0) {
-          pers = 0;
-        } else {
-          set_active_segment(active_segs_time, col, cell, carried_seg, time_step);
-        if (!check_cell_predict(predict_cells_time, col, cell, time_step)) {
-          set_predict_cell(predict_cells_time, col, cell, time_step);
-        }
-        pers -= 1;
-        }
-      }
-    } else {
-      // Persistence disabled: make sure internal counters can't accidentally influence state.
-      cells_tracking_num_[static_cast<std::size_t>(flat)] = 0;
-      cells_persistence_[static_cast<std::size_t>(flat)] = 0;
     }
 
     // If active predictive now, reinforce/create synapses connected to prev2 learning cells.

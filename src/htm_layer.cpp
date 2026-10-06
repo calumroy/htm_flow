@@ -112,8 +112,6 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
           cfg_.min_num_syn_threshold,
           cfg_.new_syn_permanence,
           cfg_.connect_permanence,
-          cfg_.temp_delay_length,
-          cfg_.temp_enable_persistence,
       }) {
   if (cfg_.num_input_rows <= 0 || cfg_.num_input_cols <= 0 || cfg_.num_column_rows <= 0 || cfg_.num_column_cols <= 0 ||
       cfg_.pot_width <= 0 || cfg_.pot_height <= 0) {
@@ -351,22 +349,6 @@ RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& pat
     applied("temporal_pooling.enabled");
   }
 
-  if (patch.temp_enable_persistence) {
-    cfg_.temp_enable_persistence = *patch.temp_enable_persistence;
-    temporal_pool_calc_.set_enable_persistence(cfg_.temp_enable_persistence);
-    applied("temporal_pooling.enable_persistence");
-  }
-
-  if (patch.temp_delay_length) {
-    if (*patch.temp_delay_length <= 0) {
-      reject("temporal_pooling.delay_length", "must be > 0");
-    } else {
-      cfg_.temp_delay_length = *patch.temp_delay_length;
-      temporal_pool_calc_.set_delay_length(cfg_.temp_delay_length);
-      applied("temporal_pooling.delay_length");
-    }
-  }
-
   if (patch.temp_spatial_permanence_inc) {
     if (*patch.temp_spatial_permanence_inc < 0.0f) {
       reject("temporal_pooling.spatial_permanence_inc", "must be >= 0");
@@ -584,10 +566,9 @@ void HTMLayer::step_once() {
     temporal_pool_calc_.update_distal(timestep_,
                                       active_cells_calc_.get_current_learn_cells_list(),
                                       active_cells_calc_.get_learn_cells_time(),
-                                      predict_cells_calc_.get_predict_cells_time_mutable(),
+                                      predict_cells_calc_.get_predict_cells_time(),
                                       active_cells_calc_.get_active_cells_time(),
-                                      // TP persistence may carry a real segment timestamp forward.
-                                      predict_cells_calc_.get_active_segs_time_mutable(),
+                                      predict_cells_calc_.get_active_segs_time(),
                                       distal_synapses_);
     const auto proximal_stats = temporal_pool_calc_.update_proximal(
         timestep_,

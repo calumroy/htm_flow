@@ -142,8 +142,6 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
   if (node["temporal_pooling"]) {
     const auto& tp = node["temporal_pooling"];
     cfg.temp_enabled = get_or(tp, "enabled", cfg.temp_enabled);
-    cfg.temp_enable_persistence = get_or(tp, "enable_persistence", cfg.temp_enable_persistence);
-    cfg.temp_delay_length = get_or(tp, "delay_length", cfg.temp_delay_length);
     cfg.temp_spatial_permanence_inc = get_or(tp, "spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
     cfg.temp_active_predict_proximal_scale =
         get_or(tp, "active_predict_proximal_scale", cfg.temp_active_predict_proximal_scale);
@@ -153,8 +151,6 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
     cfg.temp_sequence_permanence_dec = get_or(tp, "sequence_permanence_dec", cfg.temp_sequence_permanence_dec);
   }
   cfg.temp_enabled = get_or(node, "temp_enabled", cfg.temp_enabled);
-  cfg.temp_enable_persistence = get_or(node, "temp_enable_persistence", cfg.temp_enable_persistence);
-  cfg.temp_delay_length = get_or(node, "temp_delay_length", cfg.temp_delay_length);
   cfg.temp_spatial_permanence_inc = get_or(node, "temp_spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
   cfg.temp_active_predict_proximal_scale =
       get_or(node, "temp_active_predict_proximal_scale", cfg.temp_active_predict_proximal_scale);
@@ -272,7 +268,7 @@ HTMLayerRuntimePatch parse_runtime_layer_patch_node(const YAML::Node& node,
       errors.push_back(path + ".temporal_pooling must be a map.");
     } else {
       reject_unknown_keys(temporal_pooling,
-                          {"enabled", "enable_persistence", "delay_length",
+                          {"enabled",
                            "spatial_permanence_inc",
                            "active_predict_proximal_scale",
                            "post_active_proximal_scale",
@@ -281,13 +277,6 @@ HTMLayerRuntimePatch parse_runtime_layer_patch_node(const YAML::Node& node,
                           errors);
       if (temporal_pooling["enabled"]) {
         patch.temp_enabled = temporal_pooling["enabled"].as<bool>();
-      }
-      if (temporal_pooling["enable_persistence"]) {
-        patch.temp_enable_persistence =
-            temporal_pooling["enable_persistence"].as<bool>();
-      }
-      if (temporal_pooling["delay_length"]) {
-        patch.temp_delay_length = temporal_pooling["delay_length"].as<int>();
       }
       if (temporal_pooling["spatial_permanence_inc"]) {
         patch.temp_spatial_permanence_inc =
@@ -372,8 +361,6 @@ void emit_layer_node(YAML::Emitter& out, const HTMLayerConfig& cfg, int layer_in
 
   out << YAML::Key << "temporal_pooling" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "enabled" << YAML::Value << cfg.temp_enabled;
-  out << YAML::Key << "enable_persistence" << YAML::Value << cfg.temp_enable_persistence;
-  out << YAML::Key << "delay_length" << YAML::Value << cfg.temp_delay_length;
   out << YAML::Key << "spatial_permanence_inc" << YAML::Value << cfg.temp_spatial_permanence_inc;
   out << YAML::Key << "active_predict_proximal_scale" << YAML::Value << cfg.temp_active_predict_proximal_scale;
   out << YAML::Key << "post_active_proximal_scale" << YAML::Value << cfg.temp_post_active_proximal_scale;

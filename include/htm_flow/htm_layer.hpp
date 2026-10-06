@@ -47,9 +47,9 @@ namespace htm_flow {
 ///    - Sequence Learning: Grows and reinforces distal synapses to learn
 ///      temporal sequences.
 ///
-/// 5. **Temporal Pooling**: Maintains stable cell representations across sequence
-///    elements. Correctly-predicting cells persist longer, creating invariant
-///    representations for learned sequences.
+/// 5. **Temporal Pooling**: Maintains stable column representations across
+///    sequence elements. Correctly predicted columns learn proximal input and
+///    distal context so they can win across more of a learned sequence.
 ///
 /// The layer implements IHtmRuntime, allowing direct visualization in the GUI.
 /// For multi-layer hierarchies, use HTMRegion to stack layers together.

@@ -48,8 +48,6 @@ HtmPipelineHarness::Config suiteConfig() {
   c.seq_perm_dec            = 0.02f;
   c.temp_spatial_perm_inc   = 0.05f;
   c.temp_seq_perm_inc       = 0.05f;
-  c.temp_delay_length       = 4;
-  c.temp_enable_persistence = true;
   c.rng_seed                = 123u;
   return c;
 }

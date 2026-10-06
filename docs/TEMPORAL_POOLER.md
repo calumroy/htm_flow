@@ -192,9 +192,6 @@ The temporal pooler uses state produced by earlier layer stages:
 
 It also stores:
 
-- The length of each active-predict streak.
-- The learned average streak length.
-- A persistence countdown for each cell.
 - Whether each column has active-predict support.
 - Recent learning-cell entry events.
 
@@ -240,29 +237,12 @@ predictive at t-1 AND active at t
 
 Cells that satisfy both conditions are active-predict cells.
 
-#### 4. Apply optional persistence
+The temporal pooler reads predictive state but never sets it. Only
+`PredictCellsCalculator` makes a cell predictive, and only when one of its
+segments has more than `activation_threshold` connected synapses onto currently
+active cells.
 
-Persistence can keep a cell predictive for a short time after an active-predict
-streak ends.
-
-Persistence is only applied when the same cell had an active distal segment at
-`t-1`. The pooler carries that segment timestamp forward with the prediction.
-
-```text
-t-1:
-cell predictive + segment active
-              |
-              v
-t:
-prediction carried forward + same segment carried forward
-```
-
-The segment requirement prevents an unsupported predictive bit from bypassing
-the burst gate.
-
-Persistence is disabled when `enable_persistence` is `false`.
-
-#### 5. Reinforce or create a distal segment
+#### 4. Reinforce or create a distal segment
 
 For each active-predict cell, the pooler finds the segment with the strongest
 match to the `prev2` context.
@@ -279,7 +259,7 @@ If no matching segment exists:
 - The least recently used segment is selected.
 - Its synapses are replaced with connections to `prev2` cells.
 
-#### 6. Count active-predict support by column
+#### 5. Count active-predict support by column
 
 The pooler counts how many active-predict cells each column contains.
 
@@ -365,30 +345,6 @@ Purpose: Enables both distal and proximal temporal-pooling updates.
 When false, normal spatial learning and sequence memory still run.
 
 It maps to `HTMLayerConfig::temp_enabled`.
-
-### `enable_persistence`
-
-Type: Boolean.
-
-Purpose: Allows predictive state to continue for a learned number of timesteps
-after an active-predict streak ends.
-
-Persistence also carries forward the same cell's active segment timestamp.
-
-Recommended current setting: `false`.
-
-Persistence is more fragile than the distal and proximal learning paths.
-
-### `delay_length`
-
-Type: Positive integer.
-
-Purpose: Controls how quickly the learned average persistence length changes.
-
-It does not directly set a fixed number of persistence steps.
-
-This setting has no effect on predictive state when `enable_persistence` is
-false.
 
 ### `spatial_permanence_inc`
 
@@ -516,8 +472,6 @@ If it is too low, too many cells can become predictive.
 ```yaml
 temporal_pooling:
   enabled: true
-  enable_persistence: false
-  delay_length: 4
   spatial_permanence_inc: 0.01
   active_predict_proximal_scale: 0.25
   post_active_proximal_scale: 0.0
@@ -538,8 +492,6 @@ At timestep 1000 it applies:
 ```yaml
 temporal_pooling:
   enabled: true
-  enable_persistence: false
-  delay_length: 16
   spatial_permanence_inc: 0.12
   active_predict_proximal_scale: 5.0
   post_active_proximal_scale: 5.0
@@ -679,14 +631,6 @@ The first settings to reduce are:
 2. `spatial_permanence_inc`
 
 Do not weaken the burst gate to hide this problem.
-
-### Persistence remains fragile
-
-Persistence is segment-backed, but it can still broaden predictive activity and
-increase cross-sequence interference.
-
-Keep `enable_persistence: false` until base temporal pooling passes stability,
-separation, recall, and burst tests.
 
 ### Sequence boundaries are not explicit
 

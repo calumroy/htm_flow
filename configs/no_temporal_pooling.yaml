@@ -1,7 +1,7 @@
 # No Temporal Pooling Configuration
 # 3-layer region with temporal pooling disabled in all layers.
 # Useful for testing pure spatial pooling and sequence memory without
-# the temporal pooling persistence mechanism.
+# temporal pooling.
 
 enable_feedback: false
 
@@ -43,7 +43,6 @@ layers:
       permanence_dec: 0.05
     temporal_pooling:
       enabled: false  # No temporal pooling
-      delay_length: 4
       spatial_permanence_inc: 0.01
       sequence_permanence_inc: 0.01
 

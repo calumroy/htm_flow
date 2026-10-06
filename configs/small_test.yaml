@@ -42,7 +42,6 @@ layers:
       permanence_dec: 0.05
     temporal_pooling:
       enabled: false
-      delay_length: 1
       spatial_permanence_inc: 0.02
       sequence_permanence_inc: 0.02
 
@@ -65,6 +64,5 @@ layers:
       max_synapses_per_segment: 10
     temporal_pooling:
       enabled: false
-      delay_length: 3
       spatial_permanence_inc: 0.05
       sequence_permanence_inc: 0.05

@@ -33,15 +33,10 @@ The main reason is that a column only avoids bursting when a cell was both:
 - predictive at `t-1`
 - backed by an active sequence segment at `t-1`
 
-Temporal pooling can interfere with that in two ways:
-
-1. It updates the same proximal permanence tensor already used by spatial
-   learning, so TP can make columns win inhibition before distal sequence
-   structure is strong enough to support non-bursting predictions.
-2. If TP persistence is too aggressive, it can still amplify bursting pressure.
-   The current calculator now carries forward recent segment evidence together
-   with persistence-based predictive state so it no longer creates the old
-   "predictive but still bursts" mismatch by itself.
+Temporal pooling interferes with that because it updates the same proximal
+permanence tensor already used by spatial learning, so TP can make columns win
+inhibition before distal sequence structure is strong enough to support
+non-bursting predictions.
 
 The current calculator applies local safeguards:
 
@@ -65,36 +60,16 @@ The current calculator applies local safeguards:
 
 Several local fixes are now in place.
 
-1. **Persistence must stay segment-backed.**
+1. **Persistence was removed.**
 
-   `TemporalPoolerCalculator::update_distal()` now receives mutable
-   `active_segs_time` from `PredictCellsCalculator`. When persistence extends a
-   cell's predictive state from timestep `t-1` to `t`, it also copies that same
-   cell's active segment timestamp from `t-1` to `t`.
+   Temporal pooling used to have an optional persistence mode. It kept a cell
+   predictive for a few timesteps after its active-predict streak ended, and
+   copied the cell's active segment timestamp forward so the burst gate accepted
+   the prediction. Those predictions had no support from current distal input,
+   and the GUI showed predictive cells with no segment over threshold.
 
-   This matters because `ActiveCellsCalculator` avoids bursting on timestep
-   `t+1` only if, at timestep `t`, the cell was both:
-
-   - predictive in `predict_cells_time`
-   - has at least one segment whose `active_segs_time` entry is `t`
-
-   Without copying the segment timestamp, persistence could create a predictive
-   bit that still fails the next burst-gate check.
-
-   This is not claiming the segment became newly active from current synapse
-   input. It deliberately treats the segment that was active at `t-1` as still
-   active for one persisted prediction step. In other words, persistence is
-   saying: "use the previous segment as the reason this cell remains
-   predictive." That makes the timestamp a carried-forward temporal-pooling
-   state, not a fresh `PredictCellsCalculator` segment activation.
-
-   This is safe because `active_segs_time` stores the **last timestep a segment
-   is considered active**, not the first timestep it became active. Normal
-   prediction updates that timestamp when current active cells drive the segment
-   over threshold. TP persistence updates that timestamp when the same segment
-   was active at `t-1` and is being carried forward for one persistence step.
-   So the meaning becomes: "latest timestep this segment is active, either from
-   fresh distal input or from TP persistence."
+   The temporal pooler now reads `predict_cells_time` and `active_segs_time`
+   but never writes them. Only `PredictCellsCalculator` sets predictive state.
 
 2. **TP proximal learning is trust-gated.**
 
@@ -188,12 +163,9 @@ Important supporting code paths:
   - `update_distal()` changes `distal_synapses_`
   - reused TP distal segments are matched and reinforced against `prev2`
     learning-cell context
-  - optional persistence now carries forward the same cell's active segment
-    timestamp when it extends predictive state
 - `htm_flow/src/sequence_pooler/predict_cells/predict_cells.cpp`
-  - `active_segs_time_` is produced here from connected distal support
-  - `get_active_segs_time_mutable()` exposes that timestamp buffer so TP
-    persistence can carry a real segment timestamp forward
+  - `predict_cells_time_` and `active_segs_time_` are produced only here,
+    from connected distal support
 
 ## Important Investigation Notes
 
@@ -211,28 +183,14 @@ Important supporting code paths:
     reinforcement step
 - Because TP proximal is now trust-gated, stronger TP settings can be explored
   with less risk of immediately reintroducing Layer 1 burst spikes.
-- If `new_true_burst_causes` reports `no_prev_prediction`, the problem is not
-  segment timestamp persistence. It means proximal pressure is activating
+- If `new_true_burst_causes` reports `no_prev_prediction`, proximal pressure is activating
   columns that distal sequence memory did not predict on the previous timestep.
   Back off `spatial_permanence_inc` and `post_active_proximal_scale` before
   changing active-cells bursting logic.
-- Persistence bookkeeping is now internally consistent with the burst gate, but
-  persistence is still disabled by default because it is more fragile than base
-  TP learning.
 - If delayed TP causes new winners to burst, first reduce
   `post_active_proximal_scale`. That path teaches columns shortly after a
   correct activation, so it is the first local knob to check before lowering all
   TP learning.
-- Carrying a segment timestamp forward is intentionally narrow: it only happens
-  for a cell that already had an active segment on the previous timestep. This
-  makes persistence visible to the next burst-gate check, but it also means
-  active-segment timestamps can now be refreshed by either normal prediction or
-  TP persistence. Keep this in mind when debugging segment traces: the timestamp
-  means "last considered active," not "freshly activated by current input."
-- If someone wants to strengthen TP persistence further in the future, the
-  first place to inspect is the persistence logic in
-  `htm_flow/src/temporal_pooler/temporal_pooler.cpp`, because that is where TP
-  predictive state is coupled to segment evidence.
 
 ## Current Config Direction
 
@@ -243,7 +201,6 @@ The delayed-runtime reference config is:
 
 Layer 1 temporal pooling is enabled at timestep 1000 with:
 
-- `enable_persistence: false`
 - `spatial_permanence_inc: 0.12`
 - `active_predict_proximal_scale: 0.25`
 - `post_active_proximal_scale: 0.5`
@@ -253,10 +210,8 @@ Layer 1 also uses six cells per column and sequence-memory
 `activation_threshold: 4` so learned distal segments can predict familiar
 word-row transitions without becoming overly broad.
 
-Generic `HTMLayerConfig` defaults now also bias toward safer TP startup:
-
-- `temp_enable_persistence: false`
-- `temp_sequence_permanence_inc > temp_spatial_permanence_inc`
+Generic `HTMLayerConfig` defaults now also bias toward safer TP startup
+(`temp_sequence_permanence_inc > temp_spatial_permanence_inc`).
 
 This is meant to avoid temporary selection effects that make columns win without
 improving their real proximal support. TP proximal learning now changes the same
@@ -281,8 +236,6 @@ Relevant tests:
   - keeps the original diagnostic scenario where TP is applied at runtime
 - `TextHTMIntegration.AlwaysOnTemporalPoolingDoesNotRaiseLayer1BurstingVsNoTP`
   - compares always-on TP against a TP-off control
-- `TextHTMIntegration.AlwaysOnTemporalPoolingWithPersistenceDoesNotRaiseLayer1BurstingVsNoTP`
-  - verifies that TP persistence no longer reintroduces a large Layer 1 burst spike
 - `TextHTMIntegration.StrongTemporalPoolingDoesNotRaiseLayer1BurstingVsNoTP`
   - verifies that a much stronger Layer 1 TP setup does not automatically bring
     back the old burst failure mode
@@ -290,8 +243,6 @@ Relevant tests:
 Calculator-level coverage lives in:
 
 - `htm_flow/test/unit/test_temporal_pooler.cpp`
-  - checks that persistence now requires recent segment evidence
-  - checks that persistence carries that segment evidence forward
   - checks active-predict-gated TP proximal updates
   - checks predictive non-winner and post-active predictive non-winner proximal
     reinforcement
@@ -306,7 +257,7 @@ cmake --build build --target chat_htm_tests
 For stronger TP tuning experiments, also run:
 
 ```bash
-./build/chat_htm_tests --gtest_filter=TextHTMIntegration.AlwaysOnTemporalPoolingWithPersistenceDoesNotRaiseLayer1BurstingVsNoTP:TextHTMIntegration.StrongTemporalPoolingDoesNotRaiseLayer1BurstingVsNoTP
+./build/chat_htm_tests --gtest_filter=TextHTMIntegration.StrongTemporalPoolingDoesNotRaiseLayer1BurstingVsNoTP
 ```
 
 ## What To Look At During Debugging
@@ -317,8 +268,6 @@ When investigating this issue again, check:
   predictive coverage
 - whether bursting rises because TP proximal learning is bypassing the intended
   local temporal-support gate
-- whether persistence was enabled and is producing predictive state without
-  valid segment evidence
 - whether distal learning rates and thresholds make it too hard for TP-created
   synapses to become useful before new columns start winning
 - whether TP distal segment creation/reuse is actually producing connected

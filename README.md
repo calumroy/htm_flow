@@ -214,8 +214,6 @@ layers:
       max_segments_per_cell: 4
     temporal_pooling:
       enabled: true              # Enable/disable temporal pooling per layer
-      enable_persistence: true   # Optional: disable persistence only
-      delay_length: 4
       spatial_permanence_inc: 0.1
 
   - name: Layer1_Top
