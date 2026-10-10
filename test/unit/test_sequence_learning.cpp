@@ -25,122 +25,252 @@ inline int idx_cell_time(int cells_per_col, int col, int cell, int slot) {
 
 } // namespace
 
-TEST(SequenceLearningRegression, predict_update_struct_persists_and_reinforces_on_learning) {
-  /*
-  What we are testing (and why this test exists):
-  - This is a REGRESSION test for a bug where predict-cells cleared its "update structures"
-    at the start of each timestep, preventing sequence learning from consuming them.
-  - The sequence learning algorithm relies on update structures created when a cell ENTERS
-    the predictive state. These structures record which segment/synapses caused prediction.
-  - If these structures are cleared before sequence learning runs, positive reinforcement
-    (incrementing synapse permanences) cannot occur for correctly predicted cells.
+struct ActiveUpdateState {
+  std::vector<int> segment;
+  std::vector<int8_t> active_synapses;
+  std::vector<int> new_segment;
+  std::vector<DistalSynapse> new_synapses;
+};
 
-  The core invariant being tested:
-  - When a cell becomes predictive at time T, and then enters learning at time T+1,
-    the update structures from T must still be available for sequence learning at T+1.
-  - Sequence learning should consume these structures and reinforce the responsible synapses.
+ActiveUpdateState make_active_update_state(int num_cells, int max_synapses) {
+  return ActiveUpdateState{
+      std::vector<int>(num_cells, -1),
+      std::vector<int8_t>(num_cells * max_synapses, 0),
+      std::vector<int>(num_cells, -1),
+      std::vector<DistalSynapse>(
+          num_cells * max_synapses, DistalSynapse{0, 0, -1.0f}),
+  };
+}
 
-  Why a minimal topology (1 column, 1 cell, 1 segment, 2 synapses):
-  - Eliminates confounding factors from column competition or cell selection.
-  - Makes the cause-and-effect chain unambiguous: if permanence increases, it must be
-    because the update structure was correctly preserved and consumed.
+void run_sequence_learning(SequenceLearningCalculator& learning,
+                           PredictCellsCalculator& prediction,
+                           int time_step,
+                           const std::vector<int>& active_cells_time,
+                           const std::vector<int>& learn_cells_time,
+                           std::vector<DistalSynapse>& distal,
+                           ActiveUpdateState& active_updates) {
+  learning.calculate_sequence_learning(
+      time_step,
+      active_cells_time,
+      learn_cells_time,
+      prediction.get_prev_active_segment_syn_bits(),
+      prediction.get_current_best_segments(),
+      prediction.get_current_active_segment_syn_bits(),
+      prediction.synapse_words_per_segment(),
+      distal,
+      active_updates.segment,
+      active_updates.active_synapses,
+      active_updates.new_segment,
+      active_updates.new_synapses,
+      prediction.get_seg_ind_update_mutable(),
+      prediction.get_seg_active_syn_mutable());
+}
 
-  Test steps:
-  1. Create a minimal network: 1 column, 1 cell, 1 segment with 2 synapses (perm=0.3).
-  2. At t=1: Make the cell active. Run predict-cells to put the cell into predictive state.
-     -> This creates an update structure recording that segment 0 caused prediction.
-  3. At t=2: Make the cell enter learning state (learn_now && !learn_prev).
-     -> Run sequence learning, which should find and consume the update structure from t=1.
-     -> Positive reinforcement should increment synapse permanences above 0.3.
-  4. Assert: At least one synapse has permanence > 0.3, proving the update was consumed.
-  */
+TEST(SequenceLearningRegression, previous_prediction_reinforces_on_learning) {
+  constexpr int num_columns = 1;
+  constexpr int cells_per_column = 1;
+  constexpr int max_segments = 1;
+  constexpr int max_synapses = 2;
 
-  // Topology: single column, single cell, single segment, two synapses.
-  const int num_columns = 1;
-  const int cells_per_column = 1;
-  const int max_segments = 1;
-  const int max_syn = 2;
-
-  PredictCellsCalculator pred(PredictCellsCalculator::Config{
-      num_columns,
-      cells_per_column,
-      max_segments,
-      max_syn,
-      /*connect_permanence=*/0.2f,
-      /*activation_threshold=*/0, // any connected active synapse will trigger prediction
-  });
-
-  SequenceLearningCalculator sl(SequenceLearningCalculator::Config{
-      num_columns,
-      cells_per_column,
-      max_segments,
-      max_syn,
+  PredictCellsCalculator prediction(PredictCellsCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f, /*activation_threshold=*/0});
+  SequenceLearningCalculator learning(SequenceLearningCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
       /*connect_permanence=*/0.2f,
       /*permanence_inc=*/0.1f,
-      /*permanence_dec=*/0.05f,
-  });
+      /*permanence_dec=*/0.05f});
 
-  // Distal synapses: origin (0,0,seg0) -> both endpoints point to (0,0) with perm 0.3.
-  std::vector<DistalSynapse> distal(static_cast<std::size_t>(num_columns * cells_per_column * max_segments * max_syn));
-  for (int syn = 0; syn < max_syn; ++syn) {
-    const std::size_t idx = idx_distal_synapse(0, 0, 0, static_cast<std::size_t>(syn),
-                                               static_cast<std::size_t>(cells_per_column),
-                                               static_cast<std::size_t>(max_segments),
-                                               static_cast<std::size_t>(max_syn));
-    distal[idx] = DistalSynapse{/*target_col=*/0, /*target_cell=*/0, /*perm=*/0.3f};
-  }
-
-  // State tensors.
+  std::vector<DistalSynapse> distal(
+      num_columns * cells_per_column * max_segments * max_synapses,
+      DistalSynapse{0, 0, 0.3f});
   std::vector<int> active_cells_time(num_columns * cells_per_column * 2, -1);
   std::vector<int> learn_cells_time(num_columns * cells_per_column * 2, -1);
-  // NOTE: predict_cells_time is owned by PredictCellsCalculator.
+  ActiveUpdateState active_updates =
+      make_active_update_state(num_columns * cells_per_column, max_synapses);
 
-  // ----------------------------------------------------------------------------
-  // t=1: make the cell active so it enters predictive state and emits update tensors.
-  // ----------------------------------------------------------------------------
   active_cells_time[idx_cell_time(cells_per_column, 0, 0, 0)] = 1;
-  pred.calculate_predict_cells(/*time_step=*/1, active_cells_time, distal);
+  prediction.calculate_predict_cells(1, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 1, active_cells_time, learn_cells_time, distal, active_updates);
 
-  // The cell should now be predictive at t=1.
-  {
-    const auto& pct = pred.get_predict_cells_time();
-    const int p0 = pct[idx_cell_time(cells_per_column, 0, 0, 0)];
-    const int p1 = pct[idx_cell_time(cells_per_column, 0, 0, 1)];
-    EXPECT_TRUE(p0 == 1 || p1 == 1);
-  }
-
-  // ----------------------------------------------------------------------------
-  // t=2: the cell enters learning (learn_now && !learn_prev), and sequence learning
-  // should consume the predict-cells update structure created when the cell ENTERED
-  // predictive state. This is the behavior that was broken when predict-cells cleared
-  // update tensors each timestep.
-  // ----------------------------------------------------------------------------
+  active_cells_time[idx_cell_time(cells_per_column, 0, 0, 1)] = 2;
   learn_cells_time[idx_cell_time(cells_per_column, 0, 0, 0)] = 2;
+  prediction.calculate_predict_cells(2, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 2, active_cells_time, learn_cells_time, distal, active_updates);
 
-  // No active-cells-side update structures in this unit test.
-  std::vector<int> seg_ind_update_active(num_columns * cells_per_column, -1);
-  std::vector<int8_t> seg_active_syn_active(num_columns * cells_per_column * max_syn, 0);
-  std::vector<int> seg_ind_new_syn_active(num_columns * cells_per_column, -1);
-  std::vector<DistalSynapse> seg_new_syn_active(num_columns * cells_per_column * max_syn, DistalSynapse{0, 0, -1.0f});
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.4f);
+  EXPECT_FLOAT_EQ(distal[1].perm, 0.4f);
+}
 
-  sl.calculate_sequence_learning(/*time_step=*/2,
-                                active_cells_time,
-                                learn_cells_time,
-                                pred.get_predict_cells_time(),
-                                distal,
-                                seg_ind_update_active,
-                                seg_active_syn_active,
-                                seg_ind_new_syn_active,
-                                seg_new_syn_active,
-                                pred.get_seg_ind_update_mutable(),
-                                pred.get_seg_active_syn_mutable());
+TEST(SequenceLearningRegression, segment_handoff_punishes_a_and_queues_b) {
+  constexpr int num_columns = 3;
+  constexpr int cells_per_column = 1;
+  constexpr int max_segments = 2;
+  constexpr int max_synapses = 1;
 
-  // At least one synapse should have increased above 0.3 due to positive reinforcement.
-  float max_perm = 0.0f;
-  for (const auto& s : distal) {
-    max_perm = std::max(max_perm, s.perm);
-  }
-  EXPECT_GT(max_perm, 0.3f);
+  PredictCellsCalculator prediction(PredictCellsCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f, /*activation_threshold=*/0});
+  SequenceLearningCalculator learning(SequenceLearningCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f,
+      /*permanence_inc=*/0.1f,
+      /*permanence_dec=*/0.05f});
+
+  std::vector<DistalSynapse> distal(
+      num_columns * cells_per_column * max_segments * max_synapses,
+      DistalSynapse{0, 0, 0.0f});
+  const std::size_t seg_a = idx_distal_synapse(0, 0, 0, 0, 1, 2, 1);
+  const std::size_t seg_b = idx_distal_synapse(0, 0, 1, 0, 1, 2, 1);
+  distal[seg_a] = DistalSynapse{1, 0, 0.5f};
+  distal[seg_b] = DistalSynapse{2, 0, 0.5f};
+
+  std::vector<int> active_cells_time(num_columns * 2, -1);
+  std::vector<int> learn_cells_time(num_columns * 2, -1);
+  ActiveUpdateState active_updates =
+      make_active_update_state(num_columns, max_synapses);
+
+  active_cells_time[idx_cell_time(1, 1, 0, 0)] = 1;
+  prediction.calculate_predict_cells(1, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 1, active_cells_time, learn_cells_time, distal, active_updates);
+
+  active_cells_time[idx_cell_time(1, 2, 0, 0)] = 2;
+  prediction.calculate_predict_cells(2, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 2, active_cells_time, learn_cells_time, distal, active_updates);
+
+  EXPECT_FLOAT_EQ(distal[seg_a].perm, 0.45f);
+  EXPECT_FLOAT_EQ(distal[seg_b].perm, 0.5f);
+  EXPECT_EQ(prediction.get_seg_ind_update()[0], 1);
+
+  active_cells_time[idx_cell_time(1, 0, 0, 0)] = 3;
+  learn_cells_time[idx_cell_time(1, 0, 0, 0)] = 3;
+  prediction.calculate_predict_cells(3, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 3, active_cells_time, learn_cells_time, distal, active_updates);
+
+  EXPECT_FLOAT_EQ(distal[seg_a].perm, 0.45f);
+  EXPECT_FLOAT_EQ(distal[seg_b].perm, 0.6f);
+}
+
+TEST(SequenceLearningRegression, all_failed_segments_are_decremented_once) {
+  constexpr int num_columns = 3;
+  constexpr int cells_per_column = 1;
+  constexpr int max_segments = 2;
+  constexpr int max_synapses = 1;
+
+  PredictCellsCalculator prediction(PredictCellsCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f, /*activation_threshold=*/0});
+  SequenceLearningCalculator learning(SequenceLearningCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f,
+      /*permanence_inc=*/0.1f,
+      /*permanence_dec=*/0.05f});
+
+  std::vector<DistalSynapse> distal(
+      num_columns * cells_per_column * max_segments * max_synapses,
+      DistalSynapse{0, 0, 0.0f});
+  const std::size_t seg_a = idx_distal_synapse(0, 0, 0, 0, 1, 2, 1);
+  const std::size_t seg_b = idx_distal_synapse(0, 0, 1, 0, 1, 2, 1);
+  distal[seg_a] = DistalSynapse{1, 0, 0.5f};
+  distal[seg_b] = DistalSynapse{2, 0, 0.5f};
+
+  std::vector<int> active_cells_time(num_columns * 2, -1);
+  std::vector<int> learn_cells_time(num_columns * 2, -1);
+  ActiveUpdateState active_updates =
+      make_active_update_state(num_columns, max_synapses);
+
+  active_cells_time[idx_cell_time(1, 1, 0, 0)] = 1;
+  active_cells_time[idx_cell_time(1, 2, 0, 0)] = 1;
+  prediction.calculate_predict_cells(1, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 1, active_cells_time, learn_cells_time, distal, active_updates);
+
+  prediction.calculate_predict_cells(2, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 2, active_cells_time, learn_cells_time, distal, active_updates);
+
+  EXPECT_FLOAT_EQ(distal[seg_a].perm, 0.45f);
+  EXPECT_FLOAT_EQ(distal[seg_b].perm, 0.45f);
+}
+
+TEST(SequenceLearningRegression, failed_segment_decrements_only_causal_synapses) {
+  constexpr int num_columns = 3;
+  constexpr int cells_per_column = 1;
+  constexpr int max_segments = 1;
+  constexpr int max_synapses = 2;
+
+  PredictCellsCalculator prediction(PredictCellsCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f, /*activation_threshold=*/0});
+  SequenceLearningCalculator learning(SequenceLearningCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f,
+      /*permanence_inc=*/0.1f,
+      /*permanence_dec=*/0.05f});
+
+  std::vector<DistalSynapse> distal(
+      num_columns * cells_per_column * max_segments * max_synapses,
+      DistalSynapse{0, 0, 0.0f});
+  distal[0] = DistalSynapse{1, 0, 0.5f};
+  distal[1] = DistalSynapse{2, 0, 0.5f};
+  std::vector<int> active_cells_time(num_columns * 2, -1);
+  std::vector<int> learn_cells_time(num_columns * 2, -1);
+  ActiveUpdateState active_updates =
+      make_active_update_state(num_columns, max_synapses);
+
+  active_cells_time[idx_cell_time(1, 1, 0, 0)] = 1;
+  prediction.calculate_predict_cells(1, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 1, active_cells_time, learn_cells_time, distal, active_updates);
+
+  prediction.calculate_predict_cells(2, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 2, active_cells_time, learn_cells_time, distal, active_updates);
+
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.45f);
+  EXPECT_FLOAT_EQ(distal[1].perm, 0.5f);
+}
+
+TEST(SequenceLearningRegression, active_cell_does_not_punish_predicting_segment) {
+  constexpr int num_columns = 2;
+  constexpr int cells_per_column = 1;
+  constexpr int max_segments = 1;
+  constexpr int max_synapses = 1;
+
+  PredictCellsCalculator prediction(PredictCellsCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f, /*activation_threshold=*/0});
+  SequenceLearningCalculator learning(SequenceLearningCalculator::Config{
+      num_columns, cells_per_column, max_segments, max_synapses,
+      /*connect_permanence=*/0.2f,
+      /*permanence_inc=*/0.1f,
+      /*permanence_dec=*/0.05f});
+
+  std::vector<DistalSynapse> distal(
+      num_columns * cells_per_column * max_segments * max_synapses,
+      DistalSynapse{0, 0, 0.0f});
+  distal[0] = DistalSynapse{1, 0, 0.5f};
+  std::vector<int> active_cells_time(num_columns * 2, -1);
+  std::vector<int> learn_cells_time(num_columns * 2, -1);
+  ActiveUpdateState active_updates =
+      make_active_update_state(num_columns, max_synapses);
+
+  active_cells_time[idx_cell_time(1, 1, 0, 0)] = 1;
+  prediction.calculate_predict_cells(1, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 1, active_cells_time, learn_cells_time, distal, active_updates);
+
+  active_cells_time[idx_cell_time(1, 0, 0, 0)] = 2;
+  prediction.calculate_predict_cells(2, active_cells_time, distal);
+  run_sequence_learning(
+      learning, prediction, 2, active_cells_time, learn_cells_time, distal, active_updates);
+
+  EXPECT_FLOAT_EQ(distal[0].perm, 0.5f);
 }
 
 

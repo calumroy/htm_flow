@@ -12,6 +12,24 @@ HTM is a biologically-inspired machine learning algorithm that models the neocor
 
 The architecture allows flexible configuration and testing of single layers, multi-layer regions, or complete networks.
 
+## Sequence-Memory Segment Learning
+
+An active distal segment predicts its cell for the next timestep.
+
+Sequence learning judges each segment separately. If the cell does not become
+active, every segment that predicted it loses permanence on the synapses that
+caused the prediction. Another segment can keep the cell predictive, but it
+cannot hide the first segment's failed prediction.
+
+The predictor also records the best current segment. Sequence learning queues
+that segment for the next timestep. If support moves from segment A to segment
+B, a later correct activation reinforces B, not A.
+
+The prediction history uses packed bits. Each bit records whether one synapse
+caused a segment prediction. With the current 10–20 synapses per segment, each
+snapshot uses one 8-byte word per segment. The current and previous snapshots
+use 16 bytes per segment in total. Per-synapse timestamps would use more memory.
+
 ## Quick Start
 
 ```bash

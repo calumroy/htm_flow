@@ -15,6 +15,15 @@ PredictCellsCalculator::PredictCellsCalculator(const Config& cfg) : cfg_(cfg) {
   active_segs_time_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell, -1);
   seg_ind_update_.assign(cfg_.num_columns * cfg_.cells_per_column, -1);
   seg_active_syn_.assign(cfg_.num_columns * cfg_.cells_per_column * cfg_.max_synapses_per_segment, 0);
+
+  const int num_cells = cfg_.num_columns * cfg_.cells_per_column;
+  const int num_segments = num_cells * cfg_.max_segments_per_cell;
+  synapse_words_per_segment_ = (cfg_.max_synapses_per_segment + 63) / 64;
+  prev_active_segment_syn_bits_.assign(
+      static_cast<std::size_t>(num_segments) * synapse_words_per_segment_, 0);
+  current_active_segment_syn_bits_.assign(
+      static_cast<std::size_t>(num_segments) * synapse_words_per_segment_, 0);
+  current_best_segments_.assign(num_cells, -1);
 }
 
 const std::vector<int>& PredictCellsCalculator::get_predict_cells_time() const {
@@ -33,6 +42,18 @@ const std::vector<int8_t>& PredictCellsCalculator::get_seg_active_syn() const {
   return seg_active_syn_;
 }
 
+const std::vector<std::uint64_t>& PredictCellsCalculator::get_prev_active_segment_syn_bits() const {
+  return prev_active_segment_syn_bits_;
+}
+
+const std::vector<int>& PredictCellsCalculator::get_current_best_segments() const {
+  return current_best_segments_;
+}
+
+const std::vector<std::uint64_t>& PredictCellsCalculator::get_current_active_segment_syn_bits() const {
+  return current_active_segment_syn_bits_;
+}
+
 std::vector<int>& PredictCellsCalculator::get_seg_ind_update_mutable() {
   return seg_ind_update_;
 }
@@ -48,12 +69,6 @@ bool PredictCellsCalculator::check_cell_active(const std::vector<int>& active_ce
   const int a0 = active_cells_time[idx_cell_time(col, cell, 0)];
   const int a1 = active_cells_time[idx_cell_time(col, cell, 1)];
   return (a0 == time_step) || (a1 == time_step);
-}
-
-bool PredictCellsCalculator::check_cell_predicting(int col, int cell, int time_step) const {
-  const int p0 = predict_cells_time_[idx_cell_time(col, cell, 0)];
-  const int p1 = predict_cells_time_[idx_cell_time(col, cell, 1)];
-  return (p0 == time_step) || (p1 == time_step);
 }
 
 void PredictCellsCalculator::set_predict_cell(int col, int cell, int time_step) {
@@ -95,13 +110,14 @@ int PredictCellsCalculator::count_active_connected_synapses(const std::vector<in
   return count;
 }
 
-void PredictCellsCalculator::fill_seg_active_syn_list(const std::vector<int>& active_cells_time,
-                                                      const std::vector<DistalSynapse>& distal_synapses,
-                                                      int time_step,
-                                                      int col,
-                                                      int cell,
-                                                      int seg,
-                                                      int8_t* out01) const {
+void PredictCellsCalculator::fill_active_synapse_bits(
+    const std::vector<int>& active_cells_time,
+    const std::vector<DistalSynapse>& distal_synapses,
+    int time_step,
+    int col,
+    int cell,
+    int seg,
+    std::uint64_t* out_bits) const {
   for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
     const std::size_t idx = idx_distal_synapse(static_cast<std::size_t>(col),
                                                static_cast<std::size_t>(cell),
@@ -111,11 +127,9 @@ void PredictCellsCalculator::fill_seg_active_syn_list(const std::vector<int>& ac
                                                static_cast<std::size_t>(cfg_.max_segments_per_cell),
                                                static_cast<std::size_t>(cfg_.max_synapses_per_segment));
     const DistalSynapse& s = distal_synapses[idx];
-    if (s.perm >= cfg_.connect_permanence &&
+    if (s.perm > cfg_.connect_permanence &&
         check_cell_active(active_cells_time, s.target_col, s.target_cell, time_step)) {
-      out01[syn] = 1;
-    } else {
-      out01[syn] = 0;
+      out_bits[syn / 64] |= std::uint64_t{1} << (syn % 64);
     }
   }
 }
@@ -129,28 +143,21 @@ void PredictCellsCalculator::calculate_predict_cells(int time_step,
          static_cast<std::size_t>(cfg_.num_columns) * cfg_.cells_per_column *
              cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment);
 
-  // IMPORTANT: do NOT clear `seg_ind_update_` / `seg_active_syn_` each timestep.
-  //
-  // These are "update structures" that must persist until the sequence-learning stage consumes them.
-  // This matches the python implementation:
-  // - predict-cells stage writes update structures when a cell *enters* predictive state
-  // - sequence-learning stage later consumes them when that cell either:
-  //     * enters learning (positive reinforcement), or
-  //     * makes an incorrect prediction (negative reinforcement)
-  //
-  // If we clear them here every timestep, then a prediction made at (t-1) will have its update
-  // structures erased at t before sequence-learning can apply the permanence update. The observable
-  // symptom is exactly what you reported: distal permanence values never meaningfully increase or
-  // decrease (often appearing "stuck" near the new-synapse permanence like 0.3).
+  // Save the evidence produced on the previous predict pass before writing the
+  // current pass. Sequence learning uses this snapshot after prediction runs.
+  prev_active_segment_syn_bits_ = current_active_segment_syn_bits_;
+  std::fill(current_active_segment_syn_bits_.begin(),
+            current_active_segment_syn_bits_.end(),
+            std::uint64_t{0});
+  std::fill(current_best_segments_.begin(), current_best_segments_.end(), -1);
 
   // Implementation overview:
   // Step 1. For each column, scan all cells and segments and compute "prediction level"
   //         (= number of connected synapses ending on currently active cells).
   // Step 2. Mark segments with predictionLevel > activation_threshold as active segments.
-  // Step 3. Set ALL cells with at least one active segment as predictive (multiple cells
+  // Step 3. Set all cells with at least one active segment as predictive (multiple cells
   //         per column can be predictive simultaneously, matching standard HTM behavior).
-  // Step 4. For each newly-predictive cell, emit segment-update tensors for learning
-  //         (using that cell's best active segment).
+  // Step 4. Save each active segment's synapse mask and each cell's best segment.
 
   tf::Taskflow taskflow;
 
@@ -167,6 +174,12 @@ void PredictCellsCalculator::calculate_predict_cells(int time_step,
 
             if (prediction_level > cfg_.activation_threshold) {
               set_active_seg(c, cell, seg, time_step);
+              const int segment_flat = idx_cell_seg(c, cell, seg);
+              std::uint64_t* bits =
+                  &current_active_segment_syn_bits_[static_cast<std::size_t>(segment_flat) *
+                                                    synapse_words_per_segment_];
+              fill_active_synapse_bits(
+                  active_cells_time, distal_synapses, time_step, c, cell, seg, bits);
               if (prediction_level > best_count) {
                 best_count = prediction_level;
                 best_seg = seg;
@@ -177,15 +190,8 @@ void PredictCellsCalculator::calculate_predict_cells(int time_step,
           if (best_seg >= 0) {
             // This cell has at least one active segment -- mark it predictive.
             set_predict_cell(c, cell, time_step);
-
-            // Only emit update tensors if this cell wasn't already predicting at (time_step-1).
-            if (!check_cell_predicting(c, cell, time_step - 1)) {
-              seg_ind_update_[c * cfg_.cells_per_column + cell] = best_seg;
-              int8_t* out01 =
-                  &seg_active_syn_[(c * cfg_.cells_per_column + cell) * cfg_.max_synapses_per_segment];
-              fill_seg_active_syn_list(active_cells_time, distal_synapses, time_step, c, cell, best_seg,
-                                       out01);
-            }
+            current_best_segments_[static_cast<std::size_t>(
+                c * cfg_.cells_per_column + cell)] = best_seg;
           }
         }
       })

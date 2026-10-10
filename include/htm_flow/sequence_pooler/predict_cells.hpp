@@ -17,14 +17,14 @@ namespace sequence_pooler {
 //   cells that are active at `time_step`.
 // - If a segment has more than `activation_threshold` active connected synapses, the
 //   segment is considered active and will place the cell into the predictive state.
-// - ALL cells with at least one active segment are set predictive. Multiple cells per
+// - All cells with at least one active segment are set predictive. Multiple cells per
 //   column can be predictive simultaneously, which naturally handles overlapping
 //   sequences that share common column activations.
 //
 // What this component returns:
 // - `predictCellsTime`: last two timesteps each cell was predictive.
 // - `activeSegsTime`  : last timestep each segment was active (sequence segment).
-// - Segment-update tensors (`segIndUpdate`, `segActiveSyn`) for later learning.
+// - Previous and current segment evidence for sequence learning.
 class PredictCellsCalculator {
 public:
   struct Config {
@@ -40,7 +40,7 @@ public:
 
   // Step 1. Read current active-cells time history (`active_cells_time`).
   // Step 2. Scan distal segments and mark predictive cells for this timestep.
-  // Step 3. Produce update tensors for the learning stage (future component).
+  // Step 3. Save active-segment masks and each cell's best segment.
   void calculate_predict_cells(int time_step,
                                const std::vector<int>& active_cells_time,
                                const std::vector<DistalSynapse>& distal_synapses);
@@ -51,7 +51,15 @@ public:
   const std::vector<int>& get_seg_ind_update() const;
   const std::vector<int8_t>& get_seg_active_syn() const;
 
-  // Mutable accessors (used by sequence-learning stage to mark update structures consumed).
+  // Evidence from the previous and current prediction passes.
+  // Each active-segment entry has a packed synapse mask. One bit identifies
+  // one connected synapse whose target was active during that prediction.
+  const std::vector<std::uint64_t>& get_prev_active_segment_syn_bits() const;
+  const std::vector<int>& get_current_best_segments() const;
+  const std::vector<std::uint64_t>& get_current_active_segment_syn_bits() const;
+  int synapse_words_per_segment() const { return synapse_words_per_segment_; }
+
+  // Sequence learning consumes the pending update, then queues the current best segment.
   std::vector<int>& get_seg_ind_update_mutable();
   std::vector<int8_t>& get_seg_active_syn_mutable();
 
@@ -69,16 +77,11 @@ private:
   inline int idx_cell_seg(int col, int cell, int seg) const {
     return (col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell + seg;
   }
-  inline int idx_cell_syn_list(int col, int cell, int syn) const {
-    return (col * cfg_.cells_per_column + cell) * cfg_.max_synapses_per_segment + syn;
-  }
-
   bool check_cell_active(const std::vector<int>& active_cells_time,
                          int col,
                          int cell,
                          int time_step) const;
 
-  bool check_cell_predicting(int col, int cell, int time_step) const;
   void set_predict_cell(int col, int cell, int time_step);
   void set_active_seg(int col, int cell, int seg, int time_step);
 
@@ -89,14 +92,13 @@ private:
                                       int cell,
                                       int seg) const;
 
-  // Build the segment-active synapse list (0/1) for a chosen segment.
-  void fill_seg_active_syn_list(const std::vector<int>& active_cells_time,
+  void fill_active_synapse_bits(const std::vector<int>& active_cells_time,
                                 const std::vector<DistalSynapse>& distal_synapses,
                                 int time_step,
                                 int col,
                                 int cell,
                                 int seg,
-                                int8_t* out01) const;
+                                std::uint64_t* out_bits) const;
 
   Config cfg_;
 
@@ -105,10 +107,17 @@ private:
   // activeSegsTime: (num_columns, cells_per_column, max_segments_per_cell)
   std::vector<int> active_segs_time_;
 
-  // segIndUpdate: (num_columns, cells_per_column) => which segment to update, or -1
+  // Pending best-segment update from the previous timestep. Sequence learning
+  // consumes this before replacing it with the current best segment.
   std::vector<int> seg_ind_update_;
-  // segActiveSyn: (num_columns, cells_per_column, max_synapses_per_segment) => 0/1 list
   std::vector<int8_t> seg_active_syn_;
+
+  // Prediction evidence is kept for one timestep. Packed bits store the exact
+  // synapses that caused each active segment without one byte per synapse.
+  int synapse_words_per_segment_ = 0;
+  std::vector<std::uint64_t> prev_active_segment_syn_bits_;
+  std::vector<std::uint64_t> current_active_segment_syn_bits_;
+  std::vector<int> current_best_segments_;
 
   tf::Executor executor_;
 };

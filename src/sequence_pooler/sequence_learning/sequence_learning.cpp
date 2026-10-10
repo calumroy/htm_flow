@@ -22,12 +22,12 @@ bool SequenceLearningCalculator::check_cell_time(const std::vector<int>& cells_t
   return (t0 == time_step) || (t1 == time_step);
 }
 
-void SequenceLearningCalculator::apply_segment_update(int origin_col,
-                                                      int origin_cell,
-                                                      int seg_index,
-                                                      const int8_t* active01,
-                                                      bool positive_reinforcement,
-                                                      std::vector<DistalSynapse>& distal_synapses) const {
+void SequenceLearningCalculator::apply_positive_segment_update(
+    int origin_col,
+    int origin_cell,
+    int seg_index,
+    const int8_t* active01,
+    std::vector<DistalSynapse>& distal_synapses) const {
   if (seg_index < 0) {
     return;
   }
@@ -46,17 +46,7 @@ void SequenceLearningCalculator::apply_segment_update(int origin_col,
     float p = distal_synapses[idx].perm;
     const bool syn_was_active = (active01 != nullptr) ? (active01[syn] == 1) : false;
 
-    if (positive_reinforcement) {
-      // Standard HTM-style update:
-      // - active synapses increase permanence
-      // - inactive synapses decrease permanence
-      p += syn_was_active ? cfg_.permanence_inc : -cfg_.permanence_dec;
-    } else {
-      // Negative reinforcement: decrement only synapses that were active for the prediction.
-      if (syn_was_active) {
-        p -= cfg_.permanence_dec;
-      }
-    }
+    p += syn_was_active ? cfg_.permanence_inc : -cfg_.permanence_dec;
 
     distal_synapses[idx].perm = std::clamp(p, 0.0f, 1.0f);
   }
@@ -90,11 +80,40 @@ void SequenceLearningCalculator::apply_new_synapses(int origin_col,
   }
 }
 
+void SequenceLearningCalculator::apply_failed_segment_update(
+    int origin_col,
+    int origin_cell,
+    int seg,
+    const std::uint64_t* active_synapse_bits,
+    std::vector<DistalSynapse>& distal_synapses) const {
+  for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
+    const bool caused_prediction =
+        (active_synapse_bits[syn / 64] & (std::uint64_t{1} << (syn % 64))) != 0;
+    if (!caused_prediction) {
+      continue;
+    }
+
+    const std::size_t idx =
+        idx_distal_synapse(static_cast<std::size_t>(origin_col),
+                           static_cast<std::size_t>(origin_cell),
+                           static_cast<std::size_t>(seg),
+                           static_cast<std::size_t>(syn),
+                           static_cast<std::size_t>(cfg_.cells_per_column),
+                           static_cast<std::size_t>(cfg_.max_segments_per_cell),
+                           static_cast<std::size_t>(cfg_.max_synapses_per_segment));
+    distal_synapses[idx].perm =
+        std::max(0.0f, distal_synapses[idx].perm - cfg_.permanence_dec);
+  }
+}
+
 void SequenceLearningCalculator::calculate_sequence_learning(
     int time_step,
     const std::vector<int>& active_cells_time,
     const std::vector<int>& learn_cells_time,
-    const std::vector<int>& predict_cells_time,
+    const std::vector<std::uint64_t>& prev_active_segment_syn_bits,
+    const std::vector<int>& current_best_segments,
+    const std::vector<std::uint64_t>& current_active_segment_syn_bits,
+    int synapse_words_per_segment,
     std::vector<DistalSynapse>& distal_synapses,
     std::vector<int>& seg_ind_update_active,
     std::vector<int8_t>& seg_active_syn_active,
@@ -106,7 +125,6 @@ void SequenceLearningCalculator::calculate_sequence_learning(
   const int cells_time_size = cfg_.num_columns * cfg_.cells_per_column * 2;
   assert(static_cast<int>(active_cells_time.size()) == cells_time_size);
   assert(static_cast<int>(learn_cells_time.size()) == cells_time_size);
-  assert(static_cast<int>(predict_cells_time.size()) == cells_time_size);
 
   const std::size_t distal_size = static_cast<std::size_t>(cfg_.num_columns) * cfg_.cells_per_column *
                                   cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment;
@@ -116,11 +134,19 @@ void SequenceLearningCalculator::calculate_sequence_learning(
   assert(static_cast<int>(seg_ind_update_active.size()) == per_cell_size);
   assert(static_cast<int>(seg_ind_new_syn_active.size()) == per_cell_size);
   assert(static_cast<int>(seg_ind_update_predict.size()) == per_cell_size);
+  assert(static_cast<int>(current_best_segments.size()) == per_cell_size);
 
   const int per_cell_syn_size = per_cell_size * cfg_.max_synapses_per_segment;
   assert(static_cast<int>(seg_active_syn_active.size()) == per_cell_syn_size);
   assert(static_cast<int>(seg_active_syn_predict.size()) == per_cell_syn_size);
   assert(static_cast<int>(seg_new_syn_active.size()) == per_cell_syn_size);
+
+  const int num_segments = per_cell_size * cfg_.max_segments_per_cell;
+  assert(synapse_words_per_segment == (cfg_.max_synapses_per_segment + 63) / 64);
+  assert(prev_active_segment_syn_bits.size() ==
+         static_cast<std::size_t>(num_segments) * synapse_words_per_segment);
+  assert(current_active_segment_syn_bits.size() ==
+         static_cast<std::size_t>(num_segments) * synapse_words_per_segment);
 
   // Implementation overview:
   // - Parallelize over columns. Each column task updates only synapses that *originate*
@@ -132,9 +158,6 @@ void SequenceLearningCalculator::calculate_sequence_learning(
         for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
           const bool learn_now = check_cell_time(learn_cells_time, c, cell, time_step);
           const bool learn_prev = check_cell_time(learn_cells_time, c, cell, time_step - 1);
-
-          const bool pred_prev = check_cell_time(predict_cells_time, c, cell, time_step - 1);
-          const bool pred_now = check_cell_time(predict_cells_time, c, cell, time_step);
           const bool active_now = check_cell_time(active_cells_time, c, cell, time_step);
 
           const int cell_flat = c * cfg_.cells_per_column + cell;
@@ -152,8 +175,8 @@ void SequenceLearningCalculator::calculate_sequence_learning(
             const DistalSynapse* new_syn =
                 &seg_new_syn_active[cell_flat * cfg_.max_synapses_per_segment];
 
-            apply_segment_update(c, cell, seg_u_act, act01, true, distal_synapses);
-            apply_segment_update(c, cell, seg_u_pred, pred01, true, distal_synapses);
+            apply_positive_segment_update(c, cell, seg_u_act, act01, distal_synapses);
+            apply_positive_segment_update(c, cell, seg_u_pred, pred01, distal_synapses);
             apply_new_synapses(c, cell, seg_new, new_syn, distal_synapses);
 
             // Mark update structures as consumed.
@@ -162,23 +185,52 @@ void SequenceLearningCalculator::calculate_sequence_learning(
             seg_ind_update_predict[cell_flat] = -1;
           }
 
-          // Negative reinforcement: incorrect prediction.
-          if (pred_prev && !pred_now && !active_now) {
-            const int seg_u_act = seg_ind_update_active[cell_flat];
-            const int seg_u_pred = seg_ind_update_predict[cell_flat];
+          // Each segment active at t-1 predicted this cell for t. Punish that
+          // segment if the cell did not activate, even when another segment
+          // keeps the cell predictive for t+1.
+          if (!active_now) {
+            for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
+              const int segment_flat =
+                  cell_flat * cfg_.max_segments_per_cell + seg;
+              const std::uint64_t* bits =
+                  &prev_active_segment_syn_bits[static_cast<std::size_t>(segment_flat) *
+                                                synapse_words_per_segment];
+              bool segment_was_active = false;
+              for (int word = 0; word < synapse_words_per_segment; ++word) {
+                if (bits[word] != 0) {
+                  segment_was_active = true;
+                  break;
+                }
+              }
+              if (!segment_was_active) {
+                continue;
+              }
+              apply_failed_segment_update(c, cell, seg, bits, distal_synapses);
+            }
+          }
 
-            const int8_t* act01 =
-                &seg_active_syn_active[cell_flat * cfg_.max_synapses_per_segment];
-            const int8_t* pred01 =
-                &seg_active_syn_predict[cell_flat * cfg_.max_synapses_per_segment];
-
-            apply_segment_update(c, cell, seg_u_act, act01, false, distal_synapses);
-            apply_segment_update(c, cell, seg_u_pred, pred01, false, distal_synapses);
-
-            // Mark update structures as consumed.
-            seg_ind_update_active[cell_flat] = -1;
-            seg_ind_new_syn_active[cell_flat] = -1;
-            seg_ind_update_predict[cell_flat] = -1;
+          // Queue the segment that predicts t+1 after all t-1 updates are
+          // complete. This keeps positive credit aligned when support moves
+          // from one segment to another.
+          const int current_seg =
+              current_best_segments[static_cast<std::size_t>(cell_flat)];
+          seg_ind_update_predict[static_cast<std::size_t>(cell_flat)] = current_seg;
+          int8_t* queued_synapses =
+              &seg_active_syn_predict[static_cast<std::size_t>(cell_flat) *
+                                      cfg_.max_synapses_per_segment];
+          std::fill(queued_synapses,
+                    queued_synapses + cfg_.max_synapses_per_segment,
+                    int8_t{0});
+          if (current_seg >= 0) {
+            const int segment_flat =
+                cell_flat * cfg_.max_segments_per_cell + current_seg;
+            const std::uint64_t* bits =
+                &current_active_segment_syn_bits[static_cast<std::size_t>(segment_flat) *
+                                                 synapse_words_per_segment];
+            for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {
+              queued_synapses[syn] =
+                  (bits[syn / 64] & (std::uint64_t{1} << (syn % 64))) != 0 ? 1 : 0;
+            }
           }
         }
       })

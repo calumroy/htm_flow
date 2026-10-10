@@ -180,6 +180,14 @@ Important supporting code paths:
 - `htm_flow/src/sequence_pooler/predict_cells/predict_cells.cpp`
   - `predict_cells_time_` and `active_segs_time_` are produced only here,
     from connected distal support
+  - connected active synapses are saved as packed bits for one timestep
+- `htm_flow/src/sequence_pooler/sequence_learning/sequence_learning.cpp`
+  - each segment that predicted an inactive cell loses permanence on the
+    synapses that caused that prediction
+  - another active segment can keep the cell predictive, but it cannot hide the
+    failed segment
+  - the current best segment is queued for positive learning on the next
+    timestep
 
 ## Important Investigation Notes
 
