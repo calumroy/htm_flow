@@ -383,6 +383,10 @@ public:
     }
 
     const int col = column_x + column_y * cfg_.col_cols;
+    q.last_sequence_learning_update =
+        seq_learn_calc_.last_positive_update_time(col, cell, segment);
+    q.last_temporal_pooling_update =
+        temporal_pool_calc_.last_distal_update_time(col, cell, segment);
     q.synapses.reserve(static_cast<std::size_t>(cfg_.max_synapses_per_segment));
     for (int synapse = 0; synapse < cfg_.max_synapses_per_segment; ++synapse) {
       const std::size_t index = sequence_pooler::idx_distal_synapse(

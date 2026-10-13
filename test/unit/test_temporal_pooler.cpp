@@ -71,6 +71,8 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
 
   // Synapse 0 should have been incremented because its endpoint was active at time 2.
   EXPECT_FLOAT_EQ(distal[0].perm, 0.6f);
+  EXPECT_EQ(tp.last_distal_update_time(0, 0, 0), 2);
+  EXPECT_EQ(tp.last_distal_update_time(1, 0, 0), -1);
 }
 
 TEST(TemporalPooler, bare_prediction_does_not_authorize_learning) {

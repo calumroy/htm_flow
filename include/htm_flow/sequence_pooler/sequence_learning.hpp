@@ -144,6 +144,9 @@ public:
     cfg_.permanence_dec = permanence_dec;
   }
 
+  // GUI diagnostic only. This value does not affect learning.
+  int last_positive_update_time(int col, int cell, int segment) const;
+
 private:
   inline int idx_cell_time(int col, int cell, int slot) const {
     return (col * cfg_.cells_per_column + cell) * 2 + slot;
@@ -178,6 +181,10 @@ private:
                                    std::vector<DistalSynapse>& distal_synapses) const;
 
   Config cfg_;
+
+  // GUI diagnostic only. Remove this with last_positive_update_time().
+  std::vector<int> last_positive_update_time_;
+
   tf::Executor executor_;
 };
 

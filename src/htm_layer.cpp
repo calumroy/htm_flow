@@ -724,6 +724,13 @@ htm_gui::DistalSynapseQuery HTMLayer::query_distal(int column_x, int column_y, i
   const std::size_t origin_cell = static_cast<std::size_t>(cell);
   const std::size_t origin_seg = static_cast<std::size_t>(segment);
 
+  q.last_sequence_learning_update =
+      seq_learn_calc_.last_positive_update_time(
+          static_cast<int>(origin_col), cell, segment);
+  q.last_temporal_pooling_update =
+      temporal_pool_calc_.last_distal_update_time(
+          static_cast<int>(origin_col), cell, segment);
+
   q.synapses.reserve(static_cast<std::size_t>(cfg_.max_synapses_per_segment));
 
   for (int syn = 0; syn < cfg_.max_synapses_per_segment; ++syn) {

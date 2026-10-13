@@ -217,6 +217,9 @@ public:
     cfg_.seq_permanence_dec = seq_permanence_dec;
   }
 
+  // GUI diagnostic only. This value does not affect learning.
+  int last_distal_update_time(int col, int cell, int segment) const;
+
 private:
   inline int idx_cell_time(int col, int cell, int slot) const {
     return (col * cfg_.cells_per_column + cell) * 2 + slot;
@@ -295,6 +298,9 @@ private:
   static std::size_t deterministic_pick(std::uint64_t seed, std::size_t mod);
 
   Config cfg_;
+
+  // GUI diagnostic only. Remove this with last_distal_update_time().
+  std::vector<int> last_distal_update_time_;
 
   // Last distal-update active-predict support, stored as 0 or 1 per column.
   // This is not a new trace: it is one-step bookkeeping for the same cells that

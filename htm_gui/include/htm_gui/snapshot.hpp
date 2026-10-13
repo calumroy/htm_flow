@@ -76,6 +76,8 @@ struct DistalSynapseQuery {
   int src_column_y{0};
   int src_cell{0};
   int segment{0};
+  int last_sequence_learning_update{-1};
+  int last_temporal_pooling_update{-1};
   std::vector<DistalSynapseInfo> synapses;
 };
 

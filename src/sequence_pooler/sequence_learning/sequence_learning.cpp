@@ -11,6 +11,21 @@ SequenceLearningCalculator::SequenceLearningCalculator(const Config& cfg) : cfg_
   assert(cfg_.cells_per_column > 0);
   assert(cfg_.max_segments_per_cell > 0);
   assert(cfg_.max_synapses_per_segment > 0);
+
+  last_positive_update_time_.assign(
+      cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell, -1);
+}
+
+int SequenceLearningCalculator::last_positive_update_time(
+    int col, int cell, int segment) const {
+  if (col < 0 || col >= cfg_.num_columns ||
+      cell < 0 || cell >= cfg_.cells_per_column ||
+      segment < 0 || segment >= cfg_.max_segments_per_cell) {
+    return -1;
+  }
+  const int index =
+      (col * cfg_.cells_per_column + cell) * cfg_.max_segments_per_cell + segment;
+  return last_positive_update_time_[static_cast<std::size_t>(index)];
 }
 
 bool SequenceLearningCalculator::check_cell_time(const std::vector<int>& cells_time,
@@ -178,6 +193,21 @@ void SequenceLearningCalculator::calculate_sequence_learning(
             apply_positive_segment_update(c, cell, seg_u_act, act01, distal_synapses);
             apply_positive_segment_update(c, cell, seg_u_pred, pred01, distal_synapses);
             apply_new_synapses(c, cell, seg_new, new_syn, distal_synapses);
+
+            // GUI diagnostic only. These values do not affect learning.
+            const auto record_update = [&](int segment) {
+              if (segment < 0) {
+                return;
+              }
+              const int local_segment = segment % cfg_.max_segments_per_cell;
+              const int index =
+                  cell_flat * cfg_.max_segments_per_cell + local_segment;
+              last_positive_update_time_[static_cast<std::size_t>(index)] =
+                  time_step;
+            };
+            record_update(seg_u_act);
+            record_update(seg_u_pred);
+            record_update(seg_new);
 
             // Mark update structures as consumed.
             seg_ind_update_active[cell_flat] = -1;

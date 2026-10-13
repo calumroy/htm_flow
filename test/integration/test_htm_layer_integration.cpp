@@ -314,6 +314,21 @@ TEST(HTMLayerIntegration, QueryDistalReturnsValidData) {
   EXPECT_EQ(q.src_cell, 0);
   EXPECT_EQ(q.segment, 0);
   EXPECT_EQ(q.synapses.size(), static_cast<std::size_t>(cfg.max_synapses_per_segment));
+
+  bool found_sequence_update = false;
+  for (int y = 0; y < cfg.num_column_rows; ++y) {
+    for (int x = 0; x < cfg.num_column_cols; ++x) {
+      for (int cell = 0; cell < cfg.cells_per_column; ++cell) {
+        for (int segment = 0; segment < cfg.max_segments_per_cell; ++segment) {
+          const auto segment_query = layer.query_distal(x, y, cell, segment);
+          if (segment_query.last_sequence_learning_update == 1) {
+            found_sequence_update = true;
+          }
+        }
+      }
+    }
+  }
+  EXPECT_TRUE(found_sequence_update);
 }
 
 // =============================================================================

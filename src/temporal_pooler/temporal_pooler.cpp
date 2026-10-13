@@ -20,10 +20,23 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   assert(cfg_.num_pot_synapses > 0);
 
   const int num_cells = cfg_.num_columns * cfg_.cells_per_column;
+  last_distal_update_time_.assign(
+      num_cells * cfg_.max_segments_per_cell, -1);
   last_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
   prev_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
 
   new_learn_cells_time_.assign(num_cells * 2, -1);
+}
+
+int TemporalPoolerCalculator::last_distal_update_time(
+    int col, int cell, int segment) const {
+  if (col < 0 || col >= cfg_.num_columns ||
+      cell < 0 || cell >= cfg_.cells_per_column ||
+      segment < 0 || segment >= cfg_.max_segments_per_cell) {
+    return -1;
+  }
+  return last_distal_update_time_[
+      static_cast<std::size_t>(idx_cell_seg(col, cell, segment))];
 }
 
 // Increase proximal permanence for columns supported by distal temporal pooling.
@@ -585,9 +598,19 @@ void TemporalPoolerCalculator::update_distal(int time_step,
             distal_synapses[idx] = DistalSynapse{tgt.first, tgt.second, cfg_.new_syn_permanence};
           }
         }
+        // GUI diagnostic only. This value does not affect learning.
+        last_distal_update_time_[
+            static_cast<std::size_t>(idx_cell_seg(col, cell, best_seg))] =
+            time_step;
       } else {
         const int seg = find_least_used_seg(active_segs_time, col, cell);
         overwrite_segment_with_prev2(time_step, col, cell, seg, prev2_cells, distal_synapses);
+        if (!prev2_cells.empty()) {
+          // GUI diagnostic only. This value does not affect learning.
+          last_distal_update_time_[
+              static_cast<std::size_t>(idx_cell_seg(col, cell, seg))] =
+              time_step;
+        }
       }
     }
   }).name("temporal_pooler_update_distal_for_each_cell");

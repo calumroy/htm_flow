@@ -102,6 +102,7 @@ TEST(SequenceLearningRegression, previous_prediction_reinforces_on_learning) {
 
   EXPECT_FLOAT_EQ(distal[0].perm, 0.4f);
   EXPECT_FLOAT_EQ(distal[1].perm, 0.4f);
+  EXPECT_EQ(learning.last_positive_update_time(0, 0, 0), 2);
 }
 
 TEST(SequenceLearningRegression, segment_handoff_punishes_a_and_queues_b) {
@@ -154,6 +155,8 @@ TEST(SequenceLearningRegression, segment_handoff_punishes_a_and_queues_b) {
 
   EXPECT_FLOAT_EQ(distal[seg_a].perm, 0.45f);
   EXPECT_FLOAT_EQ(distal[seg_b].perm, 0.6f);
+  EXPECT_EQ(learning.last_positive_update_time(0, 0, 0), -1);
+  EXPECT_EQ(learning.last_positive_update_time(0, 0, 1), 3);
 }
 
 TEST(SequenceLearningRegression, all_failed_segments_are_decremented_once) {

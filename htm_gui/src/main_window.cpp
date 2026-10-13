@@ -1014,6 +1014,9 @@ QString MainWindow::formatDistalSynapseText(const htm_gui::DistalSynapseQuery& q
   }
 
   const bool segment_active = active_connected > threshold;
+  const auto format_update_time = [](int time_step) {
+    return time_step >= 0 ? QString("t=%1").arg(time_step) : QString("never");
+  };
   QString out;
   out += QString("Src column (%1,%2)  cell=%3  seg=%4\n").arg(src_col_x).arg(src_col_y).arg(src_cell).arg(src_segment);
   out += QString("Cell state (now): active=%1  predictive=%2  learning=%3\n")
@@ -1024,6 +1027,10 @@ QString MainWindow::formatDistalSynapseText(const htm_gui::DistalSynapseQuery& q
              .arg(segment_active ? "Y" : "N")
              .arg(active_connected)
              .arg(threshold);
+  out += QString("Last sequence-learning update: %1\n")
+             .arg(format_update_time(query.last_sequence_learning_update));
+  out += QString("Last temporal-pooling update: %1\n\n")
+             .arg(format_update_time(query.last_temporal_pooling_update));
   out += QString("Synapses: %1  connected: %2  tgt_active: %3\n\n")
              .arg(int(syns.size()))
              .arg(connected_count)
