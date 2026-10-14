@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <iostream>
 #include <string>
 #include <thread>
 
@@ -10,11 +11,21 @@
 
 int main(int argc, char** argv) {
   bool use_gui = false;
+  std::string theme;
   for (int index = 1; index < argc;) {
-    if (std::string(argv[index]) == "--gui") {
+    const std::string arg = argv[index];
+    if (arg == "--gui") {
       use_gui = true;
       std::move(argv + index + 1, argv + argc, argv + index);
       --argc;
+    } else if (arg == "--theme") {
+      if (index + 1 >= argc) {
+        std::cerr << "--theme requires a value: light|dark\n";
+        return 2;
+      }
+      theme = argv[index + 1];
+      std::move(argv + index + 2, argv + argc, argv + index);
+      argc -= 2;
     } else {
       ++index;
     }
@@ -38,6 +49,7 @@ int main(int argc, char** argv) {
   if (runtime) {
     htm_gui::DebuggerOptions options;
     options.window_title = runtime->name();
+    options.theme = theme;
     htm_gui::run_debugger(argc, argv, *runtime, options);
   }
 

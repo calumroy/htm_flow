@@ -100,6 +100,13 @@ cd htm_gui
 
 The scripts mount your source code, build inside the container, and launch the GUI with X11/Wayland display forwarding.
 
+Pass `--theme dark` to use a dark grey window and light text. Column and cell colors stay the same. `--theme light` forces the light palette. The same flag works with `./run_gui.sh`, `./run_debug.sh`, and `./run_test_gui.sh`.
+
+```bash
+./run_gui.sh --config configs/small_test.yaml --theme dark
+./run_debug.sh --config configs/small_test.yaml --theme dark
+```
+
 **The GUI allows you to:**
 - Step through the HTM algorithm one timestep at a time
 - Visualize column activations, cell states, and predictions
@@ -167,6 +174,10 @@ Run that test without installing Qt6 locally:
 ```bash
 ./htm_gui/run_test_gui.sh \
   TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
+
+# Same test with the dark window and text palette
+./htm_gui/run_test_gui.sh --theme dark \
+  TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
 ```
 
 For a native Qt6 build:
@@ -174,6 +185,8 @@ For a native Qt6 build:
 ```bash
 ./build.sh Debug GUI
 ./build/htm_flow_tests --gui \
+  --gtest_filter=TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
+./build/htm_flow_tests --gui --theme dark \
   --gtest_filter=TemporalPoolingIntegrationSuite4.test_temporalDiff_patterns_remain_distinct
 ```
 

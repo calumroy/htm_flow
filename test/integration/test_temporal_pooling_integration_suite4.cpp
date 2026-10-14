@@ -41,7 +41,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.spatial_perm_dec        = 0.02f;
   cfg.l0.active_col_perm_dec     = 0.01f;
   cfg.l0.cells_per_column        = 4;
-  cfg.l0.max_segments_per_cell   = 2;
+  cfg.l0.max_segments_per_cell   = 4;
   cfg.l0.max_synapses_per_segment = 10;
   cfg.l0.min_num_syn_threshold   = 3;
   cfg.l0.new_syn_permanence      = 0.3f;
@@ -57,7 +57,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l1 = cfg.l0;
   cfg.l1.input_rows = cfg.l0.col_rows;   // 12
   cfg.l1.input_cols = cfg.l0.col_cols;    // 12
-  cfg.l1.temp_post_active_proximal_scale = 0.25f;
+  cfg.l1.temp_post_active_proximal_scale = 0.15f;
 
   cfg.rng_seed = 123u;
   return cfg;

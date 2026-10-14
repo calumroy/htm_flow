@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QPixmap>
 
 namespace htm_gui::qt {
@@ -16,6 +17,7 @@ ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
   setResizeAnchor(QGraphicsView::AnchorUnderMouse);
   setFocusPolicy(Qt::StrongFocus);
+  setBackgroundBrush(palette().color(QPalette::Base));
   pixmap_ = scene_.addPixmap(QPixmap());
 }
 

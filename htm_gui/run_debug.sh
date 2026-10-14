@@ -25,6 +25,7 @@ Built-in Configurations:
 Options:
   --config FILE   Load configuration from YAML file
   --train N       Run N training epochs first
+  --theme MODE    GUI theme: light or dark
   --list-configs  List available YAML configs
   --help          Show this help
 
