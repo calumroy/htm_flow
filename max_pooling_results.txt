@@ -1,0 +1,62 @@
+
+=== MAXIMUM TEMPORAL POOLING EXPERIMENT ===
+Target: >0.90 fraction of L1 learning cells carried over step-to-step
+
+1. Baseline config...
+  ON: 0.1926, OFF: 0.1850, Gap: 0.0076
+
+2. Larger receptive field (pot_w=8, pot_h=16)...
+  ON: 0.1006, OFF: 0.1006, Gap: 0.0000
+
+3. More segments (max_seg=8, max_syn=20)...
+  ON: 0.2144, OFF: 0.2144, Gap: 0.0000
+
+4. More cells per column (cells=8)...
+  ON: 0.1902, OFF: 0.1911, Gap: -0.0009
+
+5. Strong TP params (post_active=2.0, spatial=0.15, seq=0.20)...
+  ON: 0.3616, OFF: 0.1843, Gap: 0.1774
+
+6. Lower activation threshold (thresh=2)...
+  ON: 0.3816, OFF: 0.2180, Gap: 0.1636
+
+7. Higher sparsity (desired_activity=10)...
+  ON: 0.4918, OFF: 0.3214, Gap: 0.1703
+
+8. Combined approach (RF + Strong TP + thresh=2)...
+  ON: 0.3657, OFF: 0.0995, Gap: 0.2663
+
+9. Extended training (3000 steps)...
+  ON: 0.4721, OFF: 0.0999, Gap: 0.3722
+
+10. Ultra-strong TP (post_active=3.0, spatial=0.20)...
+  ON: 0.5384, OFF: 0.0999, Gap: 0.4385
+
+
+=== RESULTS SUMMARY ===
+
+UNITS: Pooled = fraction 0-1 of L1 learning cells at t-1 still active at t
+       Gap = ON - OFF in percentage points
+       Target: >0.90 (90% carry-over)
+
+              Config   Pooled ON  Pooled OFF    Gap (pp)   Steps to 90%Avg Active Cols Total Steps
+-----------------------------------------------------------------------------------------------
+            Baseline      0.1926      0.1850      0.0076          never         8.9200        1000
+             LargeRF      0.1006      0.1006      0.0000          never         9.7500        1000
+        MoreSegments      0.2144      0.2144      0.0000          never         8.9200        1000
+           MoreCells      0.1902      0.1911     -0.0009          never         8.9200        1000
+            StrongTP      0.3616      0.1843      0.1774          never         8.8700        1000
+           LowThresh      0.3816      0.2180      0.1636          never         9.1300        1000
+        HighSparsity      0.4918      0.3214      0.1703          never        15.7600        1000
+            Combined      0.3657      0.0995      0.2663          never         9.5000        1000
+            Extended      0.4721      0.0999      0.3722          never         9.3500        3000
+         UltraStrong      0.5384      0.0999      0.4385          never         9.5900        3000
+
+=== BEST CONFIG ===
+Name: UltraStrong
+Pooled ON: 0.5384 (53.8416%)
+Pooled OFF: 0.0999 (9.9926%)
+Gap: 0.4385 (43.8490 pp)
+Steps to 90%: never
+Avg active cols: 9.5900 / 144 (6.6597%)
+Achieved target: NO
