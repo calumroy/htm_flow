@@ -40,18 +40,26 @@ QPalette light_palette() {
 
 QPalette dark_palette() {
   QPalette p;
-  p.setColor(QPalette::Window, QColor(40, 44, 52));
-  p.setColor(QPalette::WindowText, QColor(220, 220, 220));
-  p.setColor(QPalette::Base, QColor(30, 34, 40));
-  p.setColor(QPalette::AlternateBase, QColor(45, 50, 58));
-  p.setColor(QPalette::ToolTipBase, QColor(60, 64, 72));
-  p.setColor(QPalette::ToolTipText, QColor(230, 230, 230));
-  p.setColor(QPalette::Text, QColor(220, 220, 220));
-  p.setColor(QPalette::Button, QColor(55, 60, 68));
-  p.setColor(QPalette::ButtonText, QColor(220, 220, 220));
-  p.setColor(QPalette::BrightText, QColor(255, 100, 100));
-  p.setColor(QPalette::Highlight, QColor(78, 120, 200));
-  p.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
+  const QColor window(0x25, 0x25, 0x26);
+  const QColor base(0x1e, 0x1e, 0x1e);
+  const QColor text(0xd4, 0xd4, 0xd4);
+  const QColor button(0x3c, 0x3c, 0x3c);
+  p.setColor(QPalette::Window, window);
+  p.setColor(QPalette::WindowText, text);
+  p.setColor(QPalette::Base, base);
+  p.setColor(QPalette::AlternateBase, QColor(0x2d, 0x2d, 0x2d));
+  p.setColor(QPalette::ToolTipBase, window);
+  p.setColor(QPalette::ToolTipText, text);
+  p.setColor(QPalette::Text, text);
+  p.setColor(QPalette::Button, button);
+  p.setColor(QPalette::ButtonText, text);
+  p.setColor(QPalette::BrightText, QColor(0xff, 0xff, 0xff));
+  p.setColor(QPalette::Highlight, QColor(0x26, 0x4f, 0x78));
+  p.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+  p.setColor(QPalette::PlaceholderText, QColor(0x88, 0x88, 0x88));
+  p.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x88, 0x88, 0x88));
+  p.setColor(QPalette::Disabled, QPalette::Text, QColor(0x88, 0x88, 0x88));
+  p.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x88, 0x88, 0x88));
   return p;
 }
 
