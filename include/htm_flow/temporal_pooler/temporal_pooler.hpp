@@ -33,17 +33,24 @@ public:
     // --- Learning rates ---
     // The value by which proximal (column) synapse permanence values change by in the temporal pooler.
     float spatial_permanence_inc = 0.0f;
-    // Scale proximal TP reinforcement for columns that are active now and were
-    // correctly predicted by segment-backed distal state at t-1. This makes an
-    // existing input-to-column mapping stronger. It cannot add a new input to
-    // the column because it only fires for columns that already won.
+    // Scale proximal TP reinforcement for columns that are active now and had
+    // a cell predictive at t-1. This makes an existing input-to-column mapping
+    // stronger. It cannot add a new input to the column because it only fires
+    // for columns that already won.
     float active_predict_proximal_scale = 0.25f;
-    // Scale proximal TP reinforcement for columns that were segment-backed
-    // predictive at t-1 but did not win inhibition at t. The current input is
-    // learned. This is the path that lets one column win across several
-    // sequence positions. ActiveCellsCalculator checks the same two t-1
-    // conditions when a column becomes active to decide whether it bursts, so
-    // when the column later wins in this context it does not burst.
+    // Scale proximal TP reinforcement for columns that had a cell predictive
+    // at t-1 but did not win inhibition at t. The current input is learned.
+    // This is the path that lets one column win across several sequence
+    // positions. ActiveCellsCalculator looks for the same t-1 prediction when
+    // a column becomes active to decide whether it bursts, so when the column
+    // later wins in this context it does not burst.
+    //
+    // Predictive at t-1 implies a segment was active at t-1:
+    // PredictCellsCalculator only marks a cell predictive after stamping one
+    // of its segments at that timestep. The pooler therefore does not check
+    // `active_segs_time` for prediction evidence. It cannot: that tensor holds
+    // one stamp per segment, and by the time the pooler runs at t a segment
+    // that fired at both t-1 and t has had its t-1 stamp overwritten.
     //
     // "prev" names the time of the evidence, not a pooling direction. The path
     // extends a column's input set both forwards and backwards. For a sequence
@@ -81,8 +88,8 @@ public:
   // update_distal (ported from python `updateDistalTempPool`)
   //
   // Update distal synapses (cell synapses) such that:
-  //   - If a cell is "active predictive" (was segment-backed predictive at
-  //     t-1 and became active at t),
+  //   - If a cell is "active predictive" (predictive at t-1, active at t, and
+  //     its column is not bursting at t),
   //     then reinforce a best-matching segment (based on the "prev2" learning
   //     cells), otherwise create/overwrite a new segment.
   //   - If `seq_permanence_inc <= 0` (distal permanence increases disabled),
@@ -122,8 +129,8 @@ public:
   //   6. active_segs_time
   //      Segment time-history: last timestep each segment was active (sequence segment).
   //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
-  //      Used to require segment-backed prediction at t-1 and to pick the least
-  //      recently used segment to overwrite.
+  //      Used only to pick the least recently used segment to overwrite. It is
+  //      not used as prediction evidence; see `prev_predict_proximal_scale`.
   //
   //   7. burst_cols_time
   //      Time-history tensor: last two timesteps each column was bursting.
@@ -163,10 +170,9 @@ public:
   //      `spatial_permanence_inc * active_predict_proximal_scale`.
   //      One or more correctly predicted active cells authorize one increase.
   //      This reinforces columns that were predicted and became active.
-  //   b. If `col_active01`, `predict_cells_time`, and `active_segs_time` are
-  //      provided, a column that is not active at `support_time` is reinforced
-  //      when a cell in it was predictive at `support_time - 1` and one of that
-  //      cell's segments was active at `support_time - 1`.
+  //   b. If `col_active01` and `predict_cells_time` are provided, a column
+  //      that is not active at `support_time` is reinforced when a cell in it
+  //      was predictive at `support_time - 1`.
   //      Add `spatial_permanence_inc * prev_predict_proximal_scale`.
   //      This teaches the column the current input. When the column later wins
   //      for this input in the same context, ActiveCellsCalculator finds the
@@ -175,12 +181,7 @@ public:
   //      `prev_predict_proximal_scale` in Config.
   //
   // Those optional arguments are needed for case b: they tell this function
-  // which columns are active now and which predictions had active segment evidence.
-  //
-  // Limitation of case b: `active_segs_time` stores one timestamp per segment.
-  // If the same segment is active again at `support_time`, the
-  // `support_time - 1` timestamp is overwritten and case b does not fire for
-  // that cell on this timestep.
+  // which columns are active now and which columns were predicted.
   //
   // Inputs:
   //   1. support_time
@@ -202,16 +203,9 @@ public:
   //      Shape: (num_columns). Values: 0/1.
   //
   //   5. predict_cells_time
-  //      Optional predictive-cell time-history tensor. Used with
-  //      `active_segs_time` to require segment-backed prediction at
-  //      `support_time - 1`.
+  //      Optional predictive-cell time-history tensor. Used to find columns
+  //      with a cell predictive at `support_time - 1`.
   //      Shape: (num_columns, cells_per_column, 2).
-  //
-  //   6. active_segs_time
-  //      Optional active-segment timestamp tensor produced by predict-cells.
-  //      A non-winning column is reinforced only if a cell predictive at
-  //      `support_time - 1` also has a segment active at `support_time - 1`.
-  //      Shape: (num_columns, cells_per_column, max_segments_per_cell).
   //
   // State used:
   //   - last_active_predict_support_by_column_ from `update_distal(support_time)`
@@ -233,8 +227,7 @@ public:
       const std::vector<int>& col_pot_inputs01,
       std::vector<float>& col_syn_perm,
       const std::vector<uint8_t>* col_active01 = nullptr,
-      const std::vector<int>* predict_cells_time = nullptr,
-      const std::vector<int>* active_segs_time = nullptr) const;
+      const std::vector<int>* predict_cells_time = nullptr) const;
 
   void set_min_num_syn_threshold(int threshold) { cfg_.min_num_syn_threshold = threshold; }
   void set_new_syn_permanence(float permanence) { cfg_.new_syn_permanence = permanence; }
@@ -269,19 +262,13 @@ private:
   bool check_cell_time(const std::vector<int>& cells_time, int col, int cell, int time_step) const;
   bool check_column_time(const std::vector<int>& columns_time, int col, int time_step) const;
   bool column_has_temporal_support(const std::vector<int>& predict_cells_time,
-                                   const std::vector<int>& active_segs_time,
                                    int col,
                                    int time_step) const;
 
   bool check_cell_predict(const std::vector<int>& predict_cells_time, int col, int cell, int time_step) const;
-  int find_recent_active_segment(const std::vector<int>& active_segs_time,
-                                 int col,
-                                 int cell,
-                                 int time_step) const;
 
   bool check_cell_active_predict(const std::vector<int>& active_cells_time,
                                  const std::vector<int>& predict_cells_time,
-                                 const std::vector<int>& active_segs_time,
                                  const std::vector<int>& burst_cols_time,
                                  int col,
                                  int cell,

@@ -75,7 +75,7 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
   EXPECT_EQ(tp.last_distal_update_time(1, 0, 0), -1);
 }
 
-TEST(TemporalPooler, bare_prediction_does_not_authorize_learning) {
+TEST(TemporalPooler, burst_activity_does_not_authorize_learning) {
   TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
       /*num_columns=*/1,
       /*cells_per_column=*/1,
@@ -101,10 +101,14 @@ TEST(TemporalPooler, bare_prediction_does_not_authorize_learning) {
   std::vector<int> active_segs_time(1, -1);
   std::vector<int> burst_cols_time(2, -1);
 
-  // A burst can make this cell active. The predictive timestamp alone is not
-  // enough because no segment supported it at t=1.
+  // The cell was predictive at t=1 (segment stamped at t=1) and is active at
+  // t=2, but the column is bursting at t=2. That is a continuing burst: the
+  // activity came from the burst, not from the prediction, so it must not
+  // authorize distal or proximal temporal-pooling learning.
   active_cells_time[idx_cell_time(1, 0, 0, 0)] = 2;
   predict_cells_time[idx_cell_time(1, 0, 0, 0)] = 1;
+  active_segs_time[idx_cell_seg(1, 1, 0, 0, 0)] = 1;
+  burst_cols_time[0] = 2;
   tp.update_distal(/*time_step=*/2,
                    /*new_learn_cells_list=*/{},
                    learn_cells_time,
@@ -493,7 +497,7 @@ struct PrevPredictFixture {
     tp.update_distal(t, /*new_learn_cells_list=*/{}, learn_cells_time, predict_cells_time,
                      active_cells_time, active_segs_time, burst_cols_time, distal);
     return tp.update_proximal(t, pot_inputs, proximal_perm, &col_active,
-                              &predict_cells_time, &active_segs_time);
+                              &predict_cells_time);
   }
 };
 
@@ -538,19 +542,24 @@ TEST(TemporalPooler, proximal_update_ignores_prediction_made_at_current_timestep
   EXPECT_FLOAT_EQ(f.proximal_perm[5], 0.0f);
 }
 
-TEST(TemporalPooler, proximal_update_requires_active_segment_for_prev_prediction) {
+TEST(TemporalPooler, proximal_update_prev_prediction_survives_segment_stamp_overwrite) {
   PrevPredictFixture f;
 
-  // Predictive at t=2 but no segment timestamp at t=2. ActiveCellsCalculator
-  // would still burst this column on such a prediction, so TP must not learn
-  // from it.
+  // Column 1, cell 0 was predictive at t=2 and again at t=3. Its one segment
+  // fired at both steps. `active_segs_time` holds one stamp per segment, so by
+  // the time the pooler runs at t=3 the stamp reads 3 and the t=2 evidence is
+  // gone from that tensor. The prediction at t=2 is still real and must still
+  // teach the column the input at t=3.
   f.predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
+  f.predict_cells_time[idx_cell_time(2, 1, 0, 1)] = 3;
+  f.active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 3;
 
   const auto stats = f.run(/*t=*/3);
 
-  EXPECT_EQ(stats.reinforced_columns, 0);
-  EXPECT_EQ(stats.reinforced_inputs, 0);
-  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.17f);
+  EXPECT_EQ(stats.reinforced_columns, 1);
+  EXPECT_EQ(stats.reinforced_inputs, 2);
+  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.21f);
+  EXPECT_FLOAT_EQ(f.proximal_perm[5], 0.04f);
 }
 
 TEST(TemporalPooler, proximal_update_prev_prediction_does_not_apply_to_winning_column) {

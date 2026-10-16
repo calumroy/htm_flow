@@ -59,5 +59,29 @@ inline double similarityPercent(const std::vector<uint8_t>& a01, const std::vect
   return (a_active > 0) ? (static_cast<double>(both_active) / static_cast<double>(a_active)) : 0.0;
 }
 
+// Fraction of active columns that are bursting at `time_step`.
+// `burst_cols_time` is the (num_columns, 2) tensor from ActiveCellsCalculator.
+// It is stamped for new bursts and for continuing bursts, so this reports the
+// true bursting state. Do not infer bursting from "all cells active": several
+// correctly predicted cells can also make every cell in a column active.
+inline double burstFraction(const std::vector<uint8_t>& active_cols01,
+                            const std::vector<int>& burst_cols_time,
+                            int time_step) {
+  int active = 0;
+  int bursting = 0;
+  for (std::size_t col = 0; col < active_cols01.size(); ++col) {
+    if (active_cols01[col] == 0) {
+      continue;
+    }
+    ++active;
+    const int t0 = burst_cols_time[col * 2];
+    const int t1 = burst_cols_time[col * 2 + 1];
+    if (t0 == time_step || t1 == time_step) {
+      ++bursting;
+    }
+  }
+  return (active > 0) ? (static_cast<double>(bursting) / static_cast<double>(active)) : 0.0;
+}
+
 } // namespace temporal_pooling_test_utils
 

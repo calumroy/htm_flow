@@ -579,8 +579,7 @@ void HTMLayer::step_once() {
         overlap_calc_.get_col_pot_inputs(),
         col_syn_perm_,
         &col_active01_,
-        &predict_cells_calc_.get_predict_cells_time(),
-        &predict_cells_calc_.get_active_segs_time());
+        &predict_cells_calc_.get_predict_cells_time());
     if (cfg_.log_timings && cfg_.temp_spatial_permanence_inc > 0.0f) {
       LOG(INFO, "Temporal pooling proximal reinforcement: columns=" +
                     std::to_string(proximal_stats.reinforced_columns) +

@@ -58,3 +58,4 @@ build_gui_check/*
 
 # ignore fontconfig cache
 .cache/fontconfig/*
+.config/htm_gui/layout.dat

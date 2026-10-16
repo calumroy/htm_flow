@@ -248,8 +248,7 @@ public:
                                         overlap_calc_.get_col_pot_inputs(),
                                         col_syn_perm_,
                                         &col_active01_,
-                                        &predict_cells_calc_.get_predict_cells_time(),
-                                        &predict_cells_calc_.get_active_segs_time());
+                                        &predict_cells_calc_.get_predict_cells_time());
     notify_after_step();
   }
 
@@ -260,6 +259,23 @@ public:
       out[i] = (active_cols[i] != 0) ? 1 : 0;
     }
     return out;
+  }
+
+  // 0/1 per column: did the column win inhibition on the last step.
+  // Non-const because InhibitionCalculator::get_active_columns() is non-const.
+  std::vector<uint8_t> activeColumns01() {
+    const std::vector<int> active_cols = inhibition_calc_.get_active_columns();
+    std::vector<uint8_t> out(active_cols.size(), 0);
+    for (std::size_t i = 0; i < active_cols.size(); ++i) {
+      out[i] = (active_cols[i] != 0) ? 1 : 0;
+    }
+    return out;
+  }
+
+  // Last two timesteps each column burst. Shape (num_columns, 2). Set by
+  // ActiveCellsCalculator for both new bursts and continuing bursts.
+  const std::vector<int>& burst_columns_time() const {
+    return active_cells_calc_.get_burst_cols_time();
   }
 
   std::vector<uint8_t> learnCells01(int time_step) const {

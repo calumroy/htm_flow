@@ -203,7 +203,33 @@ It also stores:
 
 ## Processing Steps
 
-The temporal pooler has two main steps.
+The temporal pooler makes a column that was predicted for an input win for
+that input, and for the inputs around it, more often. It does this with two
+kinds of synapse change each timestep:
+
+- Distal: give a correctly predicted cell a segment onto the other cells for
+  the current input. That segment later makes the cell predict the column for
+  the next input in the sequence.
+- Proximal: raise permanence from the current input to columns that were
+  predicted for it, whether they won or not. A predicted column that lost
+  learns the input and can win it next cycle.
+
+Step 1: Update distal state (`update_distal`)
+
+1. Record cells that entered the learning state this timestep.
+2. Build `prev2`: the cells new TP synapses will connect to.
+3. Find active-predict cells: predicted at `t-1`, active at `t`, column not
+   bursting.
+4. For each active-predict cell, reinforce its best segment onto `prev2` or
+   overwrite its least recently used segment with synapses onto `prev2`.
+5. Count active-predict cells per column for Step 2.
+
+Step 2: Update proximal permanence (`update_proximal`)
+
+1. Active-predict update: columns with a count from Step 1.5 gain permanence
+   to the current input.
+2. Prev-predict update: columns predicted at `t-1` that did not win at `t`
+   gain permanence to the current input.
 
 ### Step 1: Update Distal State
 
@@ -221,28 +247,38 @@ Cells that only remained in the learning state are not recorded as new entries.
 
 New TP distal synapses connect to a list of cells the code calls `prev2`.
 
-The pooler keeps a log of every time a cell entered the learning state: one
-entry of `(timestep, column, cell)` per event, in time order. Step 1 appended
-this timestep's entries to that log. To build `prev2` the pooler walks the log
-from the newest entry backwards and appends a cell to `prev2` if:
+The pooler keeps a vector called `learn_entry_log_`. Each time a cell switches
+from not learning to learning, one `(timestep, column, cell)` triple is pushed
+onto the end. It is one entry per cell, not per column. Entries are 12 bytes
+and are never removed, so the vector grows for the life of the layer (see
+Known Issues).
 
-- the cell was not active at `t-1`, and
-- the cell is not already in `prev2`.
+To build `prev2` the pooler loops over `learn_entry_log_` from the last entry
+to the first. For each entry:
 
-It stops after it has `max_synapses_per_segment` cells and has finished the
-timestep it was on, so all cells that entered learning on that timestep are
-included.
+- If the cell was active at `t-1`, skip it.
+- If the cell is already in `prev2`, skip it.
+- Otherwise add the cell to `prev2`.
 
-The newest log entries are the cells that entered learning at `t`. A cell that
-entered learning at `t` was not active at `t-1`, so it is accepted. The result
-is that `prev2` is the set of cells that entered learning on the current
-timestep, i.e. the cells that represent the current input.
+The loop stops when `prev2` holds `max_synapses_per_segment` cells. Before
+stopping it finishes the timestep it reached: it keeps adding entries that
+have the same timestep as the last cell added, and exits at the first entry
+with an older timestep. So `prev2` always contains every qualifying cell from
+its oldest timestep, never half of them.
 
-So a TP segment created at `t` connects an active-predict cell to the other
-cells that are active for the same input at `t`. The next time that input
-appears the segment fires and makes the cell predictive. That prediction is
-for the following timestep. The prev-predict proximal update in Step 2 uses it
-to teach the column the following input.
+Step 1 pushed this timestep's entries onto the log just before this, so the
+last entries are the cells that entered learning at `t`. Those cells were not
+active at `t-1`, so none are skipped. `prev2` is therefore the cells that
+entered learning this timestep. Older entries are only reached if this
+timestep had fewer than `max_synapses_per_segment` of them.
+
+In other words, a TP segment created at `t` connects an active-predict cell
+to the other cells that are active for the same input at `t`. That segment
+does not make the cell predict earlier. It fires the next time this same input
+is shown, which makes the cell predictive at that step, and a prediction at
+step `t` means "expect to be active at `t+1`". So the segment makes the column
+predict itself for the next input in the sequence. The prev-predict proximal
+update in Step 2 then teaches the column that next input.
 
 #### 3. Find active-predict cells
 
@@ -250,22 +286,25 @@ For each cell, the pooler checks:
 
 ```text
 predictive at t-1
-AND active segment at t-1
 AND active at t
 AND column did not burst at t
 ```
 
 Cells that satisfy all conditions are active-predict cells.
 
-A cell can become predictive after its column bursts because prediction is
-calculated after current activity. Predictive state shown at timestep `t`
-forecasts timestep `t+1`; it did not prevent a burst at `t`. Burst-created cell
-activity cannot authorize temporal-pooling learning.
+There is no separate "segment active at `t-1`" condition. The temporal pooler
+reads predictive state but never sets it. Only `PredictCellsCalculator` makes
+a cell predictive, and it does so only after one of the cell's segments has
+more than `activation_threshold` connected synapses onto active cells. So a
+cell that is predictive at `t-1` had an active segment at `t-1` by
+construction.
 
-The temporal pooler reads predictive state but never sets it. Only
-`PredictCellsCalculator` makes a cell predictive, and only when one of its
-segments has more than `activation_threshold` connected synapses onto currently
-active cells.
+The bursting condition is needed. A column that was bursting at `t-1` and
+wins again at `t` stays bursting with every cell active. Any of those cells
+can have become predictive at `t-1` because the burst made all cells active
+and let their segments fire. Such a cell passes the first two checks, but its
+activity at `t` came from the burst, not from the prediction, and must not
+authorize temporal-pooling learning.
 
 #### 4. Reinforce or create a distal segment
 
@@ -331,11 +370,10 @@ This path teaches a column the input it was predicted for but lost.
 It applies when:
 
 1. A cell in the column was predictive at `t-1`.
-2. One of that cell's distal segments was active at `t-1`.
-3. The column does not win at `t`.
+2. The column does not win at `t`.
 
 ```text
-t-1: a cell in the column is segment-backed predictive
+t-1: a cell in the column is predictive
                   |
                   v
 t:   the column does not win for input C
@@ -353,9 +391,11 @@ spatial_permanence_inc * prev_predict_proximal_scale
 This is the path that makes one column win across changing inputs in a
 sequence.
 
-Conditions 1 and 2 are the same conditions the active-cells stage checks at `t`
-before it decides that a newly winning column does not burst. When this update
-later makes the column win for input C in the same context, that check passes.
+Condition 1 is what the active-cells stage checks at `t` before it decides
+that a newly winning column does not burst (it also confirms the predicting
+cell had an active segment, which is always true; see Step 1 part 3). When
+this update later makes the column win for input C in the same context, that
+check passes.
 
 Prediction at `t` is not used. It forecasts `t+1` and says nothing about
 whether the column should have won at `t`.
@@ -412,8 +452,8 @@ temporal pooling. Pooling needs `prev_predict_proximal_scale`.
 
 Type: Non-negative floating-point value.
 
-Purpose: Scales the proximal update for a column that was segment-backed
-predictive at `t-1` and did not win at `t`.
+Purpose: Scales the proximal update for a column that had a predictive cell at
+`t-1` and did not win at `t`.
 
 Example:
 
@@ -557,21 +597,27 @@ the word-row config.
 
 ## Suite 5 Line-Sequence Profile
 
-`test/integration/test_temporal_pooling_integration_suite5.cpp` uses a
-deliberately strong Layer 1 profile on a 16-step moving-line sequence:
+`test/integration/test_temporal_pooling_integration_suite5.cpp` uses a strong
+Layer 1 profile on a single repeating 16-step moving-line sequence:
 
 ```yaml
 temporal_pooling:
-  spatial_permanence_inc: 1.0
-  active_predict_proximal_scale: 5.0
+  spatial_permanence_inc: 0.1
+  active_predict_proximal_scale: 2.0
   prev_predict_proximal_scale: 5.0
-  sequence_permanence_inc: 1.0
+  sequence_permanence_inc: 0.1
 ```
 
-Measured with bursting columns excluded from the metric: Layer 1 keeps `0.80`
-of its non-bursting active cells between positions, Layer 0 keeps `0.12`.
-With the old `post_active` path at the same values the all-column number was
-`0.69`, of which more than half came from permanently bursting columns.
+Layer 1 also uses `desired_local_activity: 3` and `max_segments_per_cell: 4`.
+
+The test measures column pooling (fraction of winning columns at `t-1` still
+winning at `t`) and, separately, the fraction of winning columns that are
+bursting. Measured: Layer 1 column pooling `1.0` with burst fraction `0.0`;
+Layer 0 column pooling `0.22`. The same six Layer 1 columns win every position.
+For one sequence with nothing else to distinguish, that is the maximum. The
+same profile on several sequences would need a lower `prev_predict` or
+`spatial_permanence_inc` so that different sequences keep different pooled
+sets.
 
 ## How To Recognise Correct Temporal Pooling
 
@@ -589,11 +635,15 @@ A good result must satisfy all of these conditions:
 Stability alone is not enough. One constant winner set for every input is stable
 but carries no useful information.
 
-Measure pooling on non-bursting columns only. A bursting column that keeps
-winning stays bursting and counts every cell as active on every step. On the
-suite 5 line sequence, before the metric excluded bursting columns, more than
-half of the "pooled" cells came from two or three permanently bursting
-columns.
+Measure pooling on columns, and measure bursting separately. Temporal pooling
+is a column staying active across consecutive inputs, so compare the winning
+column sets at `t-1` and `t`. A bursting column that keeps winning stays
+bursting, so a layer can score high column pooling by bursting; report the
+fraction of winning columns that are bursting as a second number and require
+it to be low. Read bursting from `ActiveCellsCalculator`'s burst record
+(`burst_columns_time()`), which is stamped for new and continuing bursts. Do
+not infer bursting from every cell in a column being active: several
+correctly predicted cells can produce the same picture.
 
 ## Current Issues
 
@@ -713,9 +763,18 @@ A column that wins at `t-1` and `t` keeps its previous cell state. If it was
 bursting at `t-1`, it is bursting at `t`. A column that pooling makes win every
 position bursts once and then bursts for as long as it keeps winning.
 
-Any metric that counts active cells must exclude these columns. The suite 5
-test does. The fix in the active-cells stage is listed under future work in
-`TEMPORAL_POOLING_BURSTING.md`.
+Such a column raises column-level pooling while contributing no prediction.
+Measure the bursting fraction alongside pooling (see "How To Recognise Correct
+Temporal Pooling"). The fix in the active-cells stage is listed under future
+work in `TEMPORAL_POOLING_BURSTING.md`.
+
+### The learning-entry log grows without bound
+
+`learn_entry_log_` gains one 12-byte entry every time any cell enters the
+learning state and never drops any. At 10 to 20 entries per timestep that is
+roughly 0.5 MB per 3000 steps. The `prev2` scan only reads the newest few
+entries, so time cost is fine; memory is not. A ring buffer sized to a few
+timesteps' worth of entries would be enough.
 
 ### Sequence boundaries are not explicit
 

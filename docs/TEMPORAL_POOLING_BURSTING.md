@@ -46,8 +46,8 @@ non-bursting predictions.
 The current calculator applies local safeguards:
 
 - TP proximal reinforcement only applies to columns that had active-predict
-  cells in the current temporal-pooler distal update, or columns that were
-  segment-backed predictive at `t-1` and did not win inhibition at `t`.
+  cells in the current temporal-pooler distal update, or columns that had a
+  predictive cell at `t-1` and did not win inhibition at `t`.
 - Cells made active because their column is currently bursting cannot count as
   active-predict support for TP distal or proximal learning.
 - `temporal_pooling.spatial_permanence_inc` now strengthens real proximal
@@ -85,7 +85,7 @@ Several local fixes are now in place.
    This keeps high `temporal_pooling.spatial_permanence_inc` values from being
    a generic spatial-learning shortcut. TP proximal learning only reinforces
    columns with local distal evidence: active-predict support, or a
-   segment-backed prediction at `t-1` for a column that lost inhibition at `t`.
+   prediction at `t-1` for a column that lost inhibition at `t`.
 
    Active-predict support also requires that the column did not burst on the
    current timestep. A burst activates every cell, so treating that activity as
@@ -126,18 +126,17 @@ No global burst-rate rule or layer-wide normalization was added.
    `prev_predict_proximal_scale` controls the one proximal update that can
    add an input to a column. It fires when:
 
-   - a cell in the column was predictive at `t-1`,
-   - one of that cell's segments was active at `t-1`, and
+   - a cell in the column was predictive at `t-1`, and
    - the column did not win at `t`.
 
    The column's proximal synapses to the input at `t` are strengthened.
 
-   When a column becomes active, `ActiveCellsCalculator` checks the same two
-   `t-1` conditions. If a cell in the column was predictive at `t-1` and had
-   an active segment at `t-1`, only that cell activates. Otherwise every cell
-   activates: the column bursts. So when the proximal change later makes the
-   column win for this input in the same context, the prediction that caused
-   the change is also the prediction that stops the burst.
+   When a column becomes active, `ActiveCellsCalculator` looks for the same
+   `t-1` prediction. If a cell in the column was predictive at `t-1` (and so
+   had an active segment at `t-1`), only that cell activates. Otherwise every
+   cell activates: the column bursts. So when the proximal change later makes
+   the column win for this input in the same context, the prediction that
+   caused the change is also the prediction that stops the burst.
 
    A proximal update that uses any other evidence, such as prediction at `t`
    (which forecasts `t+1`), teaches the column an input it was never predicted
@@ -165,9 +164,12 @@ A column that was active at `t-1` and wins again at `t` is not checked for a
 prediction. Its cells keep the state they had at `t-1`. If it was bursting at
 `t-1`, it is bursting at `t`. A column that temporal pooling makes win every
 position of a sequence therefore bursts once and then bursts for as long as it
-keeps winning. Any pooling metric that counts active cells must exclude
-bursting columns, or a permanently bursting column counts as
-`cells_per_column` pooled cells every step.
+keeps winning. Such a column looks perfectly pooled at the column level. So
+measure pooling on winning columns and, separately, the fraction of winning
+columns that are bursting, read from `ActiveCellsCalculator`'s
+`burst_cols_time`. That record is stamped for new and continuing bursts. Do not
+infer bursting from all cells in a column being active; several correctly
+predicted cells give the same picture.
 
 Important supporting code paths:
 
@@ -181,8 +183,8 @@ Important supporting code paths:
 - `htm_flow/src/temporal_pooler/temporal_pooler.cpp`
   - `update_proximal()` changes `col_syn_perm_`
   - TP proximal reinforcement requires active-predict support from the current
-    TP distal update, or a segment-backed prediction at `t-1` for a column that
-    did not win inhibition at `t`
+    TP distal update, or a prediction at `t-1` for a column that did not win
+    inhibition at `t`
   - current bursting columns do not produce active-predict support
   - `active_predict_proximal_scale` and `prev_predict_proximal_scale` control
     how much each path contributes
@@ -259,7 +261,7 @@ Generic `HTMLayerConfig` defaults now also bias toward safer TP startup
 This is meant to avoid temporary selection effects that make columns win without
 improving their real proximal support. TP proximal learning now changes the same
 permanences that future overlap calculations inspect, but only for columns that
-had active-predict support or segment-backed predictive support. Runtime logs
+had active-predict support or were predicted at `t-1`. Runtime logs
 now report only the number of reinforced active proximal inputs. If that count
 is non-zero but active columns do not broaden over time,
 `temporal_pooling.spatial_permanence_inc` may be too small relative to
@@ -291,9 +293,10 @@ Calculator-level coverage lives in:
     inhibition at `t` learns the input at `t`
   - checks that a prediction made at `t` does not authorize learning the input
     at `t`
-  - checks that a prediction without an active segment is ignored
+  - checks that a prediction at `t-1` still counts when its segment fired
+    again at `t` and overwrote the `t-1` stamp
 
-Two-layer pooling coverage with bursting columns excluded from the metric:
+Two-layer column pooling with a separate bursting-fraction assertion:
 
 - `htm_flow/test/integration/test_temporal_pooling_integration_suite5.cpp`
 
@@ -328,8 +331,8 @@ When investigating this issue again, check:
 - whether `temporal_pooling.spatial_permanence_inc` is too small to overcome
   normal proximal decay or so large that active-predict-supported columns become
   overly sticky
-- whether the pooling metric counts bursting columns; if it does, the number is
-  not evidence of pooling
+- the bursting fraction of winning columns alongside the pooling number; high
+  pooling with high bursting is not evidence of temporal pooling
 
 ## Future Work
 

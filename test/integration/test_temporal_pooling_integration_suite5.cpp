@@ -5,6 +5,8 @@
 #include "../test_utils/tp_metrics.hpp"
 
 #include <cstdint>
+#include <iostream>
+#include <sstream>
 #include <vector>
 
 using temporal_pooling_test_utils::TemporalPoolingMeasure;
@@ -80,34 +82,32 @@ TwoLayerHtmHarness::Config suiteConfig() {
   return cfg;
 }
 
-// Active cells, with bursting columns removed.
+// Per-layer running measurements over the evaluation steps.
 //
-// A bursting column has every cell active. A column that keeps winning while
-// bursting stays bursting (ActiveCellsCalculator carries the burst forward),
-// so it would add `cells_per_column` "pooled" cells every step without any
-// correct prediction. Counting those cells would let a layer pass this test by
-// bursting. Only columns with at least one inactive cell are counted.
-std::vector<uint8_t> nonBurstingActiveCells01(
-    const temporal_pooling_test_utils::HtmPipelineHarness& layer) {
-  const auto snapshot = layer.snapshot();
-  std::vector<uint8_t> active(
-      static_cast<std::size_t>(snapshot.columns_shape.rows * snapshot.columns_shape.cols *
-                               snapshot.cells_per_column),
-      0);
-  const std::uint64_t all_cells = (std::uint64_t{1} << snapshot.cells_per_column) - 1;
-  for (std::size_t col = 0; col < snapshot.column_cell_masks.size(); ++col) {
-    if ((snapshot.column_cell_masks[col].active & all_cells) == all_cells) {
-      continue;
-    }
-    for (int cell = 0; cell < snapshot.cells_per_column; ++cell) {
-      const std::uint64_t bit = std::uint64_t{1} << cell;
-      active[col * static_cast<std::size_t>(snapshot.cells_per_column) +
-             static_cast<std::size_t>(cell)] =
-          (snapshot.column_cell_masks[col].active & bit) != 0 ? 1 : 0;
-    }
+// Pooling is measured on columns, not cells: the fraction of columns active at
+// t-1 that are still active at t. Temporal pooling is a column staying active
+// across consecutive inputs, so that is the quantity to measure.
+//
+// Bursting is measured separately from ActiveCellsCalculator's burst record.
+// It is not folded into the pooling number. A layer can score high pooling by
+// bursting (a column that keeps winning while bursting stays bursting), so the
+// test asserts a low burst fraction as a second condition.
+struct LayerMeasure {
+  TemporalPoolingMeasure pooling;
+  double pooled = 0.0;
+  double burst_sum = 0.0;
+  int steps = 0;
+
+  void record(temporal_pooling_test_utils::HtmPipelineHarness& layer, int time_step) {
+    const std::vector<uint8_t> cols = layer.activeColumns01();
+    pooled = pooling.temporalPoolingPercent(cols);
+    burst_sum += temporal_pooling_test_utils::burstFraction(cols, layer.burst_columns_time(),
+                                                            time_step);
+    ++steps;
   }
-  return active;
-}
+
+  double burstFraction() const { return steps > 0 ? burst_sum / steps : 0.0; }
+};
 
 } // namespace
 
@@ -122,10 +122,11 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
   Layer 0 has temporal-pooling learning disabled.
   Layer 1 has a full-input potential pool, more distal-segment capacity,
   strong distal temporal learning, and strong proximal temporal learning.
-  We compare how much each layer's active-cell output stays active from one
-  sequence position to the next. Bursting columns are excluded from the
-  measurement. A column that bursts and keeps winning stays bursting, and its
-  cells would count as pooled without any correct prediction.
+  We compare how much each layer's set of winning columns stays the same from
+  one sequence position to the next. Separately, we measure what fraction of
+  Layer 1's winning columns are bursting, read from ActiveCellsCalculator's
+  burst record. A column that bursts and keeps winning stays bursting, so high
+  column pooling with high bursting is not temporal pooling.
 
   Why the configuration is asymmetric:
   Layer 0 should preserve changing sequence positions for the next layer.
@@ -139,19 +140,22 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
   That is the spatial floor the Layer 1 margin is measured against.
 
   Pass:
-  Layer 1 retains at least 0.65 of its non-bursting active cells between
+  Layer 1 keeps at least kLayer1MinPooling of its winning columns between
   sequence positions.
-  Layer 1 temporal pooling is at least 0.50 above Layer 0.
+  Layer 1 column pooling is at least kLayer1MinMargin above Layer 0.
+  At most kLayer1MaxBurstFraction of Layer 1's winning columns are bursting.
 
   Fail:
-  Layer 1 does not form a stable non-bursting active-cell representation,
-  or its output is not more stable than the Layer 0 control.
+  Layer 1 columns do not stay active across positions, Layer 1 is not more
+  stable than the Layer 0 control, or Layer 1 reaches its stability by
+  bursting.
 
   Steps:
   1. Run a repeating left-to-right line sequence for train_steps.
   2. Run three more complete cycles.
-  3. Measure successive non-bursting active-cell overlap in both layers.
-  4. Require Layer 1 to pool strongly and exceed Layer 0.
+  3. Each step, record successive winning-column overlap in both layers and
+     the bursting fraction of Layer 1's winning columns.
+  4. Require Layer 1 to pool strongly, exceed Layer 0, and not burst.
   */
 
   TwoLayerHtmHarness htm(suiteConfig());
@@ -171,24 +175,38 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
                                         [&]() { return inputs.next(htm.rng()); });
   time_step += train_steps;
 
-  TemporalPoolingMeasure layer0_measure;
-  TemporalPoolingMeasure layer1_measure;
-  double layer0_pooled = 0.0;
-  double layer1_pooled = 0.0;
+  LayerMeasure layer0;
+  LayerMeasure layer1;
 
   const int eval_steps = 3 * inputs.seqLen();
   for (int i = 0; i < eval_steps; ++i) {
     const std::vector<int> in = inputs.next(htm.rng());
     htm.step(time_step, in);
-    layer0_pooled =
-        layer0_measure.temporalPoolingPercent(nonBurstingActiveCells01(htm.layer0()));
-    layer1_pooled =
-        layer1_measure.temporalPoolingPercent(nonBurstingActiveCells01(htm.layer1()));
+    layer0.record(htm.layer0(), time_step);
+    layer1.record(htm.layer1(), time_step);
     ++time_step;
   }
 
-  EXPECT_GE(layer1_pooled, 0.65)
-      << "Layer 1 should keep most of its non-bursting active cells active across the sequence";
-  EXPECT_GE(layer1_pooled, layer0_pooled + 0.50)
-      << "Layer 1 should pool more strongly than the Layer 0 control";
+  const double kLayer1MinPooling = 0.65;
+  const double kLayer1MinMargin = 0.50;
+  const double kLayer1MaxBurstFraction = 0.10;
+
+  const auto summary = [&]() {
+    std::ostringstream os;
+    os << "layer0 column pooling=" << layer0.pooled
+       << " layer1 column pooling=" << layer1.pooled
+       << " layer0 burst fraction=" << layer0.burstFraction()
+       << " layer1 burst fraction=" << layer1.burstFraction();
+    return os.str();
+  };
+
+  std::cout << "[ suite5 ] " << summary() << "\n";
+
+  EXPECT_GE(layer1.pooled, kLayer1MinPooling)
+      << "Layer 1 should keep most of its winning columns active across the sequence. "
+      << summary();
+  EXPECT_GE(layer1.pooled, layer0.pooled + kLayer1MinMargin)
+      << "Layer 1 should pool more strongly than the Layer 0 control. " << summary();
+  EXPECT_LE(layer1.burstFraction(), kLayer1MaxBurstFraction)
+      << "Layer 1 should reach its stability by prediction, not by bursting. " << summary();
 }

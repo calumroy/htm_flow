@@ -106,16 +106,19 @@ makes pooled columns sticky and can make a few columns dominate later inputs.
 This setting teaches a column the input it was predicted for but lost.
 
 ```text
-t-1: a cell in column 7 is predicted by an active distal segment
-t:   column 7 does not win for input C
-     -> strengthen column 7's proximal connections to input C
+t-1: a cell in the column is predictive
+t:   the column does not win for input C
+     -> strengthen the column's proximal connections to input C
 ```
 
-All three conditions are required:
+Both conditions are required:
 
 1. A cell in the column was predictive at `t-1`.
-2. One of that cell's distal segments was active at `t-1`.
-3. The column does not win at `t`.
+2. The column does not win at `t`.
+
+A predictive cell always has an active distal segment at the time it was
+predicted; that is the only way a cell becomes predictive. No separate segment
+check is made.
 
 The increase for each currently active proximal input is:
 
@@ -208,10 +211,10 @@ Good signs:
 - `reinforced_inputs` is non-zero after TP turns on.
 - Some columns win for more than one position in the same learned sequence.
 - Unrelated sequences do not all use the same columns.
-- The fraction of winning columns that burst stays low.
-- Columns that keep winning are not bursting. Count pooled cells only in
-  non-bursting columns. A column that bursts and keeps winning stays bursting
-  and would otherwise count `cells_per_column` pooled cells every step.
+- The fraction of winning columns that burst stays low. Measure this
+  separately from pooling, from `ActiveCellsCalculator`'s burst record. A
+  column that bursts and keeps winning stays bursting and looks perfectly
+  pooled at the column level.
 
 Bad signs:
 

@@ -274,12 +274,12 @@ Raising it does not increase pooling.
 ### `prev_predict_proximal_scale`
 
 This teaches a column the input it was predicted for but lost. It fires when a
-cell in the column was predictive at `t-1` with an active segment at `t-1`,
-and the column did not win at `t`. The column learns the input at `t`.
+cell in the column was predictive at `t-1` and the column did not win at `t`.
+The column learns the input at `t`.
 
-These are the same conditions the active-cells stage checks to decide whether
-a newly active column bursts, so when the column later wins for that input in
-the same context it does not burst.
+That `t-1` prediction is what the active-cells stage looks for to decide
+whether a newly active column bursts, so when the column later wins for that
+input in the same context it does not burst.
 
 It pools in both directions. For a sequence A, B, C: a column that wins B
 gets a TP segment onto the other cells for B, so next cycle it is predicted
@@ -469,9 +469,11 @@ Use a fixed random seed and record:
 - Pooled-column overlap within one sequence.
 - Pooled-column overlap between unrelated sequences.
 
-Exclude bursting columns from any active-cell pooling metric. A column that
-bursts and keeps winning stays bursting, and counts `cells_per_column` pooled
-cells every step without a single correct prediction.
+Measure pooling on winning columns and report the bursting fraction of those
+columns separately, read from `ActiveCellsCalculator`'s burst record. A column
+that bursts and keeps winning stays bursting and looks perfectly pooled
+without a single correct prediction. Do not infer bursting from every cell in
+a column being active; multiple correct predictions produce the same picture.
 
 ### A control layer with temporal pooling off still shows some pooling
 

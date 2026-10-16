@@ -55,8 +55,7 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
     const std::vector<int>& col_pot_inputs01,
     std::vector<float>& col_syn_perm,
     const std::vector<uint8_t>* col_active01,
-    const std::vector<int>* predict_cells_time,
-    const std::vector<int>* active_segs_time) const {
+    const std::vector<int>* predict_cells_time) const {
   ProximalUpdateStats stats;
   if (support_time != last_active_predict_support_time_ ||
       cfg_.spatial_permanence_inc <= 0.0f) {
@@ -68,14 +67,12 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
 
   // The extra state is optional so older/unit callers can still exercise the
   // active-predict path. Without it, we cannot tell which columns lost
-  // inhibition or which predictions had segment evidence at support_time - 1.
+  // inhibition or which were predicted at support_time - 1.
   const bool can_check_prev_predict =
-      col_active01 != nullptr && predict_cells_time != nullptr && active_segs_time != nullptr;
+      col_active01 != nullptr && predict_cells_time != nullptr;
   if (can_check_prev_predict) {
     assert(static_cast<int>(col_active01->size()) == cfg_.num_columns);
     assert(static_cast<int>(predict_cells_time->size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
-    assert(static_cast<int>(active_segs_time->size()) ==
-           cfg_.num_columns * cfg_.cells_per_column * cfg_.max_segments_per_cell);
   }
 
   // Convert distal confidence into real proximal permanence so columns that TP
@@ -89,15 +86,14 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
     const bool active_now = can_check_prev_predict &&
                             ((*col_active01)[static_cast<std::size_t>(col)] == 1);
 
-    // The column was predicted for this timestep (predictive at t-1 with a
-    // segment active at t-1) but lost inhibition. Learn the current input so
-    // the column can win for it later. The evidence is the same one the burst
-    // gate checks, so the later win does not burst in this context.
+    // The column was predicted for this timestep (a cell was predictive at
+    // t-1) but lost inhibition. Learn the current input so the column can win
+    // for it later. ActiveCellsCalculator looks for the same t-1 prediction
+    // when the column later wins, so that win does not burst in this context.
     // Prediction at t is not used here: it forecasts t+1, not the current input.
     const bool prev_predict_lost =
         can_check_prev_predict && !active_now &&
-        column_has_temporal_support(*predict_cells_time, *active_segs_time, col,
-                                    support_time - 1);
+        column_has_temporal_support(*predict_cells_time, col, support_time - 1);
     // Proximal synapses belong to the column. Once any cell in the column was
     // correctly predicted and became active, apply one column-level increase.
     // Do not make the increase depend on the number of matching cells.
@@ -187,19 +183,16 @@ bool TemporalPoolerCalculator::check_column_time(const std::vector<int>& columns
 }
 
 bool TemporalPoolerCalculator::column_has_temporal_support(const std::vector<int>& predict_cells_time,
-                                                           const std::vector<int>& active_segs_time,
                                                            int col,
                                                            int time_step) const {
+  // A cell is only marked predictive by PredictCellsCalculator after one of
+  // its segments was stamped active at the same timestep, so a predictive
+  // cell at `time_step` is segment-backed by construction. Do not re-check
+  // `active_segs_time` here: it holds one stamp per segment, and a segment
+  // that fired again at a later step has overwritten the earlier stamp.
   for (int cell = 0; cell < cfg_.cells_per_column; ++cell) {
-    if (!check_cell_predict(predict_cells_time, col, cell, time_step)) {
-      continue;
-    }
-
-    const int base = idx_cell_seg(col, cell, 0);
-    for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
-      if (active_segs_time[static_cast<std::size_t>(base + seg)] == time_step) {
-        return true;
-      }
+    if (check_cell_predict(predict_cells_time, col, cell, time_step)) {
+      return true;
     }
   }
   return false;
@@ -216,39 +209,25 @@ bool TemporalPoolerCalculator::check_cell_predict(const std::vector<int>& predic
   return (p0 == time_step) || (p1 == time_step);
 }
 
-int TemporalPoolerCalculator::find_recent_active_segment(const std::vector<int>& active_segs_time,
-                                                         int col,
-                                                         int cell,
-                                                         int time_step) const {
-  const int base = idx_cell_seg(col, cell, 0);
-  for (int seg = 0; seg < cfg_.max_segments_per_cell; ++seg) {
-    if (active_segs_time[static_cast<std::size_t>(base + seg)] == time_step) {
-      return seg;
-    }
-  }
-  return -1;
-}
-
 bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>& active_cells_time,
                                                         const std::vector<int>& predict_cells_time,
-                                                        const std::vector<int>& active_segs_time,
                                                         const std::vector<int>& burst_cols_time,
                                                         int col,
                                                         int cell,
                                                         int time_step) const {
   // Activity created by a current burst is not a correct prediction and must
-  // not authorize temporal-pooling learning.
+  // not authorize temporal-pooling learning. This matters for a column that
+  // was bursting at t-1 and keeps winning: all its cells stay active, and any
+  // of them may have become predictive at t-1 from the burst activity.
   if (check_column_time(burst_cols_time, col, time_step)) {
     return false;
   }
 
-  // Require the same t-1 prediction evidence that ActiveCellsCalculator uses
-  // to decide whether a newly active column bursts.
+  // Predictive at t-1 implies a segment was active at t-1 (see
+  // column_has_temporal_support), so no separate segment check is made.
   const bool cell_active = check_cell_time(active_cells_time, col, cell, time_step);
   const bool was_predict = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
-  const bool had_active_segment =
-      find_recent_active_segment(active_segs_time, col, cell, time_step - 1) >= 0;
-  return cell_active && was_predict && had_active_segment;
+  return cell_active && was_predict;
 }
 
 void TemporalPoolerCalculator::update_new_learn_cells_time(
@@ -542,8 +521,7 @@ void TemporalPoolerCalculator::update_distal(int time_step,
     const int cell = flat % cfg_.cells_per_column;
 
     const bool active_predict = check_cell_active_predict(
-        active_cells_time, predict_cells_time, active_segs_time, burst_cols_time, col, cell,
-        time_step);
+        active_cells_time, predict_cells_time, burst_cols_time, col, cell, time_step);
     if (active_predict) {
       active_predict_cells[static_cast<std::size_t>(flat)] = 1;
     }
