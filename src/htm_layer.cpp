@@ -106,7 +106,7 @@ HTMLayer::HTMLayer(const HTMLayerConfig& cfg, const std::string& name)
           num_pot_syn_,
           cfg_.temp_spatial_permanence_inc,
           cfg_.temp_active_predict_proximal_scale,
-          cfg_.temp_post_active_proximal_scale,
+          cfg_.temp_prev_predict_proximal_scale,
           cfg_.temp_sequence_permanence_inc,
           cfg_.temp_sequence_permanence_dec,
           cfg_.min_num_syn_threshold,
@@ -385,13 +385,13 @@ RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& pat
       applied("temporal_pooling.active_predict_proximal_scale");
     }
   }
-  if (patch.temp_post_active_proximal_scale) {
-    if (*patch.temp_post_active_proximal_scale < 0.0f) {
-      reject("temporal_pooling.post_active_proximal_scale", "must be >= 0");
+  if (patch.temp_prev_predict_proximal_scale) {
+    if (*patch.temp_prev_predict_proximal_scale < 0.0f) {
+      reject("temporal_pooling.prev_predict_proximal_scale", "must be >= 0");
     } else {
-      cfg_.temp_post_active_proximal_scale = *patch.temp_post_active_proximal_scale;
+      cfg_.temp_prev_predict_proximal_scale = *patch.temp_prev_predict_proximal_scale;
       update_temporal_pool_proximal_scales = true;
-      applied("temporal_pooling.post_active_proximal_scale");
+      applied("temporal_pooling.prev_predict_proximal_scale");
     }
   }
   if (update_temporal_pool_learning) {
@@ -402,7 +402,7 @@ RuntimePatchReport HTMLayer::apply_runtime_patch(const HTMLayerRuntimePatch& pat
   if (update_temporal_pool_proximal_scales) {
     temporal_pool_calc_.set_proximal_reinforcement_scales(
         cfg_.temp_active_predict_proximal_scale,
-        cfg_.temp_post_active_proximal_scale);
+        cfg_.temp_prev_predict_proximal_scale);
   }
 
   if (patch.log_timings) {

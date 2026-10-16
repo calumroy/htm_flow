@@ -17,11 +17,16 @@ than declaring the issue solved.
 
 Headless true-burst diagnostics show that the current repeated-sequence failure
 mode is mostly **no previous prediction** for newly bursting Layer 1 columns.
-That means the burst gate is not ignoring valid predictive segment evidence;
-proximal TP can make columns win before distal sequence memory predicts them.
+The column had no cell that was predictive at `t-1`, so it burst. Proximal TP
+can make a column win before distal sequence memory predicts it.
+
+The main cause was in the proximal update itself. It learned an input using a
+prediction made for a different timestep. It now uses only the prediction made
+at `t-1` for `t`, which is what the active-cells stage checks before deciding
+whether a column bursts. See "Implemented Fixes" item 5.
+
 The reference delayed config uses a single runtime override with
-active-predict reinforcement plus a moderate post-active bridge while leaving
-the riskiest predicted-non-active path disabled.
+active-predict reinforcement plus a moderate `prev_predict` update.
 Layer 1 also uses `sequence_memory.cells_per_column: 6` and
 `sequence_memory.activation_threshold: 4`. Four cells per column left familiar
 branching transitions under-represented; threshold `6` left familiar transitions
@@ -41,20 +46,16 @@ non-bursting predictions.
 The current calculator applies local safeguards:
 
 - TP proximal reinforcement only applies to columns that had active-predict
-  cells in the previous temporal-pooler distal update, or columns that are
-  currently segment-backed predictive but did not win inhibition.
+  cells in the current temporal-pooler distal update, or columns that were
+  segment-backed predictive at `t-1` and did not win inhibition at `t`.
 - Cells made active because their column is currently bursting cannot count as
   active-predict support for TP distal or proximal learning.
-- A one-step later-input rule reinforces a recently active-predict column only
-  when it is still segment-backed predictive and failed to win inhibition on the
-  next timestep.
 - `temporal_pooling.spatial_permanence_inc` now strengthens real proximal
   permanences for those supported columns instead of adding a temporary overlap
   bonus.
-- TP proximal reinforcement is split into local scale knobs for active-predict
-  winners and the post-active bridge. The direct predicted-non-winner proximal
-  path was removed because it made tuning harder and tended to create
-  unpredicted winners.
+- TP proximal reinforcement is split into two scale knobs:
+  `active_predict_proximal_scale` for columns that were predicted and won, and
+  `prev_predict_proximal_scale` for columns that were predicted and lost.
 - TP distal reinforcement now rewards synapses targeting the same `prev2`
   learning-cell context used to select a temporal-pooling segment.
 
@@ -66,8 +67,9 @@ Several local fixes are now in place.
 
    Temporal pooling used to have an optional persistence mode. It kept a cell
    predictive for a few timesteps after its active-predict streak ended, and
-   copied the cell's active segment timestamp forward so the burst gate accepted
-   the prediction. Those predictions had no support from current distal input,
+   copied the cell's active segment timestamp forward so the active-cells
+   stage treated the prediction as valid and did not burst the column. Those
+   predictions had no support from current distal input,
    and the GUI showed predictive cells with no segment over threshold.
 
    The temporal pooler now reads `predict_cells_time` and `active_segs_time`
@@ -82,8 +84,8 @@ Several local fixes are now in place.
 
    This keeps high `temporal_pooling.spatial_permanence_inc` values from being
    a generic spatial-learning shortcut. TP proximal learning only reinforces
-   columns with local distal evidence: active-predict support, current
-   segment-backed prediction, or the stricter post-active bridge condition.
+   columns with local distal evidence: active-predict support, or a
+   segment-backed prediction at `t-1` for a column that lost inhibition at `t`.
 
    Active-predict support also requires that the column did not burst on the
    current timestep. A burst activates every cell, so treating that activity as
@@ -105,26 +107,8 @@ No global burst-rate rule or layer-wide normalization was added.
    trace; the bookkeeping is derived from the same active-predict condition that
    TP distal learning uses to reinforce or create segments.
 
-   The same reinforcement path also handles two non-winner cases:
-
-   - **Predicted but not active:** if a column is predictive at the current
-     timestep and has an active segment timestamp, but did not win inhibition,
-     TP gives the column's currently active proximal inputs one local permanence
-     increment. This lets distal TP predictions become future proximal overlap
-     instead of waiting for the column to win inhibition first.
-   - **Recently active-predict and still predicted:** if a column had
-     active-predict support on the previous timestep, is still segment-backed
-     predictive on the current timestep, and did not win inhibition, TP gives
-     the currently active proximal inputs one additional local increment. This
-     lets a correctly predicted activation grow proximal support for inputs just
-     after that activation, but only while distal evidence still says the column
-     belongs.
-
-   The later-input rule deliberately requires both previous active-predict
-   support and current segment-backed prediction. Without the current prediction
-   check, TP would smear proximal permanence onto whatever happened to follow a
-   correct activation. Without the previous active-predict check, the rule would
-   be the generic predicted-but-not-active case only.
+   This path only fires for columns that already won. It cannot add a new
+   input to a column, so on its own it produces no temporal pooling.
 
 4. **TP distal matching and reinforcement use the same context.**
 
@@ -136,6 +120,29 @@ No global burst-rate rule or layer-wide normalization was added.
    reinforced according to cells active at the current timestep. That mismatch
    made it hard for TP-created distal synapses to become connected and later
    drive earlier/later predictive state.
+
+5. **A column only learns a new input if it was predicted for that input.**
+
+   `prev_predict_proximal_scale` controls the one proximal update that can
+   add an input to a column. It fires when:
+
+   - a cell in the column was predictive at `t-1`,
+   - one of that cell's segments was active at `t-1`, and
+   - the column did not win at `t`.
+
+   The column's proximal synapses to the input at `t` are strengthened.
+
+   When a column becomes active, `ActiveCellsCalculator` checks the same two
+   `t-1` conditions. If a cell in the column was predictive at `t-1` and had
+   an active segment at `t-1`, only that cell activates. Otherwise every cell
+   activates: the column bursts. So when the proximal change later makes the
+   column win for this input in the same context, the prediction that caused
+   the change is also the prediction that stops the burst.
+
+   A proximal update that uses any other evidence, such as prediction at `t`
+   (which forecasts `t+1`), teaches the column an input it was never predicted
+   for. When the column later wins that input, no cell was predictive at
+   `t-1`, and the column bursts. That is the `no_prev_prediction` burst.
 
 ## Why Bursting Happens
 
@@ -154,6 +161,14 @@ After a burst, all cells are active and can therefore make segments predictive.
 The temporal pooler excludes that burst-created activity from active-predict
 learning while the column is still bursting.
 
+A column that was active at `t-1` and wins again at `t` is not checked for a
+prediction. Its cells keep the state they had at `t-1`. If it was bursting at
+`t-1`, it is bursting at `t`. A column that temporal pooling makes win every
+position of a sequence therefore bursts once and then bursts for as long as it
+keeps winning. Any pooling metric that counts active cells must exclude
+bursting columns, or a permanently bursting column counts as
+`cells_per_column` pooled cells every step.
+
 Important supporting code paths:
 
 - `htm_flow/src/htm_layer.cpp`
@@ -165,15 +180,12 @@ Important supporting code paths:
     overlap calculations
 - `htm_flow/src/temporal_pooler/temporal_pooler.cpp`
   - `update_proximal()` changes `col_syn_perm_`
-  - TP proximal reinforcement now requires active-predict support from the
-    previous TP distal update, or current segment-backed predictive support for
-    a column that did not win inhibition
+  - TP proximal reinforcement requires active-predict support from the current
+    TP distal update, or a segment-backed prediction at `t-1` for a column that
+    did not win inhibition at `t`
   - current bursting columns do not produce active-predict support
-  - `active_predict_proximal_scale` and `post_active_proximal_scale` control
-    how much each local support path contributes
-  - the later-input rule uses the previous distal update's active-predict
-    support plus current segment-backed prediction before reinforcing a
-    non-winning column's current active proximal inputs
+  - `active_predict_proximal_scale` and `prev_predict_proximal_scale` control
+    how much each path contributes
   - `update_distal()` changes `distal_synapses_`
   - reused TP distal segments are matched and reinforced against `prev2`
     learning-cell context
@@ -200,19 +212,28 @@ Important supporting code paths:
   the main "more TP / less TP" proximal knob.
 - The current proximal reinforcement model is intentionally local:
   - active-predict winners reinforce the input that made them win
-  - segment-backed predictive non-winners get current-input reinforcement
-  - recently active-predict, still-predictive non-winners get a later-input
-    reinforcement step
+  - columns predicted at `t-1` that lost inhibition at `t` learn the input at
+    `t`
 - Because TP proximal is now trust-gated, stronger TP settings can be explored
   with less risk of immediately reintroducing Layer 1 burst spikes.
-- If `new_true_burst_causes` reports `no_prev_prediction`, proximal pressure is activating
-  columns that distal sequence memory did not predict on the previous timestep.
-  Back off `spatial_permanence_inc` and `post_active_proximal_scale` before
-  changing active-cells bursting logic.
-- If delayed TP causes new winners to burst, first reduce
-  `post_active_proximal_scale`. That path teaches columns shortly after a
-  correct activation, so it is the first local knob to check before lowering all
-  TP learning.
+- If `new_true_burst_causes` reports `no_prev_prediction`, a column won for an
+  input it was not predicted for. With the `prev_predict` path this means the
+  prediction that authorized the proximal change did not survive until the
+  column won. Sequence learning punishes a segment that predicted a cell which
+  did not activate, and the `prev_predict` path learns from exactly those
+  predictions. Check that `temporal_pooling.sequence_permanence_inc` is well
+  above `sequence_memory.permanence_dec` before lowering the proximal settings.
+- The `prev_predict` path needs candidate columns: columns predicted at `t-1`
+  that lose at `t`. In a well-learned sequence, sequence memory alone produces
+  almost none, because its predictions are correct. The candidates come from
+  TP distal segments, which predict a column for the position after the one it
+  just won. If `temporal_pooling.sequence_permanence_inc` is `0.0`, no TP
+  segments are built and the `prev_predict` path has nothing to act on.
+- A layer with temporal pooling off can still show some column persistence.
+  When a column's receptive field spans several sequence positions, spatial
+  learning raises its permanence to every input it wins for, and it can win
+  two adjacent positions. That is spatial-pooler behavior, not a
+  temporal-pooling leak, and it does not cause bursting.
 
 ## Current Config Direction
 
@@ -225,7 +246,7 @@ Layer 1 temporal pooling is enabled at timestep 1000 with:
 
 - `spatial_permanence_inc: 0.12`
 - `active_predict_proximal_scale: 0.25`
-- `post_active_proximal_scale: 0.5`
+- `prev_predict_proximal_scale: 0.5`
 - moderate TP distal learning
 
 Layer 1 also uses six cells per column and sequence-memory
@@ -266,8 +287,15 @@ Calculator-level coverage lives in:
 
 - `htm_flow/test/unit/test_temporal_pooler.cpp`
   - checks active-predict-gated TP proximal updates
-  - checks predictive non-winner and post-active predictive non-winner proximal
-    reinforcement
+  - checks that a column predicted at `t-1` with an active segment that lost
+    inhibition at `t` learns the input at `t`
+  - checks that a prediction made at `t` does not authorize learning the input
+    at `t`
+  - checks that a prediction without an active segment is ignored
+
+Two-layer pooling coverage with bursting columns excluded from the metric:
+
+- `htm_flow/test/integration/test_temporal_pooling_integration_suite5.cpp`
 
 Run them with:
 
@@ -300,15 +328,34 @@ When investigating this issue again, check:
 - whether `temporal_pooling.spatial_permanence_inc` is too small to overcome
   normal proximal decay or so large that active-predict-supported columns become
   overly sticky
+- whether the pooling metric counts bursting columns; if it does, the number is
+  not evidence of pooling
 
 ## Future Work
 
 Future improvements should focus on making temporal learning stronger without
 reintroducing burst spikes while keeping the state model easy to inspect.
 
-The likely next step is to compare weak and moderate active-predict-gated
-proximal reinforcement settings. Avoid adding another persistent synapse-like
-trace unless this simpler local permanence update proves insufficient.
+Open items, in order:
+
+1. A continuing column that is bursting stays bursting until it loses
+   inhibition. Let it leave the bursting state when one of its cells was
+   segment-backed predictive at `t-1`. This changes `ActiveCellsCalculator`
+   and affects every test, so it needs its own measurement.
+2. `temp_spatial_permanence_inc = 1.0` sets permanence to `1.0` in one update.
+   That is assignment, not learning. Lower values spread pooling across more
+   columns, each winning a run of several positions, instead of a few columns
+   winning every position.
+3. Tune `temporal_pooling.sequence_permanence_inc` against
+   `sequence_memory.permanence_dec` together. The `prev_predict` path only has
+   candidates while the TP distal prediction survives sequence-learning
+   punishment.
+4. Sequence memory never prunes a second correctly predicting cell in the same
+   column. Both are activated and both are reinforced. This is why many
+   columns show more than one predictive cell on a single repeating sequence.
+
+Avoid adding another persistent synapse-like trace unless this simpler local
+permanence update proves insufficient.
 
 Do not treat the current implementation as a final bursting fix. It narrows when
 TP proximal learning is allowed to change shared proximal permanence, but config

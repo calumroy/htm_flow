@@ -145,8 +145,8 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
     cfg.temp_spatial_permanence_inc = get_or(tp, "spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
     cfg.temp_active_predict_proximal_scale =
         get_or(tp, "active_predict_proximal_scale", cfg.temp_active_predict_proximal_scale);
-    cfg.temp_post_active_proximal_scale =
-        get_or(tp, "post_active_proximal_scale", cfg.temp_post_active_proximal_scale);
+    cfg.temp_prev_predict_proximal_scale =
+        get_or(tp, "prev_predict_proximal_scale", cfg.temp_prev_predict_proximal_scale);
     cfg.temp_sequence_permanence_inc = get_or(tp, "sequence_permanence_inc", cfg.temp_sequence_permanence_inc);
     cfg.temp_sequence_permanence_dec = get_or(tp, "sequence_permanence_dec", cfg.temp_sequence_permanence_dec);
   }
@@ -154,8 +154,8 @@ HTMLayerConfig parse_layer_node(const YAML::Node& node) {
   cfg.temp_spatial_permanence_inc = get_or(node, "temp_spatial_permanence_inc", cfg.temp_spatial_permanence_inc);
   cfg.temp_active_predict_proximal_scale =
       get_or(node, "temp_active_predict_proximal_scale", cfg.temp_active_predict_proximal_scale);
-  cfg.temp_post_active_proximal_scale =
-      get_or(node, "temp_post_active_proximal_scale", cfg.temp_post_active_proximal_scale);
+  cfg.temp_prev_predict_proximal_scale =
+      get_or(node, "temp_prev_predict_proximal_scale", cfg.temp_prev_predict_proximal_scale);
   cfg.temp_sequence_permanence_inc = get_or(node, "temp_sequence_permanence_inc", cfg.temp_sequence_permanence_inc);
   cfg.temp_sequence_permanence_dec = get_or(node, "temp_sequence_permanence_dec", cfg.temp_sequence_permanence_dec);
 
@@ -271,7 +271,7 @@ HTMLayerRuntimePatch parse_runtime_layer_patch_node(const YAML::Node& node,
                           {"enabled",
                            "spatial_permanence_inc",
                            "active_predict_proximal_scale",
-                           "post_active_proximal_scale",
+                           "prev_predict_proximal_scale",
                            "sequence_permanence_inc", "sequence_permanence_dec"},
                           path + ".temporal_pooling",
                           errors);
@@ -286,9 +286,9 @@ HTMLayerRuntimePatch parse_runtime_layer_patch_node(const YAML::Node& node,
         patch.temp_active_predict_proximal_scale =
             temporal_pooling["active_predict_proximal_scale"].as<float>();
       }
-      if (temporal_pooling["post_active_proximal_scale"]) {
-        patch.temp_post_active_proximal_scale =
-            temporal_pooling["post_active_proximal_scale"].as<float>();
+      if (temporal_pooling["prev_predict_proximal_scale"]) {
+        patch.temp_prev_predict_proximal_scale =
+            temporal_pooling["prev_predict_proximal_scale"].as<float>();
       }
       if (temporal_pooling["sequence_permanence_inc"]) {
         patch.temp_sequence_permanence_inc =
@@ -363,7 +363,7 @@ void emit_layer_node(YAML::Emitter& out, const HTMLayerConfig& cfg, int layer_in
   out << YAML::Key << "enabled" << YAML::Value << cfg.temp_enabled;
   out << YAML::Key << "spatial_permanence_inc" << YAML::Value << cfg.temp_spatial_permanence_inc;
   out << YAML::Key << "active_predict_proximal_scale" << YAML::Value << cfg.temp_active_predict_proximal_scale;
-  out << YAML::Key << "post_active_proximal_scale" << YAML::Value << cfg.temp_post_active_proximal_scale;
+  out << YAML::Key << "prev_predict_proximal_scale" << YAML::Value << cfg.temp_prev_predict_proximal_scale;
   out << YAML::Key << "sequence_permanence_inc" << YAML::Value << cfg.temp_sequence_permanence_inc;
   out << YAML::Key << "sequence_permanence_dec" << YAML::Value << cfg.temp_sequence_permanence_dec;
   out << YAML::EndMap;

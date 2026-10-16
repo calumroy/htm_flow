@@ -92,7 +92,7 @@ temporal_pooling:
   enabled: false
   spatial_permanence_inc: 0.05
   active_predict_proximal_scale: 0.25
-  post_active_proximal_scale: 0.0
+  prev_predict_proximal_scale: 0.0
   sequence_permanence_inc: 0.05
   sequence_permanence_dec: 0.0
 ```
@@ -257,7 +257,7 @@ temporal_pooling:
   enabled: true
   spatial_permanence_inc: 0.05
   active_predict_proximal_scale: 0.25
-  post_active_proximal_scale: 0.0
+  prev_predict_proximal_scale: 0.0
   sequence_permanence_inc: 0.05
   sequence_permanence_dec: 0.0
 ```
@@ -267,18 +267,31 @@ temporal_pooling:
 This strengthens the current input after a column was correctly predicted and
 won.
 
-It makes an existing input-to-column mapping more reliable. It does not teach
-the column to win for the next different input.
+It makes an existing input-to-column mapping more reliable. It cannot teach
+the column a new input, because it only fires for columns that already won.
+Raising it does not increase pooling.
 
-### `post_active_proximal_scale`
+### `prev_predict_proximal_scale`
 
-This teaches a recently correct column about the next input while the column
-remains segment-backed predictive but loses inhibition.
+This teaches a column the input it was predicted for but lost. It fires when a
+cell in the column was predictive at `t-1` with an active segment at `t-1`,
+and the column did not win at `t`. The column learns the input at `t`.
+
+These are the same conditions the active-cells stage checks to decide whether
+a newly active column bursts, so when the column later wins for that input in
+the same context it does not burst.
+
+It pools in both directions. For a sequence A, B, C: a column that wins B
+gets a TP segment onto the other cells for B, so next cycle it is predicted
+for C, loses C, and learns C (forward). A column that wins C has a sequence
+segment onto cells for B; once those cells are also active for A, it is
+predicted for B, loses B, and learns B (backward). There is no separate
+forward setting and none is needed.
 
 Leave it at `0.0` until distal prediction is reliable. Then try:
 
 ```yaml
-post_active_proximal_scale: 0.25
+prev_predict_proximal_scale: 0.25
 ```
 
 Increase it to `0.5` only if cross-input pooling remains weak.
@@ -286,11 +299,22 @@ Increase it to `0.5` only if cross-input pooling remains weak.
 The proximal increase is:
 
 ```text
-spatial_permanence_inc * post_active_proximal_scale
+spatial_permanence_inc * prev_predict_proximal_scale
 ```
 
-Large values can make a column win without a valid prediction from the previous
-timestep. The column then bursts.
+Large values, or a large `spatial_permanence_inc`, can make a few columns win
+every position of a sequence. That is stable but carries no information.
+
+This setting needs candidates: columns predicted at `t-1` that lose at `t`.
+Sequence memory alone produces almost none on a learned sequence. The
+candidates come from temporal-pooling distal segments onto the `prev2`
+context, so `temporal_pooling.sequence_permanence_inc` must be above `0.0`.
+
+Sequence learning lowers permanence on a segment that predicted a cell which
+did not activate. This setting learns from exactly those predictions. Keep
+`temporal_pooling.sequence_permanence_inc` well above
+`sequence_memory.permanence_dec` so the prediction survives until the column
+wins.
 
 ### Temporal-pooling distal rates
 
@@ -331,15 +355,20 @@ Likely causes:
 - No cell was predictive on the previous timestep.
 - A segment had too few connected active synapses.
 - Useful segments were reused or weakened.
-- Proximal learning made the column win before distal learning predicted it.
+- The prediction that authorized a `prev_predict` proximal update was punished
+  by sequence learning and disappeared before the column won.
+- The column was bursting on the previous timestep and kept winning. A
+  continuing column keeps its bursting state.
 
 Change:
 
 1. Check prediction and active-segment state at `t-1`.
 2. Check connected support against `activation_threshold`.
-3. Reduce `post_active_proximal_scale`.
+3. Check `temporal_pooling.sequence_permanence_inc` against
+   `sequence_memory.permanence_dec`.
 4. Reduce temporal-pooling `spatial_permanence_inc`.
-5. Increase `max_segments_per_cell` only when the existing segments hold
+5. Reduce `prev_predict_proximal_scale`.
+6. Increase `max_segments_per_cell` only when the existing segments hold
    different useful contexts.
 
 ### A segment is updated but does not predict
@@ -357,13 +386,13 @@ Check:
 Likely causes:
 
 - Each column is spatially specialized for one input.
-- `post_active_proximal_scale` is `0.0`.
+- `prev_predict_proximal_scale` is `0.0`.
 - The predicted loser is not receiving cross-input proximal learning.
 
 Change:
 
 1. Confirm that sequence prediction is reliable.
-2. Set `post_active_proximal_scale` to `0.25`.
+2. Set `prev_predict_proximal_scale` to `0.25`.
 3. Check whether one column begins winning both positions.
 4. Stop increasing it if bursting or representation collapse rises.
 
@@ -374,11 +403,11 @@ Likely causes:
 - Proximal learning is too strong.
 - Too many columns win inhibition.
 - Receptive fields are too broad.
-- Post-active temporal pooling is smearing inputs together.
+- `prev_predict` temporal pooling is smearing inputs together.
 
 Change:
 
-1. Reduce `post_active_proximal_scale`.
+1. Reduce `prev_predict_proximal_scale`.
 2. Reduce temporal-pooling `spatial_permanence_inc`.
 3. Reduce `desired_local_activity`.
 4. Check receptive-field size and input overlap.
@@ -433,12 +462,36 @@ Change one setting at a time in this order:
 Use a fixed random seed and record:
 
 - Winning columns for each input position.
-- Burst fraction.
+- Burst fraction, split into new winners and continuing winners.
 - New bursts with no previous prediction.
 - Number of predictive cells.
 - Connected active synapses per relevant segment.
 - Pooled-column overlap within one sequence.
 - Pooled-column overlap between unrelated sequences.
+
+Exclude bursting columns from any active-cell pooling metric. A column that
+bursts and keeps winning stays bursting, and counts `cells_per_column` pooled
+cells every step without a single correct prediction.
+
+### A control layer with temporal pooling off still shows some pooling
+
+This is expected. Two spatial-pooler facts produce it:
+
+- A receptive field wider than one sequence step sees several consecutive
+  inputs with similar overlap. The same column can win two steps in a row.
+- Spatial learning raises permanence to every input a column wins for. The
+  decrement for the other input happens once per cycle and is smaller than
+  the increment, so a column that wins two positions keeps both.
+
+Nothing in the spatial pooler forces one input per column. There is no
+boosting. Some columns win two or more positions and some never win. This
+produces a small amount of cell persistence with no bursting. Measure it with
+temporal pooling off and treat it as the baseline a temporal-pooling layer is
+compared against.
+
+Columns in such a layer also often have more than one predictive cell for the
+same transition. Sequence memory activates every correctly predicting cell and
+reinforces each one. Nothing removes a redundant one once it exists.
 
 Change one parameter at a time. Run enough complete sequence cycles for the
 change to affect permanence.

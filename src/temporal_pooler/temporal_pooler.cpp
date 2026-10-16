@@ -23,7 +23,6 @@ TemporalPoolerCalculator::TemporalPoolerCalculator(const Config& cfg) : cfg_(cfg
   last_distal_update_time_.assign(
       num_cells * cfg_.max_segments_per_cell, -1);
   last_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
-  prev_active_predict_support_by_column_.assign(cfg_.num_columns, 0);
 
   new_learn_cells_time_.assign(num_cells * 2, -1);
 }
@@ -44,13 +43,13 @@ int TemporalPoolerCalculator::last_distal_update_time(
 // There are two additive sources:
 // - Current active-predict support from update_distal(support_time). This
 //   reinforces columns that were predicted and became active.
-// - If col_active01, predict_cells_time, and active_segs_time are provided, an
-//   inactive column can also be reinforced when it is still predicted by an
-//   active segment and had active-predict support one timestep ago. This helps
-//   it learn current inputs so it can win overlap later.
+// - If col_active01, predict_cells_time, and active_segs_time are provided, a
+//   column that is not active now is reinforced when it was segment-backed
+//   predictive at support_time - 1. This teaches the column the current input
+//   so it can win for it later without bursting.
 //
 // Those optional arguments are required for the second source because they identify
-// which columns are active now and which predictions have active segment evidence.
+// which columns are active now and which predictions had active segment evidence.
 TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_proximal(
     int support_time,
     const std::vector<int>& col_pot_inputs01,
@@ -68,11 +67,11 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
   assert(static_cast<int>(col_syn_perm.size()) == cfg_.num_columns * cfg_.num_pot_synapses);
 
   // The extra state is optional so older/unit callers can still exercise the
-  // active-predict path. Without it, we cannot safely reinforce predicted
-  // columns that failed to become active.
-  const bool can_reinforce_predictive_non_active =
+  // active-predict path. Without it, we cannot tell which columns lost
+  // inhibition or which predictions had segment evidence at support_time - 1.
+  const bool can_check_prev_predict =
       col_active01 != nullptr && predict_cells_time != nullptr && active_segs_time != nullptr;
-  if (can_reinforce_predictive_non_active) {
+  if (can_check_prev_predict) {
     assert(static_cast<int>(col_active01->size()) == cfg_.num_columns);
     assert(static_cast<int>(predict_cells_time->size()) == cfg_.num_columns * cfg_.cells_per_column * 2);
     assert(static_cast<int>(active_segs_time->size()) ==
@@ -87,31 +86,27 @@ TemporalPoolerCalculator::ProximalUpdateStats TemporalPoolerCalculator::update_p
   tf::Taskflow taskflow;
   taskflow.for_each_index(0, n, 1, [&](int col) {
     const int support = last_active_predict_support_by_column_[static_cast<std::size_t>(col)];
-    const bool active_now = can_reinforce_predictive_non_active &&
+    const bool active_now = can_check_prev_predict &&
                             ((*col_active01)[static_cast<std::size_t>(col)] == 1);
 
-    // Segment-backed prediction that lost inhibition: strengthen current inputs
-    // so this column has a better chance to win this context next time.
-    const bool predictive_non_active =
-        can_reinforce_predictive_non_active && !active_now &&
-        column_has_temporal_support(*predict_cells_time, *active_segs_time, col, support_time);
-
-    // After a correct activation, also learn the next input only if the column
-    // is still predicted by real segment evidence.
-    const bool post_active_predict =
-        predictive_non_active &&
-        prev_active_predict_support_time_ == support_time - 1 &&
-        col < static_cast<int>(prev_active_predict_support_by_column_.size()) &&
-        prev_active_predict_support_by_column_[static_cast<std::size_t>(col)] > 0;
+    // The column was predicted for this timestep (predictive at t-1 with a
+    // segment active at t-1) but lost inhibition. Learn the current input so
+    // the column can win for it later. The evidence is the same one the burst
+    // gate checks, so the later win does not burst in this context.
+    // Prediction at t is not used here: it forecasts t+1, not the current input.
+    const bool prev_predict_lost =
+        can_check_prev_predict && !active_now &&
+        column_has_temporal_support(*predict_cells_time, *active_segs_time, col,
+                                    support_time - 1);
     // Proximal synapses belong to the column. Once any cell in the column was
     // correctly predicted and became active, apply one column-level increase.
     // Do not make the increase depend on the number of matching cells.
     const float active_predict_strength =
         support > 0 ? cfg_.active_predict_proximal_scale : 0.0f;
-    const float post_active_strength =
-        post_active_predict ? cfg_.post_active_proximal_scale : 0.0f;
+    const float prev_predict_strength =
+        prev_predict_lost ? cfg_.prev_predict_proximal_scale : 0.0f;
     const float total_strength =
-        active_predict_strength + post_active_strength;
+        active_predict_strength + prev_predict_strength;
     if (total_strength <= 0.0f) {
       return;
     }
@@ -247,7 +242,8 @@ bool TemporalPoolerCalculator::check_cell_active_predict(const std::vector<int>&
     return false;
   }
 
-  // Require the same prediction evidence as the active-cell burst gate.
+  // Require the same t-1 prediction evidence that ActiveCellsCalculator uses
+  // to decide whether a newly active column bursts.
   const bool cell_active = check_cell_time(active_cells_time, col, cell, time_step);
   const bool was_predict = check_cell_predict(predict_cells_time, col, cell, time_step - 1);
   const bool had_active_segment =
@@ -512,9 +508,6 @@ void TemporalPoolerCalculator::update_distal(int time_step,
   const std::size_t distal_size = static_cast<std::size_t>(cfg_.num_columns) * cfg_.cells_per_column *
                                   cfg_.max_segments_per_cell * cfg_.max_synapses_per_segment;
   assert(distal_synapses.size() == distal_size);
-
-  prev_active_predict_support_by_column_ = last_active_predict_support_by_column_;
-  prev_active_predict_support_time_ = last_active_predict_support_time_;
 
   if (cfg_.seq_permanence_inc <= 0.0f) {
     // Still update the learning-entry log to keep internal state consistent.

@@ -21,8 +21,12 @@ namespace {
 // - More distal segments give each cell more temporal-context capacity.
 // - Strong distal learning makes useful predictions form before proximal
 //   pooling changes which columns win.
-// - Strong proximal learning makes the same predicted columns win across the
-//   whole sequence so their cells can remain active.
+// - Strong proximal learning on columns that were predicted at t-1 but lost
+//   inhibition at t (`temp_prev_predict_proximal_scale`) makes those columns
+//   learn the current input and win for it later without bursting.
+// - `temp_active_predict_proximal_scale` only strengthens inputs a column
+//   already wins for. It is kept at a moderate value so pooled columns stay
+//   pooled; it does not create pooling on its own.
 TwoLayerHtmHarness::Config suiteConfig() {
   TwoLayerHtmHarness::Config cfg;
 
@@ -39,7 +43,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l0.inhib_h                  = 7;
   cfg.l0.desired_local_activity   = 6;
   cfg.l0.connected_perm           = 0.3f;
-  cfg.l0.min_overlap              = 2;
+  cfg.l0.min_overlap              = 4;
   cfg.l0.min_potential_overlap    = 1;
   cfg.l0.spatial_perm_inc         = 0.05f;
   cfg.l0.spatial_perm_dec         = 0.02f;
@@ -65,23 +69,36 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l1.input_cols                        = cfg.l0.col_cols;
   cfg.l1.pot_h                             = cfg.l1.input_rows;
   cfg.l1.pot_w                             = cfg.l1.input_cols;
+  cfg.l1.desired_local_activity            = 3;
   cfg.l1.max_segments_per_cell             = 4;
-  cfg.l1.temp_spatial_perm_inc             = 1.0f;
-  cfg.l1.temp_active_predict_proximal_scale = 5.0f;
-  cfg.l1.temp_post_active_proximal_scale    = 5.0f;
-  cfg.l1.temp_seq_perm_inc                 = 1.0f;
+  cfg.l1.temp_spatial_perm_inc              = 0.1f;
+  cfg.l1.temp_active_predict_proximal_scale = 2.0f;
+  cfg.l1.temp_prev_predict_proximal_scale   = 5.0f;
+  cfg.l1.temp_seq_perm_inc                  = 0.1f;
 
   cfg.rng_seed = 123u;
   return cfg;
 }
 
-std::vector<uint8_t> activeCells01(const temporal_pooling_test_utils::HtmPipelineHarness& layer) {
+// Active cells, with bursting columns removed.
+//
+// A bursting column has every cell active. A column that keeps winning while
+// bursting stays bursting (ActiveCellsCalculator carries the burst forward),
+// so it would add `cells_per_column` "pooled" cells every step without any
+// correct prediction. Counting those cells would let a layer pass this test by
+// bursting. Only columns with at least one inactive cell are counted.
+std::vector<uint8_t> nonBurstingActiveCells01(
+    const temporal_pooling_test_utils::HtmPipelineHarness& layer) {
   const auto snapshot = layer.snapshot();
   std::vector<uint8_t> active(
       static_cast<std::size_t>(snapshot.columns_shape.rows * snapshot.columns_shape.cols *
                                snapshot.cells_per_column),
       0);
+  const std::uint64_t all_cells = (std::uint64_t{1} << snapshot.cells_per_column) - 1;
   for (std::size_t col = 0; col < snapshot.column_cell_masks.size(); ++col) {
+    if ((snapshot.column_cell_masks[col].active & all_cells) == all_cells) {
+      continue;
+    }
     for (int cell = 0; cell < snapshot.cells_per_column; ++cell) {
       const std::uint64_t bit = std::uint64_t{1} << cell;
       active[col * static_cast<std::size_t>(snapshot.cells_per_column) +
@@ -106,7 +123,9 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
   Layer 1 has a full-input potential pool, more distal-segment capacity,
   strong distal temporal learning, and strong proximal temporal learning.
   We compare how much each layer's active-cell output stays active from one
-  sequence position to the next.
+  sequence position to the next. Bursting columns are excluded from the
+  measurement. A column that bursts and keeps winning stays bursting, and its
+  cells would count as pooled without any correct prediction.
 
   Why the configuration is asymmetric:
   Layer 0 should preserve changing sequence positions for the next layer.
@@ -114,18 +133,24 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
   Copying Layer 0 before applying the Layer 1 overrides keeps unrelated spatial
   and sequence-memory settings equal.
 
+  Layer 0 is not expected to reach zero. Its receptive fields span several
+  line positions and spatial learning raises permanence to every input a
+  column wins for, so some Layer 0 columns win two consecutive positions.
+  That is the spatial floor the Layer 1 margin is measured against.
+
   Pass:
-  Layer 1 retains at least 0.65 of its active cells between sequence positions.
+  Layer 1 retains at least 0.65 of its non-bursting active cells between
+  sequence positions.
   Layer 1 temporal pooling is at least 0.50 above Layer 0.
 
   Fail:
-  Layer 1 does not form a stable learning-cell representation,
+  Layer 1 does not form a stable non-bursting active-cell representation,
   or its output is not more stable than the Layer 0 control.
 
   Steps:
   1. Run a repeating left-to-right line sequence for train_steps.
   2. Run three more complete cycles.
-  3. Measure successive active-cell overlap in both layers.
+  3. Measure successive non-bursting active-cell overlap in both layers.
   4. Require Layer 1 to pool strongly and exceed Layer 0.
   */
 
@@ -155,13 +180,15 @@ TEST(TemporalPoolingIntegrationSuite5, test_layer1_maximises_temporal_pooling_ov
   for (int i = 0; i < eval_steps; ++i) {
     const std::vector<int> in = inputs.next(htm.rng());
     htm.step(time_step, in);
-    layer0_pooled = layer0_measure.temporalPoolingPercent(activeCells01(htm.layer0()));
-    layer1_pooled = layer1_measure.temporalPoolingPercent(activeCells01(htm.layer1()));
+    layer0_pooled =
+        layer0_measure.temporalPoolingPercent(nonBurstingActiveCells01(htm.layer0()));
+    layer1_pooled =
+        layer1_measure.temporalPoolingPercent(nonBurstingActiveCells01(htm.layer1()));
     ++time_step;
   }
 
   EXPECT_GE(layer1_pooled, 0.65)
-      << "Layer 1 should keep most of its pooled cells active across the sequence";
+      << "Layer 1 should keep most of its non-bursting active cells active across the sequence";
   EXPECT_GE(layer1_pooled, layer0_pooled + 0.50)
       << "Layer 1 should pool more strongly than the Layer 0 control";
 }

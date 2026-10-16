@@ -26,7 +26,7 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
       /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
@@ -34,7 +34,7 @@ TEST(TemporalPooler, distal_reinforces_best_matching_segment) {
       /*connect_permanence=*/0.2f,
   });
   tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*post_active_scale=*/0.0f);
+                                       /*prev_predict_scale=*/0.0f);
 
   // Distal synapses: shape (num_columns=2, cells=2, seg=1, syn=2)
   std::vector<DistalSynapse> distal(2 * 2 * 1 * 2);
@@ -84,7 +84,7 @@ TEST(TemporalPooler, bare_prediction_does_not_authorize_learning) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.04f,
       /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
       /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
@@ -92,7 +92,7 @@ TEST(TemporalPooler, bare_prediction_does_not_authorize_learning) {
       /*connect_permanence=*/0.2f,
   });
   tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*post_active_scale=*/0.0f);
+                                       /*prev_predict_scale=*/0.0f);
 
   std::vector<DistalSynapse> distal(1, DistalSynapse{0, 0, 0.4f});
   std::vector<int> learn_cells_time(2, -1);
@@ -132,7 +132,7 @@ TEST(TemporalPooler, burst_generated_prediction_does_not_authorize_learning) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.1f,
       /*active_predict_proximal_scale=*/1.0f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
       /*seq_permanence_dec=*/0.0f,
       /*min_num_syn_threshold=*/0,
@@ -200,7 +200,7 @@ TEST(TemporalPooler, distal_decrements_inactive_synapses) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
       /*seq_permanence_dec=*/0.05f,
       /*min_num_syn_threshold=*/0,
@@ -261,7 +261,7 @@ TEST(TemporalPooler, distal_replaces_dead_synapses) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.1f,
       /*seq_permanence_dec=*/0.1f, // large enough to kill the synapse in one step
       /*min_num_syn_threshold=*/0,
@@ -323,7 +323,7 @@ TEST(TemporalPooler, distal_reuses_subconnected_prev2_segment) {
       /*num_pot_synapses=*/1,
       /*spatial_permanence_inc=*/0.0f,
       /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.04f,
       /*seq_permanence_dec=*/0.02f,
       /*min_num_syn_threshold=*/0,
@@ -385,7 +385,7 @@ TEST(TemporalPooler, proximal_update_applies_once_for_multiple_active_predict_ce
       /*num_pot_synapses=*/3,
       /*spatial_permanence_inc=*/0.04f,
       /*active_predict_proximal_scale=*/1.0f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/0.0f,
       /*seq_permanence_inc=*/0.04f,
       /*seq_permanence_dec=*/0.02f,
       /*min_num_syn_threshold=*/0,
@@ -452,85 +452,124 @@ TEST(TemporalPooler, proximal_update_applies_once_for_multiple_active_predict_ce
   EXPECT_FLOAT_EQ(stale_perm[2], 0.0f);
 }
 
-TEST(TemporalPooler, proximal_update_bridges_post_active_predictive_non_active_columns) {
-  TemporalPoolerCalculator tp(TemporalPoolerCalculator::Config{
+namespace {
+
+// Shared setup for the prev-predict proximal tests.
+// Two columns, two cells each, one segment per cell, three proximal inputs.
+struct PrevPredictFixture {
+  TemporalPoolerCalculator tp{TemporalPoolerCalculator::Config{
       /*num_columns=*/2,
       /*cells_per_column=*/2,
       /*max_segments_per_cell=*/1,
       /*max_synapses_per_segment=*/2,
       /*num_pot_synapses=*/3,
       /*spatial_permanence_inc=*/0.04f,
-      /*active_predict_proximal_scale=*/0.25f,
-      /*post_active_proximal_scale=*/0.0f,
+      /*active_predict_proximal_scale=*/0.0f,
+      /*prev_predict_proximal_scale=*/1.0f,
       /*seq_permanence_inc=*/0.04f,
       /*seq_permanence_dec=*/0.02f,
       /*min_num_syn_threshold=*/0,
       /*new_syn_permanence=*/0.1f,
       /*connect_permanence=*/0.2f,
-  });
-  tp.set_proximal_reinforcement_scales(/*active_predict_scale=*/1.0f,
-                                       /*post_active_scale=*/1.0f);
-
-  std::vector<DistalSynapse> distal(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f});
-  std::vector<int> learn_cells_time(2 * 2 * 2, -1);
-  std::vector<int> active_cells_time(2 * 2 * 2, -1);
-  std::vector<int> predict_cells_time(2 * 2 * 2, -1);
-  std::vector<int> active_segs_time(2 * 2 * 1, -1);
-  std::vector<int> burst_cols_time(2 * 2, -1);
-
-  // t=2: column 1 is correctly predicted and active. TP records active-predict
-  // support for the column after its distal update.
-  active_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
-  predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 1;
-  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 1;
-  tp.update_distal(/*time_step=*/2,
-                   /*new_learn_cells_list=*/{},
-                   learn_cells_time,
-                   predict_cells_time,
-                   active_cells_time,
-                   active_segs_time,
-                   burst_cols_time,
-                   distal);
-
-  // t=3: the same column did not win inhibition, but it is still predictive
-  // with segment evidence. This is the late-side bridge case.
-  predict_cells_time[idx_cell_time(2, 1, 0, 1)] = 3;
-  active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 3;
-  tp.update_distal(/*time_step=*/3,
-                   /*new_learn_cells_list=*/{},
-                   learn_cells_time,
-                   predict_cells_time,
-                   active_cells_time,
-                   active_segs_time,
-                   burst_cols_time,
-                   distal);
-
-  std::vector<uint8_t> col_active = {1, 0};
-  std::vector<int> pot_inputs = {
+  }};
+  std::vector<DistalSynapse> distal{std::vector<DistalSynapse>(2 * 2 * 1 * 2, DistalSynapse{0, 0, 0.0f})};
+  std::vector<int> learn_cells_time{std::vector<int>(2 * 2 * 2, -1)};
+  std::vector<int> active_cells_time{std::vector<int>(2 * 2 * 2, -1)};
+  std::vector<int> predict_cells_time{std::vector<int>(2 * 2 * 2, -1)};
+  std::vector<int> active_segs_time{std::vector<int>(2 * 2 * 1, -1)};
+  std::vector<int> burst_cols_time{std::vector<int>(2 * 2, -1)};
+  // Column 0 wins at t=3. Column 1 does not.
+  std::vector<uint8_t> col_active{1, 0};
+  std::vector<int> pot_inputs{
       1, 1, 1, // col0
       0, 1, 1  // col1
   };
-  std::vector<float> proximal_perm = {
+  std::vector<float> proximal_perm{
       0.0f, 0.0f, 0.0f,  // col0
-      0.0f, 0.29f, 0.0f  // col1
+      0.0f, 0.17f, 0.0f  // col1
   };
 
-  const auto stats =
-      tp.update_proximal(/*support_time=*/3,
-                         pot_inputs,
-                         proximal_perm,
-                         &col_active,
-                         &predict_cells_time,
-                         &active_segs_time);
+  TemporalPoolerCalculator::ProximalUpdateStats run(int t) {
+    tp.update_distal(t, /*new_learn_cells_list=*/{}, learn_cells_time, predict_cells_time,
+                     active_cells_time, active_segs_time, burst_cols_time, distal);
+    return tp.update_proximal(t, pot_inputs, proximal_perm, &col_active,
+                              &predict_cells_time, &active_segs_time);
+  }
+};
 
+} // namespace
+
+TEST(TemporalPooler, proximal_update_reinforces_column_predicted_at_t_minus_1_that_lost_inhibition) {
+  PrevPredictFixture f;
+
+  // Column 1, cell 0 was predictive at t=2 with a segment active at t=2.
+  // At t=3 the column did not win. Its active inputs at t=3 gain
+  // spatial_permanence_inc * prev_predict_proximal_scale = 0.04.
+  f.predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
+  f.active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 2;
+
+  const auto stats = f.run(/*t=*/3);
+
+  EXPECT_EQ(stats.reinforced_columns, 1);
   EXPECT_EQ(stats.reinforced_inputs, 2);
-
-  // The post-active path gives one increment because the column was
-  // active-predict at the previous timestep and is still segment-backed
-  // predictive now. There is no current active-predict support for a loser.
-  EXPECT_FLOAT_EQ(proximal_perm[3], 0.0f);
-  EXPECT_FLOAT_EQ(proximal_perm[4], 0.33f);
-  EXPECT_FLOAT_EQ(proximal_perm[5], 0.04f);
+  EXPECT_EQ(stats.newly_connected, 1);
+  EXPECT_FLOAT_EQ(f.proximal_perm[3], 0.0f);   // inactive input is unchanged
+  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.21f);  // crosses connect_permanence 0.2
+  EXPECT_FLOAT_EQ(f.proximal_perm[5], 0.04f);
+  // Column 0 won at t=3. It had no active-predict support, so it is unchanged.
+  EXPECT_FLOAT_EQ(f.proximal_perm[0], 0.0f);
+  EXPECT_FLOAT_EQ(f.proximal_perm[1], 0.0f);
+  EXPECT_FLOAT_EQ(f.proximal_perm[2], 0.0f);
 }
 
+TEST(TemporalPooler, proximal_update_ignores_prediction_made_at_current_timestep) {
+  PrevPredictFixture f;
+
+  // Column 1 is predictive at t=3 (forecasting t=4). That is not evidence that
+  // the column should have won at t=3, so it must not learn the input at t=3.
+  f.predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 3;
+  f.active_segs_time[idx_cell_seg(2, 1, 1, 0, 0)] = 3;
+
+  const auto stats = f.run(/*t=*/3);
+
+  EXPECT_EQ(stats.reinforced_columns, 0);
+  EXPECT_EQ(stats.reinforced_inputs, 0);
+  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.17f);
+  EXPECT_FLOAT_EQ(f.proximal_perm[5], 0.0f);
+}
+
+TEST(TemporalPooler, proximal_update_requires_active_segment_for_prev_prediction) {
+  PrevPredictFixture f;
+
+  // Predictive at t=2 but no segment timestamp at t=2. ActiveCellsCalculator
+  // would still burst this column on such a prediction, so TP must not learn
+  // from it.
+  f.predict_cells_time[idx_cell_time(2, 1, 0, 0)] = 2;
+
+  const auto stats = f.run(/*t=*/3);
+
+  EXPECT_EQ(stats.reinforced_columns, 0);
+  EXPECT_EQ(stats.reinforced_inputs, 0);
+  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.17f);
+}
+
+TEST(TemporalPooler, proximal_update_prev_prediction_does_not_apply_to_winning_column) {
+  PrevPredictFixture f;
+
+  // Column 0 was predicted at t=2 and won at t=3, but it bursts at t=3, so it
+  // has no active-predict support. It won, so the prev-predict path does not
+  // apply either. No column changes.
+  f.predict_cells_time[idx_cell_time(2, 0, 0, 0)] = 2;
+  f.active_segs_time[idx_cell_seg(2, 1, 0, 0, 0)] = 2;
+  f.active_cells_time[idx_cell_time(2, 0, 0, 0)] = 3;
+  f.active_cells_time[idx_cell_time(2, 0, 1, 0)] = 3;
+  f.burst_cols_time[0] = 3;
+
+  const auto stats = f.run(/*t=*/3);
+
+  EXPECT_EQ(stats.reinforced_columns, 0);
+  EXPECT_EQ(stats.reinforced_inputs, 0);
+  EXPECT_FLOAT_EQ(f.proximal_perm[0], 0.0f);
+  EXPECT_FLOAT_EQ(f.proximal_perm[4], 0.17f);
+}
 

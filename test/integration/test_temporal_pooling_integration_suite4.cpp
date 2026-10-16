@@ -57,7 +57,7 @@ TwoLayerHtmHarness::Config suiteConfig() {
   cfg.l1 = cfg.l0;
   cfg.l1.input_rows = cfg.l0.col_rows;   // 12
   cfg.l1.input_cols = cfg.l0.col_cols;    // 12
-  //cfg.l1.temp_post_active_proximal_scale = 0.15f;
+  //cfg.l1.temp_prev_predict_proximal_scale = 0.15f;
 
   cfg.rng_seed = 123u;
   return cfg;

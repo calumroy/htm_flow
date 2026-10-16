@@ -98,8 +98,8 @@ threshold. Learning raises or lowers permanence.
 
 A predictive cell expects to become active on a later timestep.
 
-The prediction is valid for the burst gate only when an active distal segment
-supports it.
+A prediction only stops a column from bursting when one of the cell's distal
+segments was active at the time the prediction was made.
 
 ### Active-Predict Cell
 
@@ -119,6 +119,10 @@ prediction on the previous timestep.
 During a burst, all cells in the column become active. Bursting is useful for
 new input, but frequent bursting on a familiar sequence means prediction is not
 working correctly.
+
+A column that was active at `t-1` and wins again at `t` is not checked for a
+prediction. Its cells keep the state they had at `t-1`. If it was bursting, it
+stays bursting until it loses inhibition for one timestep.
 
 ## Position In The Layer
 
@@ -213,21 +217,32 @@ timestep.
 
 Cells that only remained in the learning state are not recorded as new entries.
 
-#### 2. Select the earlier learning context
+#### 2. Select the target cells for TP segments
 
-The pooler searches recent learning-cell entries and builds the `prev2` context.
+New TP distal synapses connect to a list of cells the code calls `prev2`.
 
-The context excludes cells active at `t-1`. This selects cells from before the
-immediately previous active set.
+The pooler keeps a log of every time a cell entered the learning state: one
+entry of `(timestep, column, cell)` per event, in time order. Step 1 appended
+this timestep's entries to that log. To build `prev2` the pooler walks the log
+from the newest entry backwards and appends a cell to `prev2` if:
 
-The pooler uses this context to learn longer temporal links.
+- the cell was not active at `t-1`, and
+- the cell is not already in `prev2`.
 
-```text
-Earlier context       Previous input       Current input
-     prev2                  t-1                  t
-       |                     |                   |
-       +-------- distal temporal link --------->+
-```
+It stops after it has `max_synapses_per_segment` cells and has finished the
+timestep it was on, so all cells that entered learning on that timestep are
+included.
+
+The newest log entries are the cells that entered learning at `t`. A cell that
+entered learning at `t` was not active at `t-1`, so it is accepted. The result
+is that `prev2` is the set of cells that entered learning on the current
+timestep, i.e. the cells that represent the current input.
+
+So a TP segment created at `t` connects an active-predict cell to the other
+cells that are active for the same input at `t`. The next time that input
+appears the segment fires and makes the cell predictive. That prediction is
+for the following timestep. The prev-predict proximal update in Step 2 uses it
+to teach the column the following input.
 
 #### 3. Find active-predict cells
 
@@ -307,25 +322,23 @@ active-predict cells in the same column do not multiply the increase.
 
 This update makes an already correct input-to-column mapping more reliable.
 
-It does not directly teach the column to win for the next input.
+It cannot teach the column a new input. It only fires for columns that won.
 
-#### Post-active update
+#### Prev-predict update
 
-This path teaches a recently correct column about the next input.
+This path teaches a column the input it was predicted for but lost.
 
 It applies when:
 
-1. The column had active-predict support at `t-1`.
-2. The column does not win at `t`.
-3. The column is still predictive at `t`.
-4. An active distal segment supports that prediction at `t`.
+1. A cell in the column was predictive at `t-1`.
+2. One of that cell's distal segments was active at `t-1`.
+3. The column does not win at `t`.
 
 ```text
-t-1: predicted column wins for input B
+t-1: a cell in the column is segment-backed predictive
                   |
                   v
-t:   column stays segment-backed predictive for input C,
-     but does not win
+t:   the column does not win for input C
                   |
                   v
      reinforce that column's proximal synapses to input C
@@ -334,11 +347,18 @@ t:   column stays segment-backed predictive for input C,
 The permanence increase is:
 
 ```text
-spatial_permanence_inc * post_active_proximal_scale
+spatial_permanence_inc * prev_predict_proximal_scale
 ```
 
-This is the main path that can make one column win across changing inputs in a
+This is the path that makes one column win across changing inputs in a
 sequence.
+
+Conditions 1 and 2 are the same conditions the active-cells stage checks at `t`
+before it decides that a newly winning column does not burst. When this update
+later makes the column win for input C in the same context, that check passes.
+
+Prediction at `t` is not used. It forecasts `t+1` and says nothing about
+whether the column should have won at `t`.
 
 All permanence values are capped at `1.0`.
 
@@ -384,31 +404,51 @@ active_predict_proximal_scale = 5.0
 increase = 0.12 * 5.0 = 0.60
 ```
 
-This setting strengthens correct winners. It does not directly make the same
-column learn the next sequence input.
+This setting strengthens correct winners. It only applies to columns that won,
+so it cannot make a column learn a new input. On its own it produces no
+temporal pooling. Pooling needs `prev_predict_proximal_scale`.
 
-### `post_active_proximal_scale`
+### `prev_predict_proximal_scale`
 
 Type: Non-negative floating-point value.
 
-Purpose: Scales the one-step later proximal update for a column that remains
-segment-backed predictive after a correct activation.
+Purpose: Scales the proximal update for a column that was segment-backed
+predictive at `t-1` and did not win at `t`.
 
 Example:
 
 ```text
 spatial_permanence_inc = 0.12
-post_active_proximal_scale = 0.5
+prev_predict_proximal_scale = 0.5
 
 increase = 0.12 * 0.5 = 0.06
 ```
 
-This setting is important for column-level pooling across changing inputs.
+This setting is required for column-level pooling across changing inputs.
 
-If it is too low, no columns may win across multiple sequence positions.
+If it is too low, no columns win across multiple sequence positions.
 
-If it is too high, the same columns can learn many unrelated inputs and dominate
-the layer.
+If it is too high, or `spatial_permanence_inc` is large, a few columns can win
+every position of a sequence. That is stable but carries no position
+information.
+
+This setting replaces `post_active_proximal_scale`. The old setting used
+prediction at `t`, which forecasts `t+1`, to learn the input at `t`. The column
+later won for that input without a prediction at `t-1` and burst.
+
+`prev` names the time of the evidence. The update pools in both directions.
+For a sequence A, B, C:
+
+- Forwards: a column wins B. Its TP segment connects to the other cells for B.
+  Next time B appears the segment fires and predicts the column for C. The
+  column loses C and learns C.
+- Backwards: a column wins C. Its sequence segment connects to cells for B.
+  Once other columns pool over A and B, some of those cells are also active
+  for A. The segment then fires at A and predicts the column for B. The
+  column loses B and learns B.
+
+Both occur in practice. Forward firings are slightly more common. Backward
+firings increase as pooling spreads.
 
 ### `sequence_permanence_inc`
 
@@ -484,32 +524,54 @@ temporal_pooling:
   enabled: true
   spatial_permanence_inc: 0.01
   active_predict_proximal_scale: 0.25
-  post_active_proximal_scale: 0.0
+  prev_predict_proximal_scale: 0.0
   sequence_permanence_inc: 0.02
   sequence_permanence_dec: 0.01
 ```
 
 These are generic defaults. They are not a tuned profile for every layer size or
-input type.
+input type. With `prev_predict_proximal_scale` at `0.0` no column-level pooling
+across inputs happens.
 
 ## Current Word-Row Runtime Profile
 
 `configs/word_rows_2layer_delayed_temporal_pooling_text.yaml` starts temporal
 pooling disabled in Layer 1.
 
-At timestep 1000 it applies:
+At timestep 1000 it applies
+`configs/overrides/word_rows_2layer_enable_temporal_pooling.yaml`:
 
 ```yaml
 temporal_pooling:
   enabled: true
   spatial_permanence_inc: 0.12
-  active_predict_proximal_scale: 5.0
-  post_active_proximal_scale: 5.0
+  active_predict_proximal_scale: 0.25
+  prev_predict_proximal_scale: 0.5
   sequence_permanence_inc: 0.21
   sequence_permanence_dec: 0.002
 ```
 
-This profile is much stronger than the C++ defaults.
+This profile is stronger than the C++ defaults. The `prev_predict` value was
+carried over from the old `post_active` setting and has not been re-tuned for
+the word-row config.
+
+## Suite 5 Line-Sequence Profile
+
+`test/integration/test_temporal_pooling_integration_suite5.cpp` uses a
+deliberately strong Layer 1 profile on a 16-step moving-line sequence:
+
+```yaml
+temporal_pooling:
+  spatial_permanence_inc: 1.0
+  active_predict_proximal_scale: 5.0
+  prev_predict_proximal_scale: 5.0
+  sequence_permanence_inc: 1.0
+```
+
+Measured with bursting columns excluded from the metric: Layer 1 keeps `0.80`
+of its non-bursting active cells between positions, Layer 0 keeps `0.12`.
+With the old `post_active` path at the same values the all-column number was
+`0.69`, of which more than half came from permanently bursting columns.
 
 ## How To Recognise Correct Temporal Pooling
 
@@ -527,28 +589,15 @@ A good result must satisfy all of these conditions:
 Stability alone is not enough. One constant winner set for every input is stable
 but carries no useful information.
 
+Measure pooling on non-bursting columns only. A bursting column that keeps
+winning stays bursting and counts every cell as active on every step. On the
+suite 5 line sequence, before the metric excluded bursting columns, more than
+half of the "pooled" cells came from two or three permanently bursting
+columns.
+
 ## Current Issues
 
-### The documented reference values do not match the runtime override
-
-`TEMPORAL_POOLING_BURSTING.md` describes this delayed profile:
-
-```yaml
-active_predict_proximal_scale: 0.25
-post_active_proximal_scale: 0.5
-```
-
-The current runtime override contains:
-
-```yaml
-active_predict_proximal_scale: 5.0
-post_active_proximal_scale: 5.0
-```
-
-The documentation or the runtime override is stale. They cannot both describe
-the current reference profile.
-
-### Strong post-active updates can collapse unrelated sequences
+### Strong prev-predict updates can collapse unrelated sequences
 
 The winning-column integration test uses:
 
@@ -556,6 +605,10 @@ The winning-column integration test uses:
 ABCD: no input overlap with EFGH
 CDEF: shares C,D with ABCD and E,F with EFGH
 ```
+
+The measurements below were taken with the old `post_active` path. The
+`prev_predict` path adds permanence in the same amount for each firing, so the
+same trade-off applies. The exact numbers have not been re-measured.
 
 With `spatial_permanence_inc=0.12` and
 `post_active_proximal_scale=5.0`, one post-active update adds `0.60`
@@ -574,7 +627,7 @@ ABCD mean burst fraction:  0.75
 The same four columns represented both disjoint sequences. The result was
 stable but not useful.
 
-### The post-active update has a narrow useful range
+### The proximal pooling update has a narrow useful range
 
 The same test changed only `post_active_proximal_scale` from `5.0` to `0.5`.
 
@@ -619,11 +672,20 @@ active-predict cells in that column does not change the increase.
 
 ### Proximal pooling can outrun distal prediction
 
-If proximal permanence changes too quickly, a column can start winning for a new
-input before sequence memory predicts that column.
+The `prev_predict` update only changes permanence when a prediction at `t-1`
+already exists for the column. A later win in the same context therefore has
+the prediction that stops a burst. Two cases can still produce an unpredicted
+win:
 
-The column then bursts because it has no segment-backed prediction from the
-previous timestep.
+1. The prediction did not survive. Sequence learning lowers permanence on a
+   segment that predicted a cell which did not become active. The `prev_predict`
+   update learns from exactly those predictions. If
+   `temporal_pooling.sequence_permanence_inc` is small compared with
+   `sequence_memory.permanence_dec`, the prediction can disappear before the
+   column wins.
+2. The same input appears in a different context. The column wins from its
+   proximal synapses, but the context cells that drove the prediction are not
+   active.
 
 ```text
 TP proximal learning makes column win
@@ -635,12 +697,25 @@ No matching prediction at t-1
 Column bursts
 ```
 
-The first settings to reduce are:
+The first things to check are:
 
-1. `post_active_proximal_scale`
-2. `spatial_permanence_inc`
+1. `temporal_pooling.sequence_permanence_inc` against
+   `sequence_memory.permanence_dec`.
+2. `spatial_permanence_inc`. A value that sets permanence to `1.0` in one
+   update leaves no time for the distal prediction to stabilise.
 
-Do not weaken the burst gate to hide this problem.
+Do not relax the prediction check in the active-cells stage to hide this
+problem.
+
+### Continuing bursting columns never recover
+
+A column that wins at `t-1` and `t` keeps its previous cell state. If it was
+bursting at `t-1`, it is bursting at `t`. A column that pooling makes win every
+position bursts once and then bursts for as long as it keeps winning.
+
+Any metric that counts active cells must exclude these columns. The suite 5
+test does. The fix in the active-cells stage is listed under future work in
+`TEMPORAL_POOLING_BURSTING.md`.
 
 ### Sequence boundaries are not explicit
 
